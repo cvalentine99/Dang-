@@ -28,7 +28,9 @@ async function proxyGet(path: string, params?: Record<string, string | number | 
 // ── Router ────────────────────────────────────────────────────────────────────
 export const wazuhRouter = router({
 
-  // ── System status ──────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════════
+  // SYSTEM STATUS
+  // ══════════════════════════════════════════════════════════════════════════════
   status: publicProcedure.query(async () => {
     if (!isWazuhConfigured()) {
       return { configured: false, data: null };
@@ -41,15 +43,83 @@ export const wazuhRouter = router({
     }
   }),
 
+  isConfigured: publicProcedure.query(() => ({
+    configured: isWazuhConfigured(),
+    host: process.env.WAZUH_HOST ?? null,
+    port: process.env.WAZUH_PORT ?? "55000",
+  })),
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // MANAGER
+  // ══════════════════════════════════════════════════════════════════════════════
   managerInfo: publicProcedure.query(() => proxyGet("/manager/info")),
-
   managerStatus: publicProcedure.query(() => proxyGet("/manager/status")),
+  managerConfiguration: publicProcedure.query(() => proxyGet("/manager/configuration")),
+  managerConfigValidation: publicProcedure.query(() => proxyGet("/manager/configuration/validation")),
 
+  // ── Manager stats ─────────────────────────────────────────────────────────
+  managerStats: publicProcedure.query(() => proxyGet("/manager/stats")),
+  statsHourly: publicProcedure.query(() => proxyGet("/manager/stats/hourly")),
+  statsWeekly: publicProcedure.query(() => proxyGet("/manager/stats/weekly")),
+  analysisd: publicProcedure.query(() => proxyGet("/manager/stats/analysisd")),
+  remoted: publicProcedure.query(() => proxyGet("/manager/stats/remoted")),
+
+  // ── Manager daemon stats (4.14+ enhanced) ─────────────────────────────────
+  daemonStats: publicProcedure
+    .input(z.object({
+      daemons: z.array(z.string()).optional(),
+    }).optional())
+    .query(({ input }) =>
+      proxyGet("/manager/daemons/stats", input?.daemons ? { daemons_list: input.daemons.join(",") } : {})
+    ),
+
+  // ── Manager logs ──────────────────────────────────────────────────────────
+  managerLogs: publicProcedure
+    .input(
+      paginationSchema.extend({
+        level: z.enum(["info", "error", "warning", "debug"]).optional(),
+        tag: z.string().optional(),
+        search: z.string().optional(),
+      })
+    )
+    .query(({ input }) =>
+      proxyGet("/manager/logs", {
+        limit: input.limit,
+        offset: input.offset,
+        level: input.level,
+        tag: input.tag,
+        search: input.search,
+      }, "alerts")
+    ),
+
+  managerLogsSummary: publicProcedure.query(() =>
+    proxyGet("/manager/logs/summary", {}, "alerts")
+  ),
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // CLUSTER
+  // ══════════════════════════════════════════════════════════════════════════════
   clusterStatus: publicProcedure.query(() => proxyGet("/cluster/status")),
-
   clusterNodes: publicProcedure.query(() => proxyGet("/cluster/nodes")),
+  clusterHealthcheck: publicProcedure.query(() => proxyGet("/cluster/healthcheck")),
+  clusterLocalInfo: publicProcedure.query(() => proxyGet("/cluster/local/info")),
+  clusterLocalConfig: publicProcedure.query(() => proxyGet("/cluster/local/config")),
 
-  // ── Agents ─────────────────────────────────────────────────────────────────
+  clusterNodeInfo: publicProcedure
+    .input(z.object({ nodeId: z.string() }))
+    .query(({ input }) => proxyGet(`/cluster/${input.nodeId}/info`)),
+
+  clusterNodeStats: publicProcedure
+    .input(z.object({ nodeId: z.string() }))
+    .query(({ input }) => proxyGet(`/cluster/${input.nodeId}/stats`)),
+
+  clusterNodeStatsHourly: publicProcedure
+    .input(z.object({ nodeId: z.string() }))
+    .query(({ input }) => proxyGet(`/cluster/${input.nodeId}/stats/hourly`)),
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // AGENTS
+  // ══════════════════════════════════════════════════════════════════════════════
   agents: publicProcedure
     .input(
       paginationSchema.extend({
@@ -58,6 +128,7 @@ export const wazuhRouter = router({
         search: z.string().optional(),
         group: z.string().optional(),
         sort: z.string().optional(),
+        q: z.string().optional(),
       })
     )
     .query(({ input }) =>
@@ -65,7 +136,7 @@ export const wazuhRouter = router({
         limit: input.limit,
         offset: input.offset,
         status: input.status,
-        "q": input.search ? `name~${input.search}` : undefined,
+        q: input.q ?? (input.search ? `name~${input.search}` : undefined),
         group: input.group,
         sort: input.sort,
       })
@@ -89,6 +160,12 @@ export const wazuhRouter = router({
       proxyGet("/agents", { agents_list: input.agentId })
     ),
 
+  agentKey: publicProcedure
+    .input(z.object({ agentId: agentIdSchema }))
+    .query(({ input }) =>
+      proxyGet(`/agents/${input.agentId}/key`)
+    ),
+
   agentDaemonStats: publicProcedure
     .input(z.object({ agentId: agentIdSchema }))
     .query(({ input }) =>
@@ -101,6 +178,30 @@ export const wazuhRouter = router({
       proxyGet(`/agents/${input.agentId}/stats/${input.component}`)
     ),
 
+  agentConfig: publicProcedure
+    .input(z.object({
+      agentId: agentIdSchema,
+      component: z.string(),
+      configuration: z.string(),
+    }))
+    .query(({ input }) =>
+      proxyGet(`/agents/${input.agentId}/config/${input.component}/${input.configuration}`)
+    ),
+
+  agentGroups: publicProcedure.query(() => proxyGet("/groups")),
+
+  agentGroupMembers: publicProcedure
+    .input(z.object({ groupId: z.string(), ...paginationSchema.shape }))
+    .query(({ input }) =>
+      proxyGet(`/groups/${input.groupId}/agents`, {
+        limit: input.limit,
+        offset: input.offset,
+      })
+    ),
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // SYSCOLLECTOR (IT Hygiene)
+  // ══════════════════════════════════════════════════════════════════════════════
   agentOs: publicProcedure
     .input(z.object({ agentId: agentIdSchema }))
     .query(({ input }) =>
@@ -114,66 +215,69 @@ export const wazuhRouter = router({
     ),
 
   agentPackages: publicProcedure
-    .input(z.object({ agentId: agentIdSchema, ...paginationSchema.shape }))
+    .input(z.object({
+      agentId: agentIdSchema,
+      search: z.string().optional(),
+      ...paginationSchema.shape,
+    }))
     .query(({ input }) =>
       proxyGet(`/syscollector/${input.agentId}/packages`, {
         limit: input.limit,
         offset: input.offset,
+        search: input.search,
       })
     ),
 
   agentPorts: publicProcedure
-    .input(z.object({ agentId: agentIdSchema }))
+    .input(z.object({
+      agentId: agentIdSchema,
+      ...paginationSchema.shape,
+    }))
     .query(({ input }) =>
-      proxyGet(`/syscollector/${input.agentId}/ports`)
-    ),
-
-  agentProcesses: publicProcedure
-    .input(z.object({ agentId: agentIdSchema, ...paginationSchema.shape }))
-    .query(({ input }) =>
-      proxyGet(`/syscollector/${input.agentId}/processes`, {
+      proxyGet(`/syscollector/${input.agentId}/ports`, {
         limit: input.limit,
         offset: input.offset,
       })
     ),
 
-  agentGroups: publicProcedure.query(() => proxyGet("/groups")),
-
-  // ── Alerts (via manager stats / syscheck overview) ─────────────────────────
-  // Note: Wazuh 4.x exposes alert data via /manager/logs and index queries.
-  // We proxy /manager/logs for recent alerts and /manager/stats/analysisd for metrics.
-  managerLogs: publicProcedure
-    .input(
-      paginationSchema.extend({
-        level: z.enum(["info", "error", "warning", "debug"]).optional(),
-        search: z.string().optional(),
-      })
-    )
+  agentProcesses: publicProcedure
+    .input(z.object({
+      agentId: agentIdSchema,
+      search: z.string().optional(),
+      ...paginationSchema.shape,
+    }))
     .query(({ input }) =>
-      proxyGet(
-        "/manager/logs",
-        { limit: input.limit, offset: input.offset, level: input.level },
-        "alerts"
-      )
+      proxyGet(`/syscollector/${input.agentId}/processes`, {
+        limit: input.limit,
+        offset: input.offset,
+        search: input.search,
+      })
     ),
 
-  managerLogsSummary: publicProcedure.query(() =>
-    proxyGet("/manager/logs/summary", {}, "alerts")
-  ),
+  agentNetaddr: publicProcedure
+    .input(z.object({ agentId: agentIdSchema }))
+    .query(({ input }) =>
+      proxyGet(`/syscollector/${input.agentId}/netaddr`)
+    ),
 
-  analysisd: publicProcedure.query(() =>
-    proxyGet("/manager/stats/analysisd")
-  ),
+  agentNetiface: publicProcedure
+    .input(z.object({ agentId: agentIdSchema }))
+    .query(({ input }) =>
+      proxyGet(`/syscollector/${input.agentId}/netiface`)
+    ),
 
-  statsHourly: publicProcedure.query(() =>
-    proxyGet("/manager/stats/hourly")
-  ),
+  agentHotfixes: publicProcedure
+    .input(z.object({ agentId: agentIdSchema, ...paginationSchema.shape }))
+    .query(({ input }) =>
+      proxyGet(`/syscollector/${input.agentId}/hotfixes`, {
+        limit: input.limit,
+        offset: input.offset,
+      })
+    ),
 
-  statsWeekly: publicProcedure.query(() =>
-    proxyGet("/manager/stats/weekly")
-  ),
-
-  // ── Rules (for alert context) ───────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════════
+  // ALERTS / RULES
+  // ══════════════════════════════════════════════════════════════════════════════
   rules: publicProcedure
     .input(
       paginationSchema.extend({
@@ -181,6 +285,7 @@ export const wazuhRouter = router({
         search: z.string().optional(),
         group: z.string().optional(),
         requirement: z.string().optional(),
+        sort: z.string().optional(),
       })
     )
     .query(({ input }) =>
@@ -190,6 +295,7 @@ export const wazuhRouter = router({
         level: input.level,
         search: input.search,
         group: input.group,
+        sort: input.sort,
       })
     ),
 
@@ -201,7 +307,15 @@ export const wazuhRouter = router({
       proxyGet(`/rules/requirement/${input.requirement}`)
     ),
 
-  // ── MITRE ATT&CK ───────────────────────────────────────────────────────────
+  rulesFiles: publicProcedure
+    .input(paginationSchema)
+    .query(({ input }) =>
+      proxyGet("/rules/files", { limit: input.limit, offset: input.offset })
+    ),
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // MITRE ATT&CK
+  // ══════════════════════════════════════════════════════════════════════════════
   mitreTactics: publicProcedure.query(() =>
     proxyGet("/mitre/tactics")
   ),
@@ -236,15 +350,22 @@ export const wazuhRouter = router({
 
   mitreMetadata: publicProcedure.query(() => proxyGet("/mitre/metadata")),
 
-  // ── Vulnerabilities ─────────────────────────────────────────────────────────
-  // Note: Vulnerability data in Wazuh 4.x is accessed via syscollector packages
-  // and the experimental endpoints. The /vulnerability/{agent_id} endpoint
-  // requires the vulnerability detection module to be enabled.
+  mitreReferences: publicProcedure
+    .input(paginationSchema)
+    .query(({ input }) =>
+      proxyGet("/mitre/references", { limit: input.limit, offset: input.offset })
+    ),
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // VULNERABILITIES
+  // ══════════════════════════════════════════════════════════════════════════════
   agentVulnerabilities: publicProcedure
     .input(
       z.object({
         agentId: agentIdSchema,
         severity: z.enum(["critical", "high", "medium", "low"]).optional(),
+        status: z.string().optional(),
+        search: z.string().optional(),
         ...paginationSchema.shape,
       })
     )
@@ -255,12 +376,16 @@ export const wazuhRouter = router({
           limit: input.limit,
           offset: input.offset,
           severity: input.severity,
+          status: input.status,
+          search: input.search,
         },
         "vulnerabilities"
       )
     ),
 
-  // ── SCA / Compliance ────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════════
+  // SCA / COMPLIANCE
+  // ══════════════════════════════════════════════════════════════════════════════
   scaPolicies: publicProcedure
     .input(z.object({ agentId: agentIdSchema }))
     .query(({ input }) =>
@@ -273,6 +398,7 @@ export const wazuhRouter = router({
         agentId: agentIdSchema,
         policyId: z.string(),
         result: z.enum(["passed", "failed", "not applicable"]).optional(),
+        search: z.string().optional(),
         ...paginationSchema.shape,
       })
     )
@@ -281,10 +407,10 @@ export const wazuhRouter = router({
         limit: input.limit,
         offset: input.offset,
         result: input.result,
+        search: input.search,
       })
     ),
 
-  // CIS-CAT compliance
   ciscatResults: publicProcedure
     .input(z.object({ agentId: agentIdSchema, ...paginationSchema.shape }))
     .query(({ input }) =>
@@ -294,7 +420,9 @@ export const wazuhRouter = router({
       })
     ),
 
-  // ── FIM / Syscheck ──────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════════
+  // FIM / SYSCHECK
+  // ══════════════════════════════════════════════════════════════════════════════
   syscheckFiles: publicProcedure
     .input(
       z.object({
@@ -302,6 +430,8 @@ export const wazuhRouter = router({
         type: z.enum(["file", "registry"]).optional(),
         search: z.string().optional(),
         event: z.enum(["added", "modified", "deleted"]).optional(),
+        hash: z.string().optional(),
+        file: z.string().optional(),
         ...paginationSchema.shape,
       })
     )
@@ -314,6 +444,8 @@ export const wazuhRouter = router({
           type: input.type,
           search: input.search,
           event: input.event,
+          hash: input.hash,
+          file: input.file,
         },
         "syscheck"
       )
@@ -325,7 +457,9 @@ export const wazuhRouter = router({
       proxyGet(`/syscheck/${input.agentId}/last_scan`, {}, "syscheck")
     ),
 
-  // ── Rootcheck ──────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════════
+  // ROOTCHECK
+  // ══════════════════════════════════════════════════════════════════════════════
   rootcheckResults: publicProcedure
     .input(z.object({ agentId: agentIdSchema, ...paginationSchema.shape }))
     .query(({ input }) =>
@@ -341,14 +475,24 @@ export const wazuhRouter = router({
       proxyGet(`/rootcheck/${input.agentId}/last_scan`)
     ),
 
-  // ── Decoders ───────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════════
+  // DECODERS
+  // ══════════════════════════════════════════════════════════════════════════════
   decoders: publicProcedure
     .input(paginationSchema.extend({ search: z.string().optional() }))
     .query(({ input }) =>
       proxyGet("/decoders", { limit: input.limit, offset: input.offset, search: input.search })
     ),
 
-  // ── Tasks ──────────────────────────────────────────────────────────────────
+  decoderFiles: publicProcedure
+    .input(paginationSchema)
+    .query(({ input }) =>
+      proxyGet("/decoders/files", { limit: input.limit, offset: input.offset })
+    ),
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // TASKS
+  // ══════════════════════════════════════════════════════════════════════════════
   taskStatus: publicProcedure
     .input(z.object({ taskIds: z.array(z.number()).optional() }))
     .query(({ input }) =>
@@ -357,10 +501,32 @@ export const wazuhRouter = router({
       })
     ),
 
-  // ── Configuration check ────────────────────────────────────────────────────
-  isConfigured: publicProcedure.query(() => ({
-    configured: isWazuhConfigured(),
-    host: process.env.WAZUH_HOST ?? null,
-    port: process.env.WAZUH_PORT ?? "55000",
-  })),
+  // ══════════════════════════════════════════════════════════════════════════════
+  // ACTIVE RESPONSE (read-only audit view)
+  // ══════════════════════════════════════════════════════════════════════════════
+  activeResponseList: publicProcedure.query(() =>
+    proxyGet("/active-response")
+  ),
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // SECURITY (RBAC info — read-only)
+  // ══════════════════════════════════════════════════════════════════════════════
+  securityRoles: publicProcedure.query(() => proxyGet("/security/roles")),
+  securityPolicies: publicProcedure.query(() => proxyGet("/security/policies")),
+  securityUsers: publicProcedure.query(() => proxyGet("/security/users")),
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // LISTS (CDB Lists — read-only)
+  // ══════════════════════════════════════════════════════════════════════════════
+  lists: publicProcedure
+    .input(paginationSchema)
+    .query(({ input }) =>
+      proxyGet("/lists", { limit: input.limit, offset: input.offset })
+    ),
+
+  listsFiles: publicProcedure
+    .input(paginationSchema)
+    .query(({ input }) =>
+      proxyGet("/lists/files", { limit: input.limit, offset: input.offset })
+    ),
 });

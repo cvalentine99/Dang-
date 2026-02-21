@@ -93,4 +93,88 @@
 - [x] All 6 tests passing
 - [x] TypeScript compilation clean (0 errors)
 - [x] Final integration check — all pages render correctly
-- [ ] Save checkpoint
+- [x] Save checkpoint
+
+## Phase 12: Dashboard Rebuild — Backend Expansion
+- [x] Add syscollector endpoints (hardware, os, packages, ports, processes, browser_extensions, services, users/groups)
+- [x] Add manager stats endpoints (stats, stats/hourly, daemons/stats, configuration/validation)
+- [x] Add cluster endpoints (status, nodes, health)
+- [x] Add Indexer API proxy (via Server API endpoints) for wazuh-alerts-*, wazuh-states-vulnerabilities-* queries
+
+## Phase 13: SOC Console (Security Overview Rebuild)
+- [x] Events Per Second (EPS) gauge with capacity indicator
+- [x] Threat Trends area chart (rule.level × timestamp)
+- [x] Top Talkers pie chart (agents by alert count)
+- [x] MITRE ATT&CK tactic distribution bar chart
+- [x] Alert severity distribution donut
+- [x] Recent critical alerts table
+- [x] Manager status indicators
+
+## Phase 14: Fleet Command Center (Agent Health Rebuild)
+- [x] Agent KPI cards (total, active, disconnected, never connected, pending)
+- [x] OS distribution donut chart
+- [x] Agent version distribution bar chart
+- [x] Agent detail drawer with syscollector data
+- [x] Agent group management view
+- [x] Connection stability timeline (via last keep alive)
+- [x] Agent search/filter with multi-column sort
+
+## Phase 15: IT Hygiene Ecosystem (New Page)
+- [ ] Three-column layout: Extensions | Services | Identity
+- [ ] Packages table with version, architecture, vendor
+- [ ] Open ports table with protocol, PID, process
+- [ ] Running processes table with CPU/memory
+- [ ] Browser extensions table
+- [ ] System services table with state/startup type
+- [ ] Local users and groups tables
+
+## Phase 16: Alerts Timeline Rebuild
+- [ ] Dense SOC-grade alert table with rule ID, description, agent, level, timestamp
+- [ ] Severity heatmap (hour × day-of-week)
+- [ ] Rule level distribution bar chart
+- [ ] Top firing rules table
+- [ ] Alert detail panel with raw JSON
+- [ ] Time range selector with presets
+
+## Phase 17: Vulnerabilities Rebuild
+- [x] Global Vulnerability Score (weighted CVSS)
+- [x] Severity distribution donut
+- [x] Most exploited packages table
+- [x] CVE detail table with NVD deep-links
+- [x] Status breakdown (active/fixed/pending)
+- [x] Affected agents count per CVE
+
+## Phase 18: MITRE ATT&CK Rebuild
+- [x] Full tactic × technique matrix (ATT&CK navigator style)
+- [x] Technique drill-down with alert counts
+- [x] Tactic distribution over time (time series)
+- [x] Threat group cards
+- [x] Technique detail panel with description and references
+
+## Phase 19: Compliance Scorecards Rebuild
+- [x] Framework selector tabs (PCI DSS, NIST 800-53, HIPAA, GDPR, TSC)
+- [x] Compliance score gauge per framework
+- [x] SCA pass/fail/not-applicable pie charts
+- [x] Failed checks table with remediation guidance
+- [x] Executive summary exportable view
+
+## Phase 20: FIM Rebuild
+- [x] File change timeline chart
+- [x] Modified files table with before/after hash comparison
+- [x] File permission changes tracking
+- [x] Agent-level scan status cards
+- [x] Syscheck event detail with raw JSON
+
+## Phase 21: Cluster Health (New Page)
+- [x] Daemon status cards (analysisd, remoted, wazuh-db)
+- [x] Event queue usage gauge
+- [x] Daemon uptime tracking table
+- [x] Cluster topology visualization (master + workers)
+- [x] Configuration validation status
+- [x] Manager stats hourly ingestion chart
+
+## Phase 22: Navigation, Tests, QA
+- [x] Update sidebar with new pages (IT Hygiene, Cluster Health)
+- [x] Write vitest tests for new backend endpoints (29 passing)
+- [x] Final TypeScript compilation check (0 errors)
+- [x] Save checkpoint

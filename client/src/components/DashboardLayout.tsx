@@ -34,6 +34,8 @@ import {
   StickyNote,
   Target,
   Bug,
+  Server,
+  Monitor,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -41,15 +43,17 @@ import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Overview", path: "/" },
-  { icon: Activity, label: "Agent Health", path: "/agents" },
-  { icon: AlertTriangle, label: "Alerts Timeline", path: "/alerts" },
-  { icon: Bug, label: "Vulnerabilities", path: "/vulnerabilities" },
-  { icon: Target, label: "MITRE ATT&CK", path: "/mitre" },
-  { icon: ShieldCheck, label: "Compliance", path: "/compliance" },
-  { icon: FileSearch, label: "File Integrity", path: "/fim" },
-  { icon: StickyNote, label: "Analyst Notes", path: "/notes" },
-  { icon: Bot, label: "AI Assistant", path: "/assistant" },
+  { icon: LayoutDashboard, label: "SOC Console", path: "/", group: "Operations" },
+  { icon: Activity, label: "Fleet Command", path: "/agents", group: "Operations" },
+  { icon: AlertTriangle, label: "Alerts Timeline", path: "/alerts", group: "Detection" },
+  { icon: Bug, label: "Vulnerabilities", path: "/vulnerabilities", group: "Detection" },
+  { icon: Target, label: "MITRE ATT&CK", path: "/mitre", group: "Detection" },
+  { icon: ShieldCheck, label: "Compliance", path: "/compliance", group: "Posture" },
+  { icon: FileSearch, label: "File Integrity", path: "/fim", group: "Posture" },
+  { icon: Monitor, label: "IT Hygiene", path: "/hygiene", group: "Posture" },
+  { icon: Server, label: "Cluster Health", path: "/cluster", group: "System" },
+  { icon: StickyNote, label: "Analyst Notes", path: "/notes", group: "Tools" },
+  { icon: Bot, label: "AI Assistant", path: "/assistant", group: "Tools" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -200,30 +204,41 @@ function DashboardLayoutContent({
           {/* ── Navigation ──────────────────────────────────── */}
           <SidebarContent className="gap-0 pt-2">
             <SidebarMenu className="px-2 py-1 space-y-0.5">
-              {menuItems.map((item) => {
-                const isActive = location === item.path;
-                return (
-                  <SidebarMenuItem key={item.path}>
-                    <SidebarMenuButton
-                      isActive={isActive}
-                      onClick={() => setLocation(item.path)}
-                      tooltip={item.label}
-                      className={`h-10 transition-all font-normal ${
-                        isActive
-                          ? "bg-primary/15 text-foreground border-l-2 border-primary"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent"
-                      }`}
-                    >
-                      <item.icon
-                        className={`h-4 w-4 ${
-                          isActive ? "text-primary" : "text-muted-foreground"
-                        }`}
-                      />
-                      <span className="text-sm">{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
+              {(() => {
+                let lastGroup = "";
+                return menuItems.map((item) => {
+                  const isActive = location === item.path;
+                  const showGroup = item.group !== lastGroup;
+                  if (showGroup) lastGroup = item.group;
+                  return (
+                    <div key={item.path}>
+                      {showGroup && !isCollapsed && (
+                        <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 px-3 pt-4 pb-1 font-medium">{item.group}</p>
+                      )}
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          isActive={isActive}
+                          onClick={() => setLocation(item.path)}
+                          tooltip={item.label}
+                          className={`h-10 transition-all font-normal ${
+                            isActive
+                              ? "bg-primary/15 text-foreground border-l-2 border-primary"
+                              : "text-sidebar-foreground hover:bg-sidebar-accent"
+                          }`}
+                        >
+                          <item.icon
+                            className={`h-4 w-4 ${
+                              isActive ? "text-primary" : "text-muted-foreground"
+                            }`}
+                          />
+                          <span className="text-sm">{item.label}</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    </div>
+                  );
+                });
+              })()}
+            
             </SidebarMenu>
           </SidebarContent>
 

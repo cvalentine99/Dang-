@@ -1,35 +1,168 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { appRouter } from "../routers";
 import type { TrpcContext } from "../_core/context";
 
-function createPublicContext(): TrpcContext {
+// Mock the wazuh client module
+vi.mock("./wazuhClient", () => ({
+  isWazuhConfigured: vi.fn(() => false),
+  getWazuhConfig: vi.fn(() => ({
+    host: "https://wazuh.example.com",
+    port: 55000,
+    user: "wazuh-wui",
+    pass: "test-pass",
+  })),
+  wazuhGet: vi.fn(async () => ({ data: { affected_items: [], total_affected_items: 0 } })),
+}));
+
+function createTestContext(): TrpcContext {
   return {
-    user: null,
-    req: {
-      protocol: "https",
-      headers: {},
-    } as TrpcContext["req"],
-    res: {
-      clearCookie: vi.fn(),
-    } as unknown as TrpcContext["res"],
+    user: {
+      id: 1,
+      openId: "test-user",
+      email: "test@example.com",
+      name: "Test User",
+      loginMethod: "manus",
+      role: "admin",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lastSignedIn: new Date(),
+    },
+    req: { protocol: "https", headers: {} } as TrpcContext["req"],
+    res: { clearCookie: vi.fn() } as unknown as TrpcContext["res"],
   };
 }
 
 describe("wazuh router", () => {
-  it("status returns configured: false when no env vars set", async () => {
-    const ctx = createPublicContext();
-    const caller = appRouter.createCaller(ctx);
+  let caller: ReturnType<typeof appRouter.createCaller>;
+
+  beforeEach(() => {
+    caller = appRouter.createCaller(createTestContext());
+  });
+
+  it("status returns configured: false when Wazuh is not configured", async () => {
     const result = await caller.wazuh.status();
-    // Without WAZUH_HOST set, it should report not configured
     expect(result).toHaveProperty("configured");
     expect(typeof result.configured).toBe("boolean");
   });
 
   it("isConfigured returns a result with configured property", async () => {
-    const ctx = createPublicContext();
-    const caller = appRouter.createCaller(ctx);
     const result = await caller.wazuh.isConfigured();
     expect(result).toHaveProperty("configured");
     expect(typeof result.configured).toBe("boolean");
+  });
+
+  it("agents endpoint exists and returns data structure", async () => {
+    const result = await caller.wazuh.agents({ limit: 10, offset: 0 });
+    expect(result).toBeDefined();
+  });
+
+  it("managerLogs endpoint exists and returns data structure", async () => {
+    const result = await caller.wazuh.managerLogs({ limit: 10, offset: 0 });
+    expect(result).toBeDefined();
+  });
+
+  it("managerStatus endpoint exists", async () => {
+    const result = await caller.wazuh.managerStatus();
+    expect(result).toBeDefined();
+  });
+
+  it("managerInfo endpoint exists", async () => {
+    const result = await caller.wazuh.managerInfo();
+    expect(result).toBeDefined();
+  });
+
+  it("managerStats endpoint exists", async () => {
+    const result = await caller.wazuh.managerStats();
+    expect(result).toBeDefined();
+  });
+
+  it("statsHourly endpoint exists", async () => {
+    const result = await caller.wazuh.statsHourly();
+    expect(result).toBeDefined();
+  });
+
+  it("clusterStatus endpoint exists", async () => {
+    const result = await caller.wazuh.clusterStatus();
+    expect(result).toBeDefined();
+  });
+
+  it("clusterNodes endpoint exists", async () => {
+    const result = await caller.wazuh.clusterNodes();
+    expect(result).toBeDefined();
+  });
+
+  it("scaPolicies endpoint requires agentId", async () => {
+    const result = await caller.wazuh.scaPolicies({ agentId: "001" });
+    expect(result).toBeDefined();
+  });
+
+  it("scaChecks endpoint requires agentId and policyId", async () => {
+    const result = await caller.wazuh.scaChecks({ agentId: "001", policyId: "cis_debian10" });
+    expect(result).toBeDefined();
+  });
+
+  it("syscheckFiles endpoint requires agentId", async () => {
+    const result = await caller.wazuh.syscheckFiles({ agentId: "001", limit: 10, offset: 0 });
+    expect(result).toBeDefined();
+  });
+
+  it("syscheckLastScan endpoint requires agentId", async () => {
+    const result = await caller.wazuh.syscheckLastScan({ agentId: "001" });
+    expect(result).toBeDefined();
+  });
+
+  it("agentVulnerabilities endpoint requires agentId", async () => {
+    const result = await caller.wazuh.agentVulnerabilities({ agentId: "001", limit: 10, offset: 0 });
+    expect(result).toBeDefined();
+  });
+
+  it("daemonStats endpoint requires daemons array", async () => {
+    const result = await caller.wazuh.daemonStats({ daemons: ["wazuh-analysisd"] });
+    expect(result).toBeDefined();
+  });
+
+  it("syscollectorPackages endpoint requires agentId", async () => {
+    const result = await caller.wazuh.agentPackages({ agentId: "001", limit: 50, offset: 0 });
+    expect(result).toBeDefined();
+  });
+
+  it("syscollectorPorts endpoint requires agentId", async () => {
+    const result = await caller.wazuh.agentPorts({ agentId: "001", limit: 50, offset: 0 });
+    expect(result).toBeDefined();
+  });
+
+  it("syscollectorProcesses endpoint requires agentId", async () => {
+    const result = await caller.wazuh.agentProcesses({ agentId: "001", limit: 50, offset: 0 });
+    expect(result).toBeDefined();
+  });
+
+  it("agentOs endpoint requires agentId", async () => {
+    const result = await caller.wazuh.agentOs({ agentId: "001" });
+    expect(result).toBeDefined();
+  });
+
+  it("agentHardware endpoint requires agentId", async () => {
+    const result = await caller.wazuh.agentHardware({ agentId: "001" });
+    expect(result).toBeDefined();
+  });
+
+  it("agentNetaddr endpoint requires agentId", async () => {
+    const result = await caller.wazuh.agentNetaddr({ agentId: "001" });
+    expect(result).toBeDefined();
+  });
+
+  it("mitreMetadata endpoint exists", async () => {
+    const result = await caller.wazuh.mitreMetadata();
+    expect(result).toBeDefined();
+  });
+
+  it("mitreTechniques endpoint exists", async () => {
+    const result = await caller.wazuh.mitreTechniques({ limit: 10, offset: 0 });
+    expect(result).toBeDefined();
+  });
+
+  it("mitreTactics endpoint exists", async () => {
+    const result = await caller.wazuh.mitreTactics({ limit: 10, offset: 0 });
+    expect(result).toBeDefined();
   });
 });

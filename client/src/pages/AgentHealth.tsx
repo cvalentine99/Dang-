@@ -1,305 +1,362 @@
-import { GlassPanel, StatCard, RawJsonViewer } from "@/components/shared";
+import { trpc } from "@/lib/trpc";
+import { GlassPanel } from "@/components/shared/GlassPanel";
+import { StatCard } from "@/components/shared/StatCard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
+import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { trpc } from "@/lib/trpc";
 import {
-  Activity,
-  Search,
-  Wifi,
-  WifiOff,
-  Clock,
-  Monitor,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Users, Activity, AlertTriangle, Wifi, WifiOff, Clock, Search,
+  Monitor, Server, Cpu, ChevronLeft, ChevronRight, X,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  Legend,
+  PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
 } from "recharts";
 
-const STATUS_COLORS: Record<string, string> = {
-  active: "#22c55e",
-  disconnected: "#ef4444",
-  never_connected: "#f59e0b",
-  pending: "#8b5cf6",
+const COLORS = {
+  purple: "oklch(0.541 0.281 293.009)",
+  cyan: "oklch(0.789 0.154 211.53)",
+  green: "oklch(0.765 0.177 163.223)",
+  yellow: "oklch(0.795 0.184 86.047)",
+  red: "oklch(0.637 0.237 25.331)",
+  orange: "oklch(0.705 0.191 22.216)",
 };
+const PIE_COLORS = [COLORS.green, COLORS.red, COLORS.yellow, COLORS.cyan, COLORS.purple];
+
+function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="glass-panel p-3 text-xs border border-glass-border">
+      <p className="text-muted-foreground mb-1">{label}</p>
+      {payload.map((p, i) => (
+        <p key={i} style={{ color: p.color }} className="font-medium">
+          {p.name}: {p.value?.toLocaleString()}
+        </p>
+      ))}
+    </div>
+  );
+}
 
 export default function AgentHealth() {
+  const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [groupFilter, setGroupFilter] = useState<string>("all");
   const [page, setPage] = useState(0);
-  const utils = trpc.useUtils();
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const pageSize = 25;
 
-  const summaryQ = trpc.wazuh.agentSummaryStatus.useQuery(undefined, { staleTime: 30_000 });
-  const osQ = trpc.wazuh.agentSummaryOs.useQuery(undefined, { staleTime: 60_000 });
+  const statusQ = trpc.wazuh.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
+  const enabled = statusQ.data?.configured === true;
 
-  const agentsQ = trpc.wazuh.agents.useQuery(
-    {
-      limit: 50,
-      offset: page * 50,
-      status: statusFilter !== "all" ? (statusFilter as "active" | "disconnected" | "never_connected" | "pending") : undefined,
-      search: search || undefined,
-    },
-    { staleTime: 15_000 }
+  const agentSummaryQ = trpc.wazuh.agentSummaryStatus.useQuery(undefined, { retry: 1, staleTime: 30_000, enabled });
+  const agentSummaryOsQ = trpc.wazuh.agentSummaryOs.useQuery(undefined, { retry: 1, staleTime: 60_000, enabled });
+  const groupsQ = trpc.wazuh.agentGroups.useQuery(undefined, { retry: 1, staleTime: 60_000, enabled });
+
+  const agentsQ = trpc.wazuh.agents.useQuery({
+    limit: pageSize,
+    offset: page * pageSize,
+    status: statusFilter !== "all" ? statusFilter as "active" | "disconnected" | "never_connected" | "pending" : undefined,
+    group: groupFilter !== "all" ? groupFilter : undefined,
+    search: search || undefined,
+    sort: "-dateAdd",
+  }, { retry: 1, staleTime: 15_000, enabled });
+
+  const agentDetailQ = trpc.wazuh.agentById.useQuery(
+    { agentId: selectedAgent ?? "000" },
+    { enabled: !!selectedAgent }
+  );
+  const agentOsQ = trpc.wazuh.agentOs.useQuery(
+    { agentId: selectedAgent ?? "000" },
+    { enabled: !!selectedAgent }
+  );
+  const agentHwQ = trpc.wazuh.agentHardware.useQuery(
+    { agentId: selectedAgent ?? "000" },
+    { enabled: !!selectedAgent }
   );
 
-  const handleRefresh = useCallback(() => {
-    utils.wazuh.agentSummaryStatus.invalidate();
-    utils.wazuh.agentSummaryOs.invalidate();
-    utils.wazuh.agents.invalidate();
-  }, [utils]);
+  const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); }, [utils]);
 
-  const isLoading = summaryQ.isLoading || agentsQ.isLoading;
+  const agentData = useMemo(() => {
+    const d = (agentSummaryQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    if (!d) return { total: 0, active: 0, disconnected: 0, never: 0, pending: 0 };
+    const connection = d.connection as Record<string, number> | undefined;
+    return {
+      total: (d.total as number) ?? 0,
+      active: connection?.active ?? 0,
+      disconnected: connection?.disconnected ?? 0,
+      never: connection?.never_connected ?? 0,
+      pending: connection?.pending ?? 0,
+    };
+  }, [agentSummaryQ.data]);
 
-  // Parse agent summary
-  const agentData = (summaryQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-  const connection = agentData?.connection as Record<string, number> | undefined;
-  const activeAgents = connection?.active ?? 0;
-  const disconnectedAgents = connection?.disconnected ?? 0;
-  const neverConnected = connection?.never_connected ?? 0;
-  const totalAgents = activeAgents + disconnectedAgents + neverConnected;
+  const osDistribution = useMemo(() => {
+    const d = (agentSummaryOsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    const items = d?.affected_items as Array<Record<string, unknown>> | undefined;
+    if (!items) return [];
+    const counts: Record<string, number> = {};
+    items.forEach(item => {
+      const os = String(item.os?.toString() ?? item.platform ?? "Unknown");
+      counts[os] = (counts[os] ?? 0) + 1;
+    });
+    return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 8);
+  }, [agentSummaryOsQ.data]);
 
-  // Parse OS distribution
-  const osData = (osQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-  const osItems = (osData?.affected_items as Array<Record<string, unknown>>) ?? [];
+  const groups = useMemo(() => {
+    const d = (groupsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    const items = d?.affected_items as Array<Record<string, unknown>> | undefined;
+    return items?.map(g => ({ name: String(g.name ?? ""), count: Number(g.count ?? 0) })) ?? [];
+  }, [groupsQ.data]);
 
-  const pieData = useMemo(
-    () => [
-      { name: "Active", value: activeAgents, color: STATUS_COLORS.active },
-      { name: "Disconnected", value: disconnectedAgents, color: STATUS_COLORS.disconnected },
-      { name: "Never Connected", value: neverConnected, color: STATUS_COLORS.never_connected },
-    ].filter((d) => d.value > 0),
-    [activeAgents, disconnectedAgents, neverConnected]
-  );
+  const agents = useMemo(() => {
+    const d = (agentsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
+  }, [agentsQ.data]);
 
-  // Parse agents list
-  const agentsData = (agentsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-  const agents = (agentsData?.affected_items as Array<Record<string, unknown>>) ?? [];
-  const agentsTotal = (agentsData?.total_affected_items as number) ?? 0;
+  const totalAgents = useMemo(() => {
+    const d = (agentsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    return Number(d?.total_affected_items ?? agents.length);
+  }, [agentsQ.data, agents.length]);
+
+  const statusPieData = useMemo(() => [
+    { name: "Active", value: agentData.active },
+    { name: "Disconnected", value: agentData.disconnected },
+    { name: "Never Connected", value: agentData.never },
+    { name: "Pending", value: agentData.pending },
+  ].filter(d => d.value > 0), [agentData]);
+
+  const agentDetail = useMemo(() => {
+    const d = (agentDetailQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    const items = d?.affected_items as Array<Record<string, unknown>> | undefined;
+    return items?.[0] ?? null;
+  }, [agentDetailQ.data]);
+
+  const agentOsDetail = useMemo(() => {
+    const d = (agentOsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    const items = d?.affected_items as Array<Record<string, unknown>> | undefined;
+    return items?.[0] ?? null;
+  }, [agentOsQ.data]);
+
+  const agentHwDetail = useMemo(() => {
+    const d = (agentHwQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    const items = d?.affected_items as Array<Record<string, unknown>> | undefined;
+    return items?.[0] ?? null;
+  }, [agentHwQ.data]);
+
+  const isLoading = agentsQ.isLoading || agentSummaryQ.isLoading;
+  const totalPages = Math.ceil(totalAgents / pageSize);
 
   return (
-    <div>
-      <PageHeader
-        title="Agent Health"
-        subtitle={`${totalAgents} agents registered`}
-        onRefresh={handleRefresh}
-        isLoading={isLoading}
-      />
+    <WazuhGuard>
+      <div className="space-y-6">
+        <PageHeader title="Fleet Command" subtitle="Agent lifecycle management — status, OS distribution, groups, and deep inspection" onRefresh={handleRefresh} isLoading={isLoading} />
 
-      <WazuhGuard>
-        {/* ── Stat cards ──────────────────────────────────── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-          <StatCard label="Total Agents" value={totalAgents} icon={Monitor} />
-          <StatCard label="Active" value={activeAgents} icon={Wifi} colorClass="text-threat-low" />
-          <StatCard label="Disconnected" value={disconnectedAgents} icon={WifiOff} colorClass="text-threat-high" />
-          <StatCard label="Never Connected" value={neverConnected} icon={Clock} colorClass="text-threat-medium" />
+        {/* KPI Row */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <StatCard label="Total Agents" value={agentData.total} icon={Users} colorClass="text-primary" />
+          <StatCard label="Active" value={agentData.active} icon={Wifi} colorClass="text-threat-low" />
+          <StatCard label="Disconnected" value={agentData.disconnected} icon={WifiOff} colorClass="text-threat-high" />
+          <StatCard label="Never Connected" value={agentData.never} icon={AlertTriangle} colorClass="text-threat-medium" />
+          <StatCard label="Pending" value={agentData.pending} icon={Clock} colorClass="text-info-cyan" />
         </div>
 
-        {/* ── Charts row ──────────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-          {/* Status distribution */}
-          <GlassPanel className="p-5">
-            <h3 className="font-display font-semibold text-foreground text-sm mb-4">
-              Connection Status
+        {/* Charts Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <GlassPanel className="lg:col-span-3">
+            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
+              <Activity className="h-4 w-4 text-primary" /> Connection Status
             </h3>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
+            {statusPieData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={90}
-                    dataKey="value"
-                    stroke="none"
-                  >
-                    {pieData.map((entry, i) => (
-                      <Cell key={i} fill={entry.color} />
-                    ))}
+                  <Pie data={statusPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value" stroke="none">
+                    {statusPieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                   </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      background: "oklch(0.17 0.025 286)",
-                      border: "1px solid oklch(0.3 0.04 286 / 40%)",
-                      borderRadius: "8px",
-                      color: "oklch(0.93 0.005 286)",
-                      fontSize: "12px",
-                    }}
-                  />
-                  <Legend
-                    wrapperStyle={{ fontSize: "12px", color: "oklch(0.65 0.02 286)" }}
-                  />
+                  <ReTooltip content={<ChartTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: 11, color: "oklch(0.65 0.02 286)" }} />
                 </PieChart>
               </ResponsiveContainer>
-            </div>
+            ) : <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">No data</div>}
           </GlassPanel>
 
-          {/* OS distribution */}
-          <GlassPanel className="p-5">
-            <h3 className="font-display font-semibold text-foreground text-sm mb-4">
-              OS Distribution
+          <GlassPanel className="lg:col-span-5">
+            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
+              <Monitor className="h-4 w-4 text-primary" /> OS Distribution
             </h3>
-            {osItems.length > 0 ? (
-              <div className="space-y-3 max-h-64 overflow-y-auto">
-                {osItems.map((os, i) => {
-                  const osObj = os.os as Record<string, unknown> | undefined;
-                  const platform = (osObj?.platform as string) ?? "Unknown";
-                  const count = (os.count as number) ?? 0;
-                  const pct = totalAgents > 0 ? Math.round((count / totalAgents) * 100) : 0;
-                  return (
-                    <div key={i} className="flex items-center gap-3">
-                      <span className="text-xs text-muted-foreground w-24 truncate">{platform}</span>
-                      <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-primary rounded-full transition-all"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                      <span className="text-xs text-foreground font-mono w-12 text-right">{count}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No OS data available</p>
-            )}
+            {osDistribution.length > 0 ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={osDistribution}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.04 286 / 20%)" />
+                  <XAxis dataKey="name" tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 9 }} angle={-20} textAnchor="end" height={50} />
+                  <YAxis tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 10 }} />
+                  <ReTooltip content={<ChartTooltip />} />
+                  <Bar dataKey="value" fill={COLORS.purple} radius={[4, 4, 0, 0]} name="Agents" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">No OS data</div>}
+          </GlassPanel>
+
+          <GlassPanel className="lg:col-span-4">
+            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
+              <Server className="h-4 w-4 text-primary" /> Agent Groups ({groups.length})
+            </h3>
+            <div className="space-y-2 max-h-[200px] overflow-y-auto">
+              {groups.map(g => (
+                <button key={g.name} onClick={() => { setGroupFilter(g.name); setPage(0); }}
+                  className={`w-full flex items-center justify-between py-2 px-3 rounded-lg transition-colors text-left ${groupFilter === g.name ? "bg-primary/15 border border-primary/30" : "bg-secondary/30 border border-border/30 hover:bg-secondary/50"}`}>
+                  <span className="text-xs font-medium text-foreground">{g.name}</span>
+                  <span className="text-xs font-mono text-muted-foreground">{g.count}</span>
+                </button>
+              ))}
+              {groups.length === 0 && <div className="text-sm text-muted-foreground text-center py-8">No groups</div>}
+            </div>
           </GlassPanel>
         </div>
 
-        {/* ── Agents table ────────────────────────────────── */}
-        <GlassPanel className="p-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-            <h3 className="font-display font-semibold text-foreground text-sm">
-              Agent List
+        {/* Agent Table */}
+        <GlassPanel>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+            <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Users className="h-4 w-4 text-primary" /> Agent Fleet ({totalAgents} total)
             </h3>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="Search agents..."
-                  value={search}
-                  onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-                  className="pl-8 h-8 text-xs w-48 bg-secondary/50 border-border"
-                />
+                <Input placeholder="Search agents..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="h-8 w-48 pl-8 text-xs bg-secondary/50 border-border" />
               </div>
               <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
-                <SelectTrigger className="w-[140px] h-8 text-xs bg-secondary/50 border-border">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="w-[140px] h-8 text-xs bg-secondary/50 border-border"><SelectValue placeholder="Status" /></SelectTrigger>
                 <SelectContent className="bg-popover border-border">
                   <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="disconnected">Disconnected</SelectItem>
                   <SelectItem value="never_connected">Never Connected</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
                 </SelectContent>
               </Select>
-              <RawJsonViewer data={agentsQ.data} title="Agents Raw Data" />
+              {groupFilter !== "all" && (
+                <Button variant="outline" size="sm" onClick={() => setGroupFilter("all")} className="h-8 text-xs bg-transparent border-border gap-1">
+                  <X className="h-3 w-3" /> {groupFilter}
+                </Button>
+              )}
             </div>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-border text-muted-foreground">
-                  <th className="text-left py-2 px-3 font-medium">ID</th>
-                  <th className="text-left py-2 px-3 font-medium">Name</th>
-                  <th className="text-left py-2 px-3 font-medium">IP</th>
-                  <th className="text-left py-2 px-3 font-medium">Status</th>
-                  <th className="text-left py-2 px-3 font-medium">OS</th>
-                  <th className="text-left py-2 px-3 font-medium">Version</th>
-                  <th className="text-left py-2 px-3 font-medium">Last Keep Alive</th>
+                <tr className="border-b border-border/30">
+                  {["ID", "Name", "IP", "OS", "Version", "Group", "Status", "Last Keep Alive", "Actions"].map(h => (
+                    <th key={h} className="text-left py-2 px-3 text-muted-foreground font-medium">{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {agents.map((agent) => {
-                  const status = (agent.status as string) ?? "unknown";
+                  const status = String(agent.status ?? "unknown");
+                  const os = agent.os as Record<string, unknown> | undefined;
                   return (
-                    <tr key={agent.id as string} className="border-b border-border/50 data-row">
-                      <td className="py-2 px-3 font-mono text-primary">{agent.id as string}</td>
-                      <td className="py-2 px-3 text-foreground">{agent.name as string}</td>
-                      <td className="py-2 px-3 font-mono text-muted-foreground">{agent.ip as string}</td>
-                      <td className="py-2 px-3">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
-                            status === "active"
-                              ? "bg-threat-low text-[oklch(0.765_0.177_163.223)]"
-                              : status === "disconnected"
-                              ? "bg-threat-critical text-[oklch(0.637_0.237_25.331)]"
-                              : "bg-threat-medium text-[oklch(0.795_0.184_86.047)]"
-                          }`}
-                        >
-                          <span
-                            className={`h-1.5 w-1.5 rounded-full ${
-                              status === "active" ? "bg-[oklch(0.765_0.177_163.223)]" : status === "disconnected" ? "bg-[oklch(0.637_0.237_25.331)]" : "bg-[oklch(0.795_0.184_86.047)]"
-                            }`}
-                          />
+                    <tr key={String(agent.id)} className="border-b border-border/10 data-row">
+                      <td className="py-2.5 px-3 font-mono text-primary">{String(agent.id)}</td>
+                      <td className="py-2.5 px-3 text-foreground font-medium">{String(agent.name ?? "—")}</td>
+                      <td className="py-2.5 px-3 font-mono text-muted-foreground">{String(agent.ip ?? "—")}</td>
+                      <td className="py-2.5 px-3 text-muted-foreground truncate max-w-[150px]">{String(os?.name ?? os?.platform ?? "—")}</td>
+                      <td className="py-2.5 px-3 font-mono text-muted-foreground">{String(agent.version ?? "—")}</td>
+                      <td className="py-2.5 px-3 text-muted-foreground">{Array.isArray(agent.group) ? (agent.group as string[]).join(", ") : "—"}</td>
+                      <td className="py-2.5 px-3">
+                        <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${status === "active" ? "text-threat-low" : status === "disconnected" ? "text-threat-high" : "text-muted-foreground"}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${status === "active" ? "bg-[oklch(0.765_0.177_163.223)]" : status === "disconnected" ? "bg-[oklch(0.705_0.191_22.216)]" : "bg-[oklch(0.65_0.02_286)]"}`} />
                           {status}
                         </span>
                       </td>
-                      <td className="py-2 px-3 text-muted-foreground">
-                        {(agent.os as Record<string, unknown>)?.name as string ?? "—"}
-                      </td>
-                      <td className="py-2 px-3 font-mono text-muted-foreground">{agent.version as string ?? "—"}</td>
-                      <td className="py-2 px-3 font-mono text-muted-foreground text-[10px]">
-                        {agent.lastKeepAlive as string ?? "—"}
+                      <td className="py-2.5 px-3 text-muted-foreground font-mono text-[10px]">{agent.lastKeepAlive ? new Date(String(agent.lastKeepAlive)).toLocaleString() : "—"}</td>
+                      <td className="py-2.5 px-3">
+                        <Button variant="outline" size="sm" onClick={() => setSelectedAgent(String(agent.id))} className="h-6 text-[10px] bg-transparent border-border hover:bg-accent px-2">Inspect</Button>
                       </td>
                     </tr>
                   );
                 })}
-                {agents.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="py-8 text-center text-muted-foreground">
-                      {agentsQ.isLoading ? "Loading agents..." : "No agents found"}
-                    </td>
-                  </tr>
-                )}
+                {agents.length === 0 && <tr><td colSpan={9} className="py-12 text-center text-muted-foreground">{agentsQ.isLoading ? "Loading agents..." : "No agents found"}</td></tr>}
               </tbody>
             </table>
           </div>
 
-          {/* Pagination */}
-          {agentsTotal > 50 && (
-            <div className="flex items-center justify-between mt-4 pt-3 border-t border-border">
-              <span className="text-xs text-muted-foreground">
-                Showing {page * 50 + 1}–{Math.min((page + 1) * 50, agentsTotal)} of {agentsTotal}
-              </span>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                  className="h-7 text-xs bg-transparent border-border"
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => p + 1)}
-                  disabled={(page + 1) * 50 >= agentsTotal}
-                  className="h-7 text-xs bg-transparent border-border"
-                >
-                  Next
-                </Button>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-border/30">
+              <p className="text-xs text-muted-foreground">Page {page + 1} of {totalPages} ({totalAgents} agents)</p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)} className="h-7 bg-transparent border-border"><ChevronLeft className="h-3.5 w-3.5" /></Button>
+                <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)} className="h-7 bg-transparent border-border"><ChevronRight className="h-3.5 w-3.5" /></Button>
               </div>
             </div>
           )}
         </GlassPanel>
-      </WazuhGuard>
-    </div>
+
+        {/* Agent Detail Drawer */}
+        <Dialog open={!!selectedAgent} onOpenChange={(open) => !open && setSelectedAgent(null)}>
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto bg-card border-border">
+            <DialogHeader>
+              <DialogTitle className="font-display text-foreground flex items-center gap-2">
+                <Monitor className="h-5 w-5 text-primary" /> Agent {selectedAgent} — Deep Inspection
+              </DialogTitle>
+            </DialogHeader>
+            {agentDetail ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  {([["Name", agentDetail.name], ["IP", agentDetail.ip], ["Status", agentDetail.status], ["Version", agentDetail.version], ["Manager", agentDetail.manager], ["Node", agentDetail.node_name], ["Registered", agentDetail.dateAdd ? new Date(String(agentDetail.dateAdd)).toLocaleString() : "—"], ["Last Alive", agentDetail.lastKeepAlive ? new Date(String(agentDetail.lastKeepAlive)).toLocaleString() : "—"], ["Groups", Array.isArray(agentDetail.group) ? (agentDetail.group as string[]).join(", ") : "—"]] as [string, unknown][]).map(([label, val]) => (
+                    <div key={label} className="bg-secondary/30 rounded-lg p-3 border border-border/30">
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</p>
+                      <p className="text-sm font-medium text-foreground mt-1 truncate">{String(val ?? "—")}</p>
+                    </div>
+                  ))}
+                </div>
+                {agentOsDetail && (
+                  <div>
+                    <h4 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-2"><Monitor className="h-3.5 w-3.5 text-primary" /> Operating System</h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      {Object.entries(agentOsDetail).filter(([k]) => k !== "scan").map(([k, v]) => (
+                        <div key={k} className="bg-secondary/20 rounded p-2 border border-border/20">
+                          <p className="text-[10px] text-muted-foreground">{k}</p>
+                          <p className="text-xs font-mono text-foreground truncate">{typeof v === "object" ? JSON.stringify(v) : String(v ?? "—")}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {agentHwDetail && (
+                  <div>
+                    <h4 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-2"><Cpu className="h-3.5 w-3.5 text-primary" /> Hardware</h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      {Object.entries(agentHwDetail).filter(([k]) => k !== "scan").map(([k, v]) => (
+                        <div key={k} className="bg-secondary/20 rounded p-2 border border-border/20">
+                          <p className="text-[10px] text-muted-foreground">{k}</p>
+                          <p className="text-xs font-mono text-foreground truncate">{typeof v === "object" ? JSON.stringify(v) : String(v ?? "—")}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <RawJsonViewer data={agentDetail} title="Agent Detail JSON" />
+                  {agentOsDetail ? <RawJsonViewer data={agentOsDetail} title="OS Detail JSON" /> : null}
+                  {agentHwDetail ? <RawJsonViewer data={agentHwDetail} title="Hardware Detail JSON" /> : null}
+                </div>
+              </div>
+            ) : agentDetailQ.isLoading ? (
+              <div className="flex items-center justify-center py-12"><div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+            ) : null}
+          </DialogContent>
+        </Dialog>
+      </div>
+    </WazuhGuard>
   );
 }
