@@ -1,17 +1,18 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import {
+  int,
+  mysqlEnum,
+  mysqlTable,
+  text,
+  timestamp,
+  varchar,
+  json,
+} from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
  */
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
   id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
@@ -25,4 +26,52 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
+/**
+ * Analyst notes — local-only, never written back to Wazuh.
+ * Supports linking notes to agent IDs, rule IDs, CVE IDs, or free-form tags.
+ */
+export const analystNotes = mysqlTable("analyst_notes", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Title / headline of the note */
+  title: varchar("title", { length: 512 }).notNull(),
+  /** Markdown body */
+  content: text("content").notNull(),
+  /** Severity classification chosen by analyst */
+  severity: mysqlEnum("severity", ["critical", "high", "medium", "low", "info"])
+    .default("info")
+    .notNull(),
+  /** Wazuh agent ID this note relates to (optional) */
+  agentId: varchar("agentId", { length: 32 }),
+  /** Wazuh rule ID this note relates to (optional) */
+  ruleId: varchar("ruleId", { length: 32 }),
+  /** CVE identifier (optional) */
+  cveId: varchar("cveId", { length: 32 }),
+  /** Arbitrary JSON tags for flexible categorization */
+  tags: json("tags").$type<string[]>(),
+  /** Whether the note has been resolved/closed */
+  resolved: int("resolved").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AnalystNote = typeof analystNotes.$inferSelect;
+export type InsertAnalystNote = typeof analystNotes.$inferInsert;
+
+/**
+ * HybridRAG chat sessions — stores conversation history for the AI assistant.
+ */
+export const ragSessions = mysqlTable("rag_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Session identifier for grouping messages */
+  sessionId: varchar("sessionId", { length: 64 }).notNull(),
+  /** Role: user | assistant | system */
+  role: mysqlEnum("role", ["user", "assistant", "system"]).notNull(),
+  /** Message content */
+  content: text("content").notNull(),
+  /** Optional context snapshot injected for this message */
+  contextSnapshot: json("contextSnapshot").$type<Record<string, unknown>>(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type RagSession = typeof ragSessions.$inferSelect;
+export type InsertRagSession = typeof ragSessions.$inferInsert;

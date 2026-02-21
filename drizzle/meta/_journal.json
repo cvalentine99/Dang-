@@ -1,5 +1,27 @@
 {
   "version": "7",
   "dialect": "mysql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1771710286130,
+      "tag": "0000_brief_jimmy_woo",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1771710653544,
+      "tag": "0001_mushy_thor_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1771710682684,
+      "tag": "0002_magenta_next_avengers",
+      "breakpoints": true
+    }
+  ]
 }
