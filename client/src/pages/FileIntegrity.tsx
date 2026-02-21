@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
+import { MOCK_SYSCHECK_FILES, MOCK_SYSCHECK_LAST_SCAN, MOCK_AGENTS } from "@/lib/mockData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -45,6 +46,11 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
   );
 }
 
+function extractItems(raw: unknown): Array<Record<string, unknown>> {
+  const d = (raw as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+  return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
+}
+
 export default function FileIntegrity() {
   const utils = trpc.useUtils();
   const [agentId, setAgentId] = useState("001");
@@ -54,37 +60,49 @@ export default function FileIntegrity() {
   const pageSize = 50;
 
   const statusQ = trpc.wazuh.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
-  const enabled = statusQ.data?.configured === true;
+  const isConnected = statusQ.data?.configured === true && statusQ.data?.data != null;
 
-  const agentsQ = trpc.wazuh.agents.useQuery({ limit: 100, offset: 0, status: "active" }, { retry: 1, staleTime: 30_000, enabled });
+  const agentsQ = trpc.wazuh.agents.useQuery({ limit: 100, offset: 0, status: "active" }, { retry: 1, staleTime: 30_000, enabled: isConnected });
   const agentList = useMemo(() => {
-    const d = (agentsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
-  }, [agentsQ.data]);
+    if (isConnected && agentsQ.data) return extractItems(agentsQ.data);
+    return MOCK_AGENTS.data.affected_items.filter(a => a.status === "active") as unknown as Array<Record<string, unknown>>;
+  }, [agentsQ.data, isConnected]);
 
   const syscheckQ = trpc.wazuh.syscheckFiles.useQuery({
     agentId, limit: pageSize, offset: page * pageSize, search: search || undefined,
-  }, { retry: 1, staleTime: 15_000, enabled });
+  }, { retry: 1, staleTime: 15_000, enabled: isConnected });
 
-  const lastScanQ = trpc.wazuh.syscheckLastScan.useQuery({ agentId }, { retry: 1, staleTime: 30_000, enabled });
+  const lastScanQ = trpc.wazuh.syscheckLastScan.useQuery({ agentId }, { retry: 1, staleTime: 30_000, enabled: isConnected });
 
   const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); }, [utils]);
 
+  // ── Files (real or fallback) ──────────────────────────────────────────
   const files = useMemo(() => {
-    const d = (syscheckQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
-  }, [syscheckQ.data]);
+    if (isConnected && syscheckQ.data) return extractItems(syscheckQ.data);
+    let items = MOCK_SYSCHECK_FILES.data.affected_items as unknown as Array<Record<string, unknown>>;
+    if (search) {
+      const q = search.toLowerCase();
+      items = items.filter(f => String(f.file ?? "").toLowerCase().includes(q));
+    }
+    return items;
+  }, [syscheckQ.data, isConnected, search]);
 
   const totalFiles = useMemo(() => {
-    const d = (syscheckQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    return Number(d?.total_affected_items ?? files.length);
-  }, [syscheckQ.data, files.length]);
+    if (isConnected && syscheckQ.data) {
+      const d = (syscheckQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+      return Number(d?.total_affected_items ?? files.length);
+    }
+    return files.length;
+  }, [syscheckQ.data, isConnected, files.length]);
 
+  // ── Last scan (real or fallback) ──────────────────────────────────────
   const lastScan = useMemo(() => {
-    const d = (lastScanQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    const items = (d?.affected_items as Array<Record<string, unknown>>) ?? [];
-    return items[0] ?? null;
-  }, [lastScanQ.data]);
+    if (isConnected && lastScanQ.data) {
+      const items = extractItems(lastScanQ.data);
+      return items[0] ?? null;
+    }
+    return MOCK_SYSCHECK_LAST_SCAN.data.affected_items[0] as unknown as Record<string, unknown>;
+  }, [lastScanQ.data, isConnected]);
 
   const eventDist = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -106,27 +124,26 @@ export default function FileIntegrity() {
   const modifiedCount = files.filter(f => String(f.event ?? f.type ?? "").toLowerCase() === "modified").length;
   const deletedCount = files.filter(f => String(f.event ?? f.type ?? "").toLowerCase() === "deleted").length;
 
-  const isLoading = syscheckQ.isLoading;
+  const isLoading = statusQ.isLoading;
   const totalPages = Math.ceil(totalFiles / pageSize);
 
   return (
     <WazuhGuard>
       <div className="space-y-6">
-        <PageHeader title="File Integrity Monitoring" subtitle="Syscheck analysis \u2014 file changes, hash comparison, and integrity scan results" onRefresh={handleRefresh} isLoading={isLoading} />
+        <PageHeader title="File Integrity Monitoring" subtitle="Syscheck analysis — file changes, hash comparison, and integrity scan results" onRefresh={handleRefresh} isLoading={isLoading} />
 
         <GlassPanel className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <div className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /><span className="text-sm font-medium text-muted-foreground">Target Agent:</span></div>
           <Select value={agentId} onValueChange={(v) => { setAgentId(v); setPage(0); }}>
             <SelectTrigger className="w-[280px] h-8 text-xs bg-secondary/50 border-border"><SelectValue /></SelectTrigger>
             <SelectContent className="bg-popover border-border max-h-60">
-              {agentList.map(a => <SelectItem key={String(a.id)} value={String(a.id)}>{String(a.id)} \u2014 {String(a.name ?? "Unknown")} ({String(a.ip ?? "")})</SelectItem>)}
-              {agentList.length === 0 ? <SelectItem value="001" disabled>No active agents</SelectItem> : null}
+              {agentList.map(a => <SelectItem key={String(a.id)} value={String(a.id)}>{String(a.id)} — {String(a.name ?? "Unknown")} ({String(a.ip ?? "")})</SelectItem>)}
             </SelectContent>
           </Select>
           {lastScan ? (
             <div className="flex items-center gap-4 text-xs text-muted-foreground ml-auto">
-              <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Start: {String(lastScan.start ?? "\u2014")}</span>
-              <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> End: {String(lastScan.end ?? "\u2014")}</span>
+              <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Start: {String(lastScan.start ?? "—")}</span>
+              <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> End: {String(lastScan.end ?? "—")}</span>
             </div>
           ) : null}
         </GlassPanel>
@@ -142,32 +159,28 @@ export default function FileIntegrity() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <GlassPanel className="lg:col-span-4">
             <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Eye className="h-4 w-4 text-primary" /> Event Types</h3>
-            {eventDist.length > 0 ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={eventDist} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value" stroke="none">
-                    {eventDist.map((entry, i) => <Cell key={i} fill={EVENT_COLORS[entry.name.toLowerCase()] ?? COLORS.purple} />)}
-                  </Pie>
-                  <ReTooltip content={<ChartTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: 11, color: "oklch(0.65 0.02 286)" }} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">No data</div>}
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie data={eventDist} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value" stroke="none">
+                  {eventDist.map((entry, i) => <Cell key={i} fill={EVENT_COLORS[entry.name.toLowerCase()] ?? COLORS.purple} />)}
+                </Pie>
+                <ReTooltip content={<ChartTooltip />} />
+                <Legend wrapperStyle={{ fontSize: 11, color: "oklch(0.65 0.02 286)" }} />
+              </PieChart>
+            </ResponsiveContainer>
           </GlassPanel>
 
           <GlassPanel className="lg:col-span-8">
             <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Hash className="h-4 w-4 text-primary" /> File Extensions</h3>
-            {extDist.length > 0 ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={extDist}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.04 286 / 20%)" />
-                  <XAxis dataKey="name" tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 10 }} />
-                  <YAxis tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 10 }} />
-                  <ReTooltip content={<ChartTooltip />} />
-                  <Bar dataKey="count" fill={COLORS.cyan} name="Files" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">No extension data</div>}
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={extDist}>
+                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.04 286 / 20%)" />
+                <XAxis dataKey="name" tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 10 }} />
+                <YAxis tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 10 }} />
+                <ReTooltip content={<ChartTooltip />} />
+                <Bar dataKey="count" fill={COLORS.cyan} name="Files" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </GlassPanel>
         </div>
 
@@ -194,16 +207,16 @@ export default function FileIntegrity() {
                   const level: "low" | "medium" | "critical" | "info" = event === "added" ? "low" : event === "modified" ? "medium" : event === "deleted" ? "critical" : "info";
                   const hashObj = (f.hash as Record<string, unknown>) ?? {};
                   return (
-                    <tr key={i} className="border-b border-border/10 data-row cursor-pointer" onClick={() => setSelectedFile(f)}>
-                      <td className="py-2 px-3 font-mono text-foreground max-w-[300px] truncate">{String(f.file ?? f.path ?? "\u2014")}</td>
+                    <tr key={i} className="border-b border-border/10 hover:bg-secondary/20 transition-colors cursor-pointer" onClick={() => setSelectedFile(f)}>
+                      <td className="py-2 px-3 font-mono text-foreground max-w-[300px] truncate">{String(f.file ?? f.path ?? "—")}</td>
                       <td className="py-2 px-3"><ThreatBadge level={level} /></td>
-                      <td className="py-2 px-3 font-mono text-muted-foreground">{String(f.size ?? "\u2014")}</td>
-                      <td className="py-2 px-3 font-mono text-muted-foreground">{String(f.uid ?? "\u2014")}</td>
-                      <td className="py-2 px-3 font-mono text-muted-foreground">{String(f.gid ?? "\u2014")}</td>
-                      <td className="py-2 px-3 font-mono text-muted-foreground">{String(f.perm ?? f.attributes ?? "\u2014")}</td>
-                      <td className="py-2 px-3 font-mono text-primary text-[10px] max-w-[100px] truncate">{String(f.md5 ?? hashObj.md5 ?? "\u2014")}</td>
-                      <td className="py-2 px-3 font-mono text-primary text-[10px] max-w-[100px] truncate">{String(f.sha1 ?? hashObj.sha1 ?? "\u2014")}</td>
-                      <td className="py-2 px-3 text-muted-foreground">{String(f.mtime ?? f.date ?? "\u2014")}</td>
+                      <td className="py-2 px-3 font-mono text-muted-foreground">{String(f.size ?? "—")}</td>
+                      <td className="py-2 px-3 font-mono text-muted-foreground">{String(f.uid ?? "—")}</td>
+                      <td className="py-2 px-3 font-mono text-muted-foreground">{String(f.gid ?? "—")}</td>
+                      <td className="py-2 px-3 font-mono text-muted-foreground">{String(f.perm ?? f.attributes ?? "—")}</td>
+                      <td className="py-2 px-3 font-mono text-primary text-[10px] max-w-[100px] truncate">{String(f.md5 ?? hashObj.md5 ?? "—")}</td>
+                      <td className="py-2 px-3 font-mono text-primary text-[10px] max-w-[100px] truncate">{String(f.sha1 ?? hashObj.sha1 ?? "—")}</td>
+                      <td className="py-2 px-3 text-muted-foreground">{String(f.mtime ?? f.date ?? "—")}</td>
                     </tr>
                   );
                 })}
@@ -234,7 +247,7 @@ export default function FileIntegrity() {
               <div className="space-y-4">
                 <div className="bg-secondary/20 rounded-lg p-3 border border-border/20">
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wider">File Path</p>
-                  <p className="text-sm font-mono text-foreground mt-1 break-all">{String(selectedFile.file ?? selectedFile.path ?? "\u2014")}</p>
+                  <p className="text-sm font-mono text-foreground mt-1 break-all">{String(selectedFile.file ?? selectedFile.path ?? "—")}</p>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   {([
@@ -250,7 +263,7 @@ export default function FileIntegrity() {
                   ] as [string, unknown][]).map(([label, val]) => (
                     <div key={label} className="bg-secondary/30 rounded-lg p-3 border border-border/30">
                       <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</p>
-                      <p className="text-sm font-medium text-foreground mt-1 truncate">{String(val ?? "\u2014")}</p>
+                      <p className="text-sm font-medium text-foreground mt-1 truncate">{String(val ?? "—")}</p>
                     </div>
                   ))}
                 </div>

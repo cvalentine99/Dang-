@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
+import { MOCK_VULNERABILITIES, MOCK_AGENTS } from "@/lib/mockData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -54,6 +55,11 @@ function sevToThreat(sev: string): "critical" | "high" | "medium" | "low" | "inf
   return "info";
 }
 
+function extractItems(raw: unknown): Array<Record<string, unknown>> {
+  const d = (raw as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+  return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
+}
+
 export default function Vulnerabilities() {
   const utils = trpc.useUtils();
   const [agentId, setAgentId] = useState("001");
@@ -64,111 +70,117 @@ export default function Vulnerabilities() {
   const pageSize = 50;
 
   const statusQ = trpc.wazuh.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
-  const enabled = statusQ.data?.configured === true;
+  const isConnected = statusQ.data?.configured === true && statusQ.data?.data != null;
 
-  const agentsQ = trpc.wazuh.agents.useQuery({ limit: 100, offset: 0, status: "active" }, { retry: 1, staleTime: 30_000, enabled });
+  const agentsQ = trpc.wazuh.agents.useQuery({ limit: 100, offset: 0, status: "active" }, { retry: 1, staleTime: 30_000, enabled: isConnected });
   const agentList = useMemo(() => {
-    const d = (agentsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
-  }, [agentsQ.data]);
+    if (isConnected && agentsQ.data) return extractItems(agentsQ.data);
+    return MOCK_AGENTS.data.affected_items.filter(a => a.status === "active") as unknown as Array<Record<string, unknown>>;
+  }, [agentsQ.data, isConnected]);
 
   const vulnsQ = trpc.wazuh.agentVulnerabilities.useQuery({
     agentId, limit: pageSize, offset: page * pageSize,
     severity: sevFilter !== "all" ? sevFilter as "critical" | "high" | "medium" | "low" : undefined,
-  }, { retry: 1, staleTime: 15_000, enabled });
+  }, { retry: 1, staleTime: 15_000, enabled: isConnected });
 
   const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); }, [utils]);
 
-  const vulns = useMemo(() => {
-    const d = (vulnsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
-  }, [vulnsQ.data]);
+  // ── Vulnerabilities (real or fallback) ────────────────────────────────
+  const allVulns = useMemo(() => {
+    if (isConnected && vulnsQ.data) return extractItems(vulnsQ.data);
+    let items = MOCK_VULNERABILITIES.data.affected_items as unknown as Array<Record<string, unknown>>;
+    if (sevFilter !== "all") items = items.filter(v => String(v.severity ?? "").toLowerCase() === sevFilter);
+    return items;
+  }, [vulnsQ.data, isConnected, sevFilter]);
 
   const totalVulns = useMemo(() => {
-    const d = (vulnsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    return Number(d?.total_affected_items ?? vulns.length);
-  }, [vulnsQ.data, vulns.length]);
+    if (isConnected && vulnsQ.data) {
+      const d = (vulnsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+      return Number(d?.total_affected_items ?? allVulns.length);
+    }
+    return MOCK_VULNERABILITIES.data.total_affected_items;
+  }, [vulnsQ.data, isConnected, allVulns.length]);
 
   const sevDistribution = useMemo(() => {
     const counts: Record<string, number> = {};
-    vulns.forEach(v => { const s = String(v.severity ?? "Untriaged"); counts[s] = (counts[s] ?? 0) + 1; });
+    allVulns.forEach(v => { const s = String(v.severity ?? "Untriaged"); counts[s] = (counts[s] ?? 0) + 1; });
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
-  }, [vulns]);
+  }, [allVulns]);
 
   const topPackages = useMemo(() => {
     const counts: Record<string, number> = {};
-    vulns.forEach(v => { const pkg = String(v.name ?? "unknown"); counts[pkg] = (counts[pkg] ?? 0) + 1; });
+    allVulns.forEach(v => { const pkg = String(v.name ?? "unknown"); counts[pkg] = (counts[pkg] ?? 0) + 1; });
     return Object.entries(counts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 10);
-  }, [vulns]);
+  }, [allVulns]);
 
-  const criticalCount = vulns.filter(v => String(v.severity) === "Critical").length;
-  const highCount = vulns.filter(v => String(v.severity) === "High").length;
-  const mediumCount = vulns.filter(v => String(v.severity) === "Medium").length;
+  const criticalCount = allVulns.filter(v => String(v.severity) === "Critical").length;
+  const highCount = allVulns.filter(v => String(v.severity) === "High").length;
+  const mediumCount = allVulns.filter(v => String(v.severity) === "Medium").length;
+  const avgCvss = allVulns.length > 0 ? (allVulns.reduce((s, v) => s + Number(v.cvss3_score ?? v.cvss2_score ?? 0), 0) / allVulns.length).toFixed(1) : "0.0";
 
   const filteredVulns = useMemo(() => {
-    if (!search) return vulns;
+    if (!search) return allVulns;
     const q = search.toLowerCase();
-    return vulns.filter(v => String(v.cve ?? "").toLowerCase().includes(q) || String(v.name ?? "").toLowerCase().includes(q) || String(v.title ?? "").toLowerCase().includes(q));
-  }, [vulns, search]);
+    return allVulns.filter(v => String(v.cve ?? "").toLowerCase().includes(q) || String(v.name ?? "").toLowerCase().includes(q) || String(v.title ?? "").toLowerCase().includes(q));
+  }, [allVulns, search]);
 
-  const isLoading = vulnsQ.isLoading;
   const totalPages = Math.ceil(totalVulns / pageSize);
 
   return (
     <WazuhGuard>
       <div className="space-y-6">
-        <PageHeader title="Vulnerability Intelligence" subtitle="CVE analysis — severity scoring, affected packages, and NVD deep-links" onRefresh={handleRefresh} isLoading={isLoading} />
+        <PageHeader title="Vulnerability Intelligence" subtitle="CVE analysis — severity scoring, affected packages, and NVD deep-links" onRefresh={handleRefresh} isLoading={statusQ.isLoading} />
 
+        {/* Agent Selector */}
         <GlassPanel className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <div className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /><span className="text-sm font-medium text-muted-foreground">Target Agent:</span></div>
           <Select value={agentId} onValueChange={(v) => { setAgentId(v); setPage(0); }}>
             <SelectTrigger className="w-[280px] h-8 text-xs bg-secondary/50 border-border"><SelectValue /></SelectTrigger>
             <SelectContent className="bg-popover border-border max-h-60">
               {agentList.map(a => <SelectItem key={String(a.id)} value={String(a.id)}>{String(a.id)} — {String(a.name ?? "Unknown")} ({String(a.ip ?? "")})</SelectItem>)}
-              {agentList.length === 0 && <SelectItem value="001" disabled>No active agents</SelectItem>}
             </SelectContent>
           </Select>
         </GlassPanel>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {/* KPI Row */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <StatCard label="Total CVEs" value={totalVulns} icon={Bug} colorClass="text-primary" />
           <StatCard label="Critical" value={criticalCount} icon={AlertTriangle} colorClass="text-threat-critical" />
           <StatCard label="High" value={highCount} icon={Shield} colorClass="text-threat-high" />
           <StatCard label="Medium" value={mediumCount} icon={TrendingDown} colorClass="text-threat-medium" />
+          <StatCard label="Avg CVSS" value={avgCvss} icon={Bug} colorClass="text-primary" />
         </div>
 
+        {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <GlassPanel className="lg:col-span-4">
             <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Shield className="h-4 w-4 text-primary" /> Severity Distribution</h3>
-            {sevDistribution.length > 0 ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={sevDistribution} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value" stroke="none">
-                    {sevDistribution.map((entry, i) => <Cell key={i} fill={SEV_COLORS[entry.name] ?? COLORS.purple} />)}
-                  </Pie>
-                  <ReTooltip content={<ChartTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: 11, color: "oklch(0.65 0.02 286)" }} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">No data</div>}
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie data={sevDistribution} cx="50%" cy="50%" innerRadius={45} outerRadius={75} paddingAngle={3} dataKey="value" stroke="none">
+                  {sevDistribution.map((entry, i) => <Cell key={i} fill={SEV_COLORS[entry.name] ?? COLORS.purple} />)}
+                </Pie>
+                <ReTooltip content={<ChartTooltip />} />
+                <Legend wrapperStyle={{ fontSize: 11, color: "oklch(0.65 0.02 286)" }} />
+              </PieChart>
+            </ResponsiveContainer>
           </GlassPanel>
 
           <GlassPanel className="lg:col-span-8">
             <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Bug className="h-4 w-4 text-primary" /> Top Affected Packages</h3>
-            {topPackages.length > 0 ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={topPackages}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.04 286 / 20%)" />
-                  <XAxis dataKey="name" tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 9 }} angle={-15} textAnchor="end" height={50} />
-                  <YAxis tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 10 }} />
-                  <ReTooltip content={<ChartTooltip />} />
-                  <Bar dataKey="count" fill={COLORS.orange} name="CVEs" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">No package data</div>}
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={topPackages}>
+                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.04 286 / 20%)" />
+                <XAxis dataKey="name" tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 9 }} angle={-15} textAnchor="end" height={50} />
+                <YAxis tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 10 }} />
+                <ReTooltip content={<ChartTooltip />} />
+                <Bar dataKey="count" fill={COLORS.orange} name="CVEs" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </GlassPanel>
         </div>
 
+        {/* CVE Table */}
         <GlassPanel>
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
             <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Bug className="h-4 w-4 text-primary" /> CVE Database ({totalVulns})</h3>
@@ -187,33 +199,31 @@ export default function Vulnerabilities() {
                   <SelectItem value="low">Low</SelectItem>
                 </SelectContent>
               </Select>
-              {vulnsQ.data ? <RawJsonViewer data={vulnsQ.data as Record<string, unknown>} title="Vulnerabilities JSON" /> : null}
             </div>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead><tr className="border-b border-border/30">
-                {["CVE", "Severity", "CVSS2", "CVSS3", "Package", "Version", "Title", "Status", "NVD"].map(h => <th key={h} className="text-left py-2 px-3 text-muted-foreground font-medium">{h}</th>)}
+                {["CVE", "Severity", "CVSS3", "Package", "Version", "Title", "Status", "Published", "NVD"].map(h => <th key={h} className="text-left py-2 px-3 text-muted-foreground font-medium">{h}</th>)}
               </tr></thead>
               <tbody>
                 {filteredVulns.map((v, i) => {
                   const cve = String(v.cve ?? "—");
-                  const cvss2 = v.cvss2_score != null ? Number(v.cvss2_score).toFixed(1) : "—";
                   const cvss3 = v.cvss3_score != null ? Number(v.cvss3_score).toFixed(1) : "—";
                   return (
-                    <tr key={i} className="border-b border-border/10 data-row cursor-pointer" onClick={() => setSelectedVuln(v)}>
+                    <tr key={i} className="border-b border-border/10 hover:bg-secondary/20 transition-colors cursor-pointer" onClick={() => setSelectedVuln(v)}>
                       <td className="py-2 px-3 font-mono text-primary">{cve}</td>
                       <td className="py-2 px-3"><ThreatBadge level={sevToThreat(String(v.severity ?? ""))} /></td>
-                      <td className="py-2 px-3 font-mono text-muted-foreground">{cvss2}</td>
                       <td className="py-2 px-3 font-mono text-muted-foreground">{cvss3}</td>
                       <td className="py-2 px-3 text-foreground font-medium">{String(v.name ?? "—")}</td>
-                      <td className="py-2 px-3 font-mono text-muted-foreground">{String(v.version ?? "—")}</td>
+                      <td className="py-2 px-3 font-mono text-muted-foreground text-[10px]">{String(v.version ?? "—")}</td>
                       <td className="py-2 px-3 text-muted-foreground max-w-[250px] truncate">{String(v.title ?? v.description ?? "—")}</td>
-                      <td className="py-2 px-3 text-muted-foreground">{String(v.status ?? v.condition ?? "—")}</td>
+                      <td className="py-2 px-3"><span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${String(v.status) === "Fixed" ? "bg-green-500/20 text-green-400" : String(v.status) === "Active" ? "bg-threat-critical/20 text-threat-critical" : "bg-primary/10 text-primary"}`}>{String(v.status ?? "—")}</span></td>
+                      <td className="py-2 px-3 text-muted-foreground text-[10px]">{String(v.published ?? "—")}</td>
                       <td className="py-2 px-3">
                         {cve.startsWith("CVE-") && (
-                          <a href={`https://nvd.nist.gov/vuln/detail/${cve}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-primary hover:text-primary/80 transition-colors">
+                          <a href={`https://nvd.nist.gov/vuln/detail/${cve}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary/80" onClick={e => e.stopPropagation()}>
                             <ExternalLink className="h-3.5 w-3.5" />
                           </a>
                         )}
@@ -221,7 +231,6 @@ export default function Vulnerabilities() {
                     </tr>
                   );
                 })}
-                {filteredVulns.length === 0 && <tr><td colSpan={9} className="py-12 text-center text-muted-foreground">{isLoading ? "Loading CVEs..." : "No vulnerabilities found"}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -237,6 +246,7 @@ export default function Vulnerabilities() {
           )}
         </GlassPanel>
 
+        {/* CVE Detail Dialog */}
         <Dialog open={!!selectedVuln} onOpenChange={(open) => !open && setSelectedVuln(null)}>
           <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto bg-card border-border">
             <DialogHeader>

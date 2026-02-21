@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
+import { MOCK_SCA_POLICIES, MOCK_SCA_CHECKS, MOCK_AGENTS } from "@/lib/mockData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -67,6 +68,11 @@ function ScoreGauge({ score, label }: { score: number; label: string }) {
   );
 }
 
+function extractItems(raw: unknown): Array<Record<string, unknown>> {
+  const d = (raw as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+  return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
+}
+
 export default function Compliance() {
   const utils = trpc.useUtils();
   const [agentId, setAgentId] = useState("001");
@@ -78,31 +84,34 @@ export default function Compliance() {
   const pageSize = 50;
 
   const statusQ = trpc.wazuh.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
-  const enabled = statusQ.data?.configured === true;
+  const isConnected = statusQ.data?.configured === true && statusQ.data?.data != null;
 
-  const agentsQ = trpc.wazuh.agents.useQuery({ limit: 100, offset: 0, status: "active" }, { retry: 1, staleTime: 30_000, enabled });
+  const agentsQ = trpc.wazuh.agents.useQuery({ limit: 100, offset: 0, status: "active" }, { retry: 1, staleTime: 30_000, enabled: isConnected });
   const agentList = useMemo(() => {
-    const d = (agentsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
-  }, [agentsQ.data]);
+    if (isConnected && agentsQ.data) return extractItems(agentsQ.data);
+    return MOCK_AGENTS.data.affected_items.filter(a => a.status === "active") as unknown as Array<Record<string, unknown>>;
+  }, [agentsQ.data, isConnected]);
 
-  const scaQ = trpc.wazuh.scaPolicies.useQuery({ agentId }, { retry: 1, staleTime: 30_000, enabled });
+  const scaQ = trpc.wazuh.scaPolicies.useQuery({ agentId }, { retry: 1, staleTime: 30_000, enabled: isConnected });
   const checksQ = trpc.wazuh.scaChecks.useQuery(
     { agentId, policyId: selectedPolicy ?? "" },
-    { retry: 1, staleTime: 30_000, enabled: enabled && !!selectedPolicy }
+    { retry: 1, staleTime: 30_000, enabled: isConnected && !!selectedPolicy }
   );
 
   const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); }, [utils]);
 
+  // ── Policies (real or fallback) ───────────────────────────────────────
   const policies = useMemo(() => {
-    const d = (scaQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
-  }, [scaQ.data]);
+    if (isConnected && scaQ.data) return extractItems(scaQ.data);
+    return MOCK_SCA_POLICIES.data.affected_items as unknown as Array<Record<string, unknown>>;
+  }, [scaQ.data, isConnected]);
 
+  // ── Checks (real or fallback) ─────────────────────────────────────────
   const checks = useMemo(() => {
-    const d = (checksQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
-  }, [checksQ.data]);
+    if (isConnected && checksQ.data) return extractItems(checksQ.data);
+    if (selectedPolicy) return MOCK_SCA_CHECKS.data.affected_items as unknown as Array<Record<string, unknown>>;
+    return [];
+  }, [checksQ.data, isConnected, selectedPolicy]);
 
   const { totalPolicies, avgScore, totalPass, totalFail, totalNA } = useMemo(() => {
     let pass = 0, fail = 0, na = 0, scoreSum = 0;
@@ -133,7 +142,7 @@ export default function Compliance() {
   const totalChecks = filteredChecks.length;
   const totalPages = Math.ceil(totalChecks / pageSize);
   const pagedChecks = filteredChecks.slice(page * pageSize, (page + 1) * pageSize);
-  const isLoading = scaQ.isLoading;
+  const isLoading = statusQ.isLoading;
 
   return (
     <WazuhGuard>
@@ -146,7 +155,6 @@ export default function Compliance() {
             <SelectTrigger className="w-[280px] h-8 text-xs bg-secondary/50 border-border"><SelectValue /></SelectTrigger>
             <SelectContent className="bg-popover border-border max-h-60">
               {agentList.map(a => <SelectItem key={String(a.id)} value={String(a.id)}>{String(a.id)} — {String(a.name ?? "Unknown")} ({String(a.ip ?? "")})</SelectItem>)}
-              {agentList.length === 0 ? <SelectItem value="001" disabled>No active agents</SelectItem> : null}
             </SelectContent>
           </Select>
           {scaQ.data ? <RawJsonViewer data={scaQ.data as Record<string, unknown>} title="SCA Policies JSON" /> : null}
@@ -173,38 +181,33 @@ export default function Compliance() {
                 <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" /> Policy Scores</h3>
                 <div className="flex flex-wrap justify-center gap-4">
                   {policies.slice(0, 6).map((p, i) => <ScoreGauge key={i} score={Number(p.score ?? 0)} label={String(p.name ?? "").slice(0, 20)} />)}
-                  {policies.length === 0 ? <div className="text-sm text-muted-foreground py-8">No SCA policies found</div> : null}
                 </div>
               </GlassPanel>
 
               <GlassPanel className="lg:col-span-3">
                 <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-primary" /> Check Results</h3>
-                {resultPie.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={200}>
-                    <PieChart>
-                      <Pie data={resultPie} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value" stroke="none">
-                        {resultPie.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                      </Pie>
-                      <ReTooltip content={<ChartTooltip />} />
-                      <Legend wrapperStyle={{ fontSize: 11, color: "oklch(0.65 0.02 286)" }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">No data</div>}
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie data={resultPie} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value" stroke="none">
+                      {resultPie.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                    </Pie>
+                    <ReTooltip content={<ChartTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: 11, color: "oklch(0.65 0.02 286)" }} />
+                  </PieChart>
+                </ResponsiveContainer>
               </GlassPanel>
 
               <GlassPanel className="lg:col-span-4">
                 <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><ShieldAlert className="h-4 w-4 text-primary" /> Score by Policy</h3>
-                {policyScoreData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={policyScoreData} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.04 286 / 20%)" />
-                      <XAxis type="number" domain={[0, 100]} tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 10 }} />
-                      <YAxis type="category" dataKey="name" width={120} tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 9 }} />
-                      <ReTooltip content={<ChartTooltip />} />
-                      <Bar dataKey="score" fill={COLORS.purple} name="Score %" radius={[0, 4, 4, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">No policy data</div>}
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={policyScoreData} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.04 286 / 20%)" />
+                    <XAxis type="number" domain={[0, 100]} tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 10 }} />
+                    <YAxis type="category" dataKey="name" width={120} tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 9 }} />
+                    <ReTooltip content={<ChartTooltip />} />
+                    <Bar dataKey="score" fill={COLORS.purple} name="Score %" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
               </GlassPanel>
             </div>
 
@@ -255,7 +258,6 @@ export default function Compliance() {
                     </div>
                   );
                 })}
-                {policies.length === 0 ? <div className="text-center text-sm text-muted-foreground py-8">{isLoading ? "Loading policies..." : "No SCA policies found for this agent"}</div> : null}
               </div>
             </GlassPanel>
           </TabsContent>
@@ -307,7 +309,7 @@ export default function Compliance() {
                         {pagedChecks.map((c, i) => {
                           const result = String(c.result ?? "").toLowerCase();
                           return (
-                            <tr key={i} className="border-b border-border/10 data-row">
+                            <tr key={i} className="border-b border-border/10 hover:bg-secondary/20 transition-colors">
                               <td className="py-2 px-3 font-mono text-primary">{String(c.id ?? "")}</td>
                               <td className="py-2 px-3"><ThreatBadge level={result === "passed" ? "low" : result === "failed" ? "critical" : "info"} /></td>
                               <td className="py-2 px-3 text-foreground max-w-[300px]">{String(c.title ?? "\u2014")}</td>

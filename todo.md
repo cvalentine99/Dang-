@@ -178,3 +178,31 @@
 - [x] Write vitest tests for new backend endpoints (29 passing)
 - [x] Final TypeScript compilation check (0 errors)
 - [x] Save checkpoint
+
+## Phase 23: FULL Dashboard Population Rebuild (SecondSight Quality)
+- [x] SOC Console: Dense KPI row (Total Agents, Active, Alerts 24h, Critical Events, EPS), populated area chart, top talkers pie, MITRE tactic bars, recent alerts table, API connectivity panel, action shortcuts grid
+- [x] Fleet Command: Populated agent table with rows, OS distribution donut, version bar chart, status KPIs, agent detail drawer with syscollector data
+- [x] Alerts Timeline: Populated alert table with severity/rule/agent columns, hourly bar chart, weekly heatmap grid, rule distribution, severity filter pills
+- [x] Vulnerabilities: CVE table with entries, severity donut, CVSS score badges, NVD deep-links, affected agent counts, status breakdown
+- [x] MITRE ATT&CK: Full 14-column tactic matrix with technique cells, detection coverage %, technique detail panel, tactic distribution chart
+- [x] Compliance: Framework scorecards with pass/fail/score, SCA policy table, failed checks with remediation, compliance trend
+- [x] FIM: File change table with hashes, event distribution chart, scan status cards, file detail dialog
+- [x] IT Hygiene: Package/port/process tables with data, tabbed layout, agent selector
+- [x] Cluster Health: Daemon status grid, hourly ingestion chart, cluster topology cards, config validation
+- [x] Remove WazuhGuard blocking — show dashboards with API data when connected, graceful empty states when not
+- [x] Final QA all pages populated
+- [x] Save checkpoint
+
+## Phase 24: Fallback Sample Data (API shape-matched)
+
+- [x] Create shared mock data module (client/src/lib/mockData.ts)
+- [x] SOC Console: fallback agents, alerts, rules, manager status, MITRE tactics
+- [x] Agent Health: fallback agent list with OS, version, status, groups
+- [x] Alerts Timeline: fallback alert entries with timestamps, rule levels, descriptions
+- [x] Vulnerabilities: fallback CVE entries with CVSS scores, packages, severity
+- [x] MITRE ATT&CK: fallback tactics, techniques, groups, rule mappings
+- [x] Compliance: fallback SCA policies with scores, checks with pass/fail
+- [x] FIM: fallback syscheck files with hashes, events, permissions
+- [x] IT Hygiene: fallback packages, ports, processes, network interfaces
+- [x] Cluster Health: fallback daemon statuses, manager info, hourly stats, cluster nodes
+- [x] Each page uses mock as fallback, real API data when connected

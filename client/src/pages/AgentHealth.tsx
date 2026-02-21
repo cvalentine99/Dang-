@@ -4,6 +4,7 @@ import { StatCard } from "@/components/shared/StatCard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
+import { MOCK_AGENTS, MOCK_AGENT_SUMMARY } from "@/lib/mockData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -37,13 +38,14 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
   return (
     <div className="glass-panel p-3 text-xs border border-glass-border">
       <p className="text-muted-foreground mb-1">{label}</p>
-      {payload.map((p, i) => (
-        <p key={i} style={{ color: p.color }} className="font-medium">
-          {p.name}: {p.value?.toLocaleString()}
-        </p>
-      ))}
+      {payload.map((p, i) => <p key={i} style={{ color: p.color }} className="font-medium">{p.name}: {p.value?.toLocaleString()}</p>)}
     </div>
   );
+}
+
+function extractItems(raw: unknown): Array<Record<string, unknown>> {
+  const d = (raw as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+  return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
 }
 
 export default function AgentHealth() {
@@ -56,76 +58,84 @@ export default function AgentHealth() {
   const pageSize = 25;
 
   const statusQ = trpc.wazuh.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
-  const enabled = statusQ.data?.configured === true;
+  const isConnected = statusQ.data?.configured === true && statusQ.data?.data != null;
 
-  const agentSummaryQ = trpc.wazuh.agentSummaryStatus.useQuery(undefined, { retry: 1, staleTime: 30_000, enabled });
-  const agentSummaryOsQ = trpc.wazuh.agentSummaryOs.useQuery(undefined, { retry: 1, staleTime: 60_000, enabled });
-  const groupsQ = trpc.wazuh.agentGroups.useQuery(undefined, { retry: 1, staleTime: 60_000, enabled });
+  const agentSummaryQ = trpc.wazuh.agentSummaryStatus.useQuery(undefined, { retry: 1, staleTime: 30_000, enabled: isConnected });
+  const agentSummaryOsQ = trpc.wazuh.agentSummaryOs.useQuery(undefined, { retry: 1, staleTime: 60_000, enabled: isConnected });
+  const groupsQ = trpc.wazuh.agentGroups.useQuery(undefined, { retry: 1, staleTime: 60_000, enabled: isConnected });
 
   const agentsQ = trpc.wazuh.agents.useQuery({
-    limit: pageSize,
-    offset: page * pageSize,
+    limit: pageSize, offset: page * pageSize,
     status: statusFilter !== "all" ? statusFilter as "active" | "disconnected" | "never_connected" | "pending" : undefined,
     group: groupFilter !== "all" ? groupFilter : undefined,
-    search: search || undefined,
-    sort: "-dateAdd",
-  }, { retry: 1, staleTime: 15_000, enabled });
+    search: search || undefined, sort: "-dateAdd",
+  }, { retry: 1, staleTime: 15_000, enabled: isConnected });
 
-  const agentDetailQ = trpc.wazuh.agentById.useQuery(
-    { agentId: selectedAgent ?? "000" },
-    { enabled: !!selectedAgent }
-  );
-  const agentOsQ = trpc.wazuh.agentOs.useQuery(
-    { agentId: selectedAgent ?? "000" },
-    { enabled: !!selectedAgent }
-  );
-  const agentHwQ = trpc.wazuh.agentHardware.useQuery(
-    { agentId: selectedAgent ?? "000" },
-    { enabled: !!selectedAgent }
-  );
+  const agentDetailQ = trpc.wazuh.agentById.useQuery({ agentId: selectedAgent ?? "000" }, { enabled: !!selectedAgent && isConnected });
+  const agentOsQ = trpc.wazuh.agentOs.useQuery({ agentId: selectedAgent ?? "000" }, { enabled: !!selectedAgent && isConnected });
+  const agentHwQ = trpc.wazuh.agentHardware.useQuery({ agentId: selectedAgent ?? "000" }, { enabled: !!selectedAgent && isConnected });
 
   const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); }, [utils]);
 
+  // ── Agent summary (real or fallback) ──────────────────────────────────
   const agentData = useMemo(() => {
-    const d = (agentSummaryQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    if (!d) return { total: 0, active: 0, disconnected: 0, never: 0, pending: 0 };
-    const connection = d.connection as Record<string, number> | undefined;
+    const raw = isConnected ? agentSummaryQ.data : MOCK_AGENT_SUMMARY;
+    const items = extractItems(raw);
+    const first = items[0];
+    if (!first) return { total: 0, active: 0, disconnected: 0, never: 0, pending: 0 };
     return {
-      total: (d.total as number) ?? 0,
-      active: connection?.active ?? 0,
-      disconnected: connection?.disconnected ?? 0,
-      never: connection?.never_connected ?? 0,
-      pending: connection?.pending ?? 0,
+      total: Number(first.total ?? 0),
+      active: Number(first.active ?? (first.connection as Record<string, number>)?.active ?? 0),
+      disconnected: Number(first.disconnected ?? (first.connection as Record<string, number>)?.disconnected ?? 0),
+      never: Number(first.never_connected ?? (first.connection as Record<string, number>)?.never_connected ?? 0),
+      pending: Number(first.pending ?? (first.connection as Record<string, number>)?.pending ?? 0),
     };
-  }, [agentSummaryQ.data]);
+  }, [agentSummaryQ.data, isConnected]);
 
+  // ── OS distribution (real or fallback) ────────────────────────────────
   const osDistribution = useMemo(() => {
-    const d = (agentSummaryOsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    const items = d?.affected_items as Array<Record<string, unknown>> | undefined;
-    if (!items) return [];
+    if (isConnected && agentSummaryOsQ.data) {
+      const items = extractItems(agentSummaryOsQ.data);
+      const counts: Record<string, number> = {};
+      items.forEach(item => { const os = String(item.os ?? item.platform ?? "Unknown"); counts[os] = (counts[os] ?? 0) + 1; });
+      return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 8);
+    }
+    // Fallback: derive from mock agents
     const counts: Record<string, number> = {};
-    items.forEach(item => {
-      const os = String(item.os?.toString() ?? item.platform ?? "Unknown");
-      counts[os] = (counts[os] ?? 0) + 1;
-    });
-    return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 8);
-  }, [agentSummaryOsQ.data]);
+    MOCK_AGENTS.data.affected_items.forEach(a => { const os = a.os.platform; counts[os] = (counts[os] ?? 0) + 1; });
+    return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  }, [agentSummaryOsQ.data, isConnected]);
 
+  // ── Groups (real or fallback) ─────────────────────────────────────────
   const groups = useMemo(() => {
-    const d = (groupsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    const items = d?.affected_items as Array<Record<string, unknown>> | undefined;
-    return items?.map(g => ({ name: String(g.name ?? ""), count: Number(g.count ?? 0) })) ?? [];
-  }, [groupsQ.data]);
+    if (isConnected && groupsQ.data) {
+      const items = extractItems(groupsQ.data);
+      return items.map(g => ({ name: String(g.name ?? ""), count: Number(g.count ?? 0) }));
+    }
+    // Fallback: derive from mock agents
+    const counts: Record<string, number> = {};
+    MOCK_AGENTS.data.affected_items.forEach(a => a.group.forEach(g => { counts[g] = (counts[g] ?? 0) + 1; }));
+    return Object.entries(counts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+  }, [groupsQ.data, isConnected]);
 
+  // ── Agents list (real or fallback) ────────────────────────────────────
   const agents = useMemo(() => {
-    const d = (agentsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
-  }, [agentsQ.data]);
+    if (isConnected && agentsQ.data) return extractItems(agentsQ.data);
+    // Fallback: apply local filters to mock data
+    let items = MOCK_AGENTS.data.affected_items as unknown as Array<Record<string, unknown>>;
+    if (statusFilter !== "all") items = items.filter(a => a.status === statusFilter);
+    if (groupFilter !== "all") items = items.filter(a => Array.isArray(a.group) && (a.group as string[]).includes(groupFilter));
+    if (search) items = items.filter(a => String(a.name ?? "").toLowerCase().includes(search.toLowerCase()) || String(a.ip ?? "").includes(search));
+    return items.slice(page * pageSize, (page + 1) * pageSize);
+  }, [agentsQ.data, isConnected, statusFilter, groupFilter, search, page]);
 
   const totalAgents = useMemo(() => {
-    const d = (agentsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    return Number(d?.total_affected_items ?? agents.length);
-  }, [agentsQ.data, agents.length]);
+    if (isConnected && agentsQ.data) {
+      const d = (agentsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+      return Number(d?.total_affected_items ?? agents.length);
+    }
+    return MOCK_AGENTS.data.total_affected_items;
+  }, [agentsQ.data, isConnected, agents.length]);
 
   const statusPieData = useMemo(() => [
     { name: "Active", value: agentData.active },
@@ -134,25 +144,34 @@ export default function AgentHealth() {
     { name: "Pending", value: agentData.pending },
   ].filter(d => d.value > 0), [agentData]);
 
+  // ── Agent detail (real or fallback) ───────────────────────────────────
   const agentDetail = useMemo(() => {
-    const d = (agentDetailQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    const items = d?.affected_items as Array<Record<string, unknown>> | undefined;
-    return items?.[0] ?? null;
-  }, [agentDetailQ.data]);
+    if (isConnected && agentDetailQ.data) {
+      const items = extractItems(agentDetailQ.data);
+      return items[0] ?? null;
+    }
+    if (selectedAgent) {
+      return MOCK_AGENTS.data.affected_items.find(a => a.id === selectedAgent) as unknown as Record<string, unknown> ?? null;
+    }
+    return null;
+  }, [agentDetailQ.data, isConnected, selectedAgent]);
 
   const agentOsDetail = useMemo(() => {
-    const d = (agentOsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    const items = d?.affected_items as Array<Record<string, unknown>> | undefined;
-    return items?.[0] ?? null;
-  }, [agentOsQ.data]);
+    if (isConnected && agentOsQ.data) return extractItems(agentOsQ.data)[0] ?? null;
+    if (selectedAgent) {
+      const agent = MOCK_AGENTS.data.affected_items.find(a => a.id === selectedAgent);
+      return agent?.os as unknown as Record<string, unknown> ?? null;
+    }
+    return null;
+  }, [agentOsQ.data, isConnected, selectedAgent]);
 
   const agentHwDetail = useMemo(() => {
-    const d = (agentHwQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    const items = d?.affected_items as Array<Record<string, unknown>> | undefined;
-    return items?.[0] ?? null;
-  }, [agentHwQ.data]);
+    if (isConnected && agentHwQ.data) return extractItems(agentHwQ.data)[0] ?? null;
+    if (selectedAgent) return { cpu: { name: "Intel Xeon E5-2680 v4", cores: 4, mhz: 2400 }, ram: { total: 8388608, free: 4194304, usage: 50 }, board_serial: "VMware-42 01 a8 3b" } as unknown as Record<string, unknown>;
+    return null;
+  }, [agentHwQ.data, isConnected, selectedAgent]);
 
-  const isLoading = agentsQ.isLoading || agentSummaryQ.isLoading;
+  const isLoading = statusQ.isLoading;
   const totalPages = Math.ceil(totalAgents / pageSize);
 
   return (
@@ -172,43 +191,33 @@ export default function AgentHealth() {
         {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <GlassPanel className="lg:col-span-3">
-            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
-              <Activity className="h-4 w-4 text-primary" /> Connection Status
-            </h3>
-            {statusPieData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={statusPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value" stroke="none">
-                    {statusPieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                  </Pie>
-                  <ReTooltip content={<ChartTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: 11, color: "oklch(0.65 0.02 286)" }} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">No data</div>}
+            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Activity className="h-4 w-4 text-primary" /> Connection Status</h3>
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie data={statusPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value" stroke="none">
+                  {statusPieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                </Pie>
+                <ReTooltip content={<ChartTooltip />} />
+                <Legend wrapperStyle={{ fontSize: 11, color: "oklch(0.65 0.02 286)" }} />
+              </PieChart>
+            </ResponsiveContainer>
           </GlassPanel>
 
           <GlassPanel className="lg:col-span-5">
-            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
-              <Monitor className="h-4 w-4 text-primary" /> OS Distribution
-            </h3>
-            {osDistribution.length > 0 ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={osDistribution}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.04 286 / 20%)" />
-                  <XAxis dataKey="name" tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 9 }} angle={-20} textAnchor="end" height={50} />
-                  <YAxis tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 10 }} />
-                  <ReTooltip content={<ChartTooltip />} />
-                  <Bar dataKey="value" fill={COLORS.purple} radius={[4, 4, 0, 0]} name="Agents" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">No OS data</div>}
+            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Monitor className="h-4 w-4 text-primary" /> OS Distribution</h3>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={osDistribution}>
+                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.04 286 / 20%)" />
+                <XAxis dataKey="name" tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 9 }} angle={-20} textAnchor="end" height={50} />
+                <YAxis tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 10 }} />
+                <ReTooltip content={<ChartTooltip />} />
+                <Bar dataKey="value" fill={COLORS.purple} radius={[4, 4, 0, 0]} name="Agents" />
+              </BarChart>
+            </ResponsiveContainer>
           </GlassPanel>
 
           <GlassPanel className="lg:col-span-4">
-            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
-              <Server className="h-4 w-4 text-primary" /> Agent Groups ({groups.length})
-            </h3>
+            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Server className="h-4 w-4 text-primary" /> Agent Groups ({groups.length})</h3>
             <div className="space-y-2 max-h-[200px] overflow-y-auto">
               {groups.map(g => (
                 <button key={g.name} onClick={() => { setGroupFilter(g.name); setPage(0); }}
@@ -217,7 +226,6 @@ export default function AgentHealth() {
                   <span className="text-xs font-mono text-muted-foreground">{g.count}</span>
                 </button>
               ))}
-              {groups.length === 0 && <div className="text-sm text-muted-foreground text-center py-8">No groups</div>}
             </div>
           </GlassPanel>
         </div>
@@ -225,9 +233,7 @@ export default function AgentHealth() {
         {/* Agent Table */}
         <GlassPanel>
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-            <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Users className="h-4 w-4 text-primary" /> Agent Fleet ({totalAgents} total)
-            </h3>
+            <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Agent Fleet ({totalAgents} total)</h3>
             <div className="flex items-center gap-2 flex-wrap">
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -244,28 +250,24 @@ export default function AgentHealth() {
                 </SelectContent>
               </Select>
               {groupFilter !== "all" && (
-                <Button variant="outline" size="sm" onClick={() => setGroupFilter("all")} className="h-8 text-xs bg-transparent border-border gap-1">
-                  <X className="h-3 w-3" /> {groupFilter}
-                </Button>
+                <Button variant="outline" size="sm" onClick={() => setGroupFilter("all")} className="h-8 text-xs bg-transparent border-border gap-1"><X className="h-3 w-3" /> {groupFilter}</Button>
               )}
             </div>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border/30">
-                  {["ID", "Name", "IP", "OS", "Version", "Group", "Status", "Last Keep Alive", "Actions"].map(h => (
-                    <th key={h} className="text-left py-2 px-3 text-muted-foreground font-medium">{h}</th>
-                  ))}
-                </tr>
-              </thead>
+              <thead><tr className="border-b border-border/30">
+                {["ID", "Name", "IP", "OS", "Version", "Group", "Status", "Last Keep Alive", "Actions"].map(h => (
+                  <th key={h} className="text-left py-2 px-3 text-muted-foreground font-medium">{h}</th>
+                ))}
+              </tr></thead>
               <tbody>
                 {agents.map((agent) => {
                   const status = String(agent.status ?? "unknown");
                   const os = agent.os as Record<string, unknown> | undefined;
                   return (
-                    <tr key={String(agent.id)} className="border-b border-border/10 data-row">
+                    <tr key={String(agent.id)} className="border-b border-border/10 hover:bg-secondary/20 transition-colors">
                       <td className="py-2.5 px-3 font-mono text-primary">{String(agent.id)}</td>
                       <td className="py-2.5 px-3 text-foreground font-medium">{String(agent.name ?? "—")}</td>
                       <td className="py-2.5 px-3 font-mono text-muted-foreground">{String(agent.ip ?? "—")}</td>
@@ -274,7 +276,7 @@ export default function AgentHealth() {
                       <td className="py-2.5 px-3 text-muted-foreground">{Array.isArray(agent.group) ? (agent.group as string[]).join(", ") : "—"}</td>
                       <td className="py-2.5 px-3">
                         <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${status === "active" ? "text-threat-low" : status === "disconnected" ? "text-threat-high" : "text-muted-foreground"}`}>
-                          <span className={`h-1.5 w-1.5 rounded-full ${status === "active" ? "bg-[oklch(0.765_0.177_163.223)]" : status === "disconnected" ? "bg-[oklch(0.705_0.191_22.216)]" : "bg-[oklch(0.65_0.02_286)]"}`} />
+                          <span className={`h-1.5 w-1.5 rounded-full ${status === "active" ? "bg-threat-low" : status === "disconnected" ? "bg-threat-high" : "bg-muted-foreground"}`} />
                           {status}
                         </span>
                       </td>
@@ -285,7 +287,6 @@ export default function AgentHealth() {
                     </tr>
                   );
                 })}
-                {agents.length === 0 && <tr><td colSpan={9} className="py-12 text-center text-muted-foreground">{agentsQ.isLoading ? "Loading agents..." : "No agents found"}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -305,9 +306,7 @@ export default function AgentHealth() {
         <Dialog open={!!selectedAgent} onOpenChange={(open) => !open && setSelectedAgent(null)}>
           <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto bg-card border-border">
             <DialogHeader>
-              <DialogTitle className="font-display text-foreground flex items-center gap-2">
-                <Monitor className="h-5 w-5 text-primary" /> Agent {selectedAgent} — Deep Inspection
-              </DialogTitle>
+              <DialogTitle className="font-display text-foreground flex items-center gap-2"><Monitor className="h-5 w-5 text-primary" /> Agent {selectedAgent} — Deep Inspection</DialogTitle>
             </DialogHeader>
             {agentDetail ? (
               <div className="space-y-4">
@@ -351,9 +350,9 @@ export default function AgentHealth() {
                   {agentHwDetail ? <RawJsonViewer data={agentHwDetail} title="Hardware Detail JSON" /> : null}
                 </div>
               </div>
-            ) : agentDetailQ.isLoading ? (
+            ) : (
               <div className="flex items-center justify-center py-12"><div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
-            ) : null}
+            )}
           </DialogContent>
         </Dialog>
       </div>

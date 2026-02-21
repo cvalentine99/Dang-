@@ -1,5 +1,5 @@
 import { trpc } from "@/lib/trpc";
-import { Shield, AlertTriangle, Loader2 } from "lucide-react";
+import { Shield, AlertTriangle, Wifi, WifiOff } from "lucide-react";
 import { ReactNode } from "react";
 
 interface WazuhGuardProps {
@@ -7,48 +7,64 @@ interface WazuhGuardProps {
 }
 
 /**
- * Wraps a page and shows a friendly error state when Wazuh is not configured
- * or the connection fails. Passes through when healthy.
+ * No longer blocks content. Shows an inline connection banner at the top
+ * and always renders children. Pages handle their own empty states.
  */
 export function WazuhGuard({ children }: WazuhGuardProps) {
-  const { data, isLoading, error } = trpc.wazuh.status.useQuery(undefined, {
+  const { data, isLoading } = trpc.wazuh.status.useQuery(undefined, {
     retry: 1,
     staleTime: 60_000,
   });
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+  const isConnected = data?.configured === true && data?.data != null;
 
-  if (error || !data?.configured) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="glass-panel p-8 max-w-lg text-center">
-          <div className="h-14 w-14 rounded-xl bg-destructive/10 flex items-center justify-center mx-auto mb-4">
-            <AlertTriangle className="h-7 w-7 text-destructive" />
-          </div>
-          <h2 className="text-lg font-display font-semibold text-foreground mb-2">
-            Wazuh Not Connected
-          </h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            {!data?.configured
-              ? "The Wazuh API credentials have not been configured. Set WAZUH_HOST, WAZUH_USER, and WAZUH_PASS in your environment secrets."
-              : data?.error ?? "Unable to connect to the Wazuh manager. Check your configuration."}
-          </p>
-          <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-            <Shield className="h-3.5 w-3.5" />
-            <span className="font-mono">
-              {data?.configured ? `Host: ${(data as Record<string, unknown>).host ?? "—"}` : "Not configured"}
-            </span>
-          </div>
+  return (
+    <div className="space-y-4">
+      {/* Connection status banner */}
+      {!isLoading && (
+        <div className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border text-xs font-medium ${
+          isConnected
+            ? "bg-threat-low/5 border-threat-low/20 text-threat-low"
+            : "bg-threat-high/5 border-threat-high/20 text-threat-high"
+        }`}>
+          {isConnected ? (
+            <>
+              <Wifi className="h-3.5 w-3.5" />
+              <span>Wazuh API Connected</span>
+              <span className="text-muted-foreground ml-1">— Live data active</span>
+            </>
+          ) : (
+            <>
+              <WifiOff className="h-3.5 w-3.5" />
+              <span>Wazuh API Not Connected</span>
+              <span className="text-muted-foreground ml-1">
+                {!data?.configured
+                  ? "— Set WAZUH_HOST, WAZUH_USER, WAZUH_PASS in Secrets"
+                  : `— ${(data as Record<string, unknown>)?.error ?? "Connection failed"}`}
+              </span>
+            </>
+          )}
         </div>
-      </div>
-    );
-  }
+      )}
 
-  return <>{children}</>;
+      {/* Always render children */}
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Hook to check Wazuh connection status without blocking.
+ */
+export function useWazuhStatus() {
+  const { data, isLoading } = trpc.wazuh.status.useQuery(undefined, {
+    retry: 1,
+    staleTime: 60_000,
+  });
+  return {
+    isLoading,
+    isConfigured: data?.configured === true,
+    isConnected: data?.configured === true && data?.data != null,
+    error: (data as Record<string, unknown>)?.error as string | undefined,
+  };
 }
