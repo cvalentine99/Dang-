@@ -561,3 +561,11 @@
 - [x] CI passing: all 3 jobs (Typecheck, Test, Build) green
 - [x] Docker Build passing: multi-platform image pushed to ghcr.io/cvalentine99/dang-siem:latest
 - [x] Save checkpoint
+
+## Phase 40: Geographic Threat Distribution Map
+
+- [x] Replace table-based Geographic Threat Distribution with interactive map
+- [x] Build ThreatMap component with country-level threat heatmap circles
+- [x] Country hover tooltips showing threat count, avg severity, and threat level
+- [x] Amethyst Nexus themed map (dark tiles, purple/violet heat colors, severity legend)
+- [x] Save checkpoint
