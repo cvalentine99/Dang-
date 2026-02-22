@@ -6,6 +6,8 @@ import { wazuhRouter } from "./wazuh/wazuhRouter";
 import { hybridragRouter } from "./hybridrag/hybridragRouter";
 import { savedSearchesRouter } from "./savedSearches/savedSearchesRouter";
 import { baselinesRouter } from "./baselines/baselinesRouter";
+import { indexerRouter } from "./indexer/indexerRouter";
+import { otxRouter } from "./otx/otxRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -29,6 +31,12 @@ export const appRouter = router({
 
   // Configuration baselines for drift detection
   baselines: baselinesRouter,
+
+  // Wazuh Indexer (OpenSearch/Elasticsearch) — read-only queries
+  indexer: indexerRouter,
+
+  // AlienVault OTX Threat Intelligence — read-only
+  otx: otxRouter,
 });
 
 export type AppRouter = typeof appRouter;

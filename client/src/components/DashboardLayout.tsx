@@ -39,6 +39,7 @@ import {
   Crosshair,
   Layers,
   BookOpen,
+  Radar,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -48,6 +49,7 @@ import { Button } from "./ui/button";
 const menuItems = [
   { icon: LayoutDashboard, label: "SOC Console", path: "/", group: "Operations" },
   { icon: Activity, label: "Fleet Command", path: "/agents", group: "Operations" },
+  { icon: Radar, label: "Threat Intel", path: "/threat-intel", group: "Operations" },
   { icon: Layers, label: "SIEM Events", path: "/siem", group: "Detection" },
   { icon: AlertTriangle, label: "Alerts Timeline", path: "/alerts", group: "Detection" },
   { icon: Bug, label: "Vulnerabilities", path: "/vulnerabilities", group: "Detection" },

@@ -327,3 +327,92 @@
 - [x] Delete baseline from detail view and from load dialog
 - [x] Write vitest tests for baseline CRUD (14 tests, 62 total passing)
 - [x] Save checkpoint
+
+## Phase 31: Scheduled Baseline Auto-Capture
+
+- [ ] Database table: baseline_schedules (id, userId, name, agentIds, frequency, enabled, lastRunAt, nextRunAt, retentionCount, createdAt)
+- [ ] Backend: Schedule CRUD (create, list, toggle, delete, triggerNow)
+- [ ] Backend: BaselineScheduler service with interval-based execution
+- [ ] Frontend: Schedules tab in DriftComparison with schedule list
+- [ ] Frontend: Create schedule dialog (name, frequency, retention, agent selection)
+- [ ] Frontend: Toggle schedule on/off, delete, trigger now
+- [ ] Frontend: Schedule status badges (active/paused/overdue)
+- [ ] Frontend: Baseline history timeline showing auto-captured snapshots
+- [ ] Write vitest tests for schedule CRUD
+- [ ] Save checkpoint
+
+## Phase 32: Wazuh Indexer API Integration (Critical Gap)
+
+### Backend — Indexer Client & Router
+- [x] Create indexerClient.ts (Elasticsearch/OpenSearch HTTP client, Basic Auth, TLS skip, rate limiting)
+- [x] Add WAZUH_INDEXER_HOST, WAZUH_INDEXER_PORT, WAZUH_INDEXER_USER, WAZUH_INDEXER_PASS env vars
+- [x] Create indexerRouter.ts with query builders for all 5 index patterns
+- [x] Wire indexer router into routers.ts
+- [x] Indexer status check endpoint (isIndexerConfigured + cluster health)
+
+### Indexer Endpoints — wazuh-alerts-*
+- [x] alertsSearch: full-text search with time range, agent, rule level, MITRE tactic filters
+- [x] alertsAggByLevel: severity distribution aggregation (date_histogram + terms)
+- [x] alertsAggByAgent: top agents by alert count (top talkers)
+- [x] alertsAggByMitre: MITRE tactic/technique distribution over time
+- [x] alertsAggByRule: top triggered rules aggregation
+- [x] alertsTimeline: time-series alert count (date_histogram)
+- [x] alertsGeoAgg: geographic distribution by GeoLocation.country_name
+- [x] alertsComplianceAgg: filter by pci_dss_*, hipaa_*, nist_*, gdpr_* tags
+
+### Indexer Endpoints — wazuh-states-vulnerabilities-*
+- [x] vulnSearch: global vulnerability search across all agents
+- [x] vulnAggBySeverity: severity distribution aggregation
+- [x] vulnAggByAgent: top vulnerable agents
+- [x] vulnAggByPackage: most exploited packages
+- [x] vulnAggByCVE: top CVEs across fleet
+
+### Indexer Endpoints — wazuh-monitoring-*, wazuh-statistics-*, wazuh-archives-*
+- [x] monitoringAgentHistory: agent connection state over time
+- [x] statisticsPerformance: manager performance metrics over time
+- [x] archivesSearch: raw event search for forensic investigation
+
+### Mock Data for Indexer
+- [ ] Create MOCK_INDEXER_ALERTS with realistic alert documents
+- [ ] Create MOCK_INDEXER_VULNS with vulnerability state documents
+- [ ] Create mock aggregation response shapes
+
+### Frontend — SOC Console Upgrades
+- [ ] Indexer connectivity indicator (green when connected)
+- [ ] Threat Trends Area Chart (alerts over time from wazuh-alerts-*)
+- [ ] Top Talkers Pie Chart (top agents by alert count)
+- [ ] Alert severity distribution bar chart
+- [ ] Top triggered rules table from Indexer aggregation
+
+### Frontend — Vulnerabilities Page Upgrade
+- [ ] Global Vulnerability Score (CVSS weighted average)
+- [ ] Fleet-wide CVE aggregation table
+- [ ] Most exploited packages chart
+- [ ] Top vulnerable agents ranking
+
+### Frontend — SIEM Events Upgrade
+- [ ] Indexer-powered alert search (replaces mock events when Indexer connected)
+- [ ] Time range picker for Indexer queries
+- [ ] Real alert detail with full _source document
+
+### Frontend — Compliance & MITRE Upgrades
+- [ ] Framework-specific alert filtering (PCI DSS, HIPAA, NIST, GDPR)
+- [ ] Compliance alert trend charts
+- [ ] Time-series tactic progression chart from Indexer data
+
+### Tests
+- [ ] Write vitest tests for indexer client
+- [ ] Write vitest tests for indexer router endpoints
+- [ ] Save checkpoint
+
+## Phase 33: OTX Threat Intelligence Feed
+- [x] Store OTX API key as server-side secret
+- [x] Backend OTX proxy router: subscribed pulses, pulse search, pulse detail, IOC lookup (11 endpoints)
+- [x] IOC indicator search (IPv4, IPv6, domain, hostname, file hash, URL, CVE)
+- [x] Pulse detail with IOC list, targeted countries, industries, MITRE mappings
+- [x] Threat Intel page under Operations in sidebar with Amethyst Nexus theme
+- [x] Pulse feed browser with search and pagination
+- [x] IOC lookup tool with type-specific result rendering
+- [x] Subscribed feed dashboard with recent pulses and stats
+- [x] Write vitest tests for OTX router (11 tests, 73 total passing)
+- [x] Save checkpoint

@@ -19,6 +19,7 @@ import ClusterHealth from "./pages/ClusterHealth";
 import ThreatHunting from "./pages/ThreatHunting";
 import SiemEvents from "./pages/SiemEvents";
 import RulesetExplorer from "./pages/RulesetExplorer";
+import ThreatIntel from "./pages/ThreatIntel";
 
 function Router() {
   return (
@@ -36,6 +37,7 @@ function Router() {
         <Route path="/siem" component={SiemEvents} />
         <Route path="/hunting" component={ThreatHunting} />
         <Route path="/rules" component={RulesetExplorer} />
+        <Route path="/threat-intel" component={ThreatIntel} />
         <Route path="/notes" component={AnalystNotes} />
         <Route path="/assistant" component={Assistant} />
         <Route path="/404" component={NotFound} />
