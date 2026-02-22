@@ -777,3 +777,21 @@
 - [x] All 161 tests passing
 - [x] Visual verification: Knowledge Graph with Attack Paths button, Investigations with Export MD/HTML buttons
 - [x] Save checkpoint
+
+## Phase 50: Dependabot Security Alert Remediation
+
+### Audit & Review
+- [x] Run pnpm audit — identified 29 vulnerabilities (1 critical, 13 high, 13 moderate, 2 low)
+- [x] Categorized: 11 direct deps, 18 transitive deps (via AWS SDK, express, geoip-lite, streamdown, tailwind)
+
+### Patch & Update
+- [x] Updated 11 direct dependencies (@trpc/*, axios, @aws-sdk/*, vite, tailwindcss, streamdown, esbuild, pnpm)
+- [x] Applied 9 pnpm overrides for transitive vulnerabilities (qs, fast-xml-parser, tar, lodash, minimatch, mdast-util-to-hast, @smithy/config-resolver, esbuild)
+- [x] Result: 0 vulnerabilities remaining (was 29)
+
+### Verification
+- [x] TypeScript compiles clean (0 errors)
+- [x] All 161 tests pass
+- [x] Production build succeeds (12.39s)
+- [x] Pushed to GitHub (commit 88c7c31)
+- [x] Save checkpoint
