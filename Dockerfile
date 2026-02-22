@@ -1,12 +1,13 @@
 # ============================================================================
 # Dang! SIEM — Multi-stage Docker build
-# Target: Linux x86_64 (Ubuntu 22.04, kernel 6.8.0-100-generic)
+# Target: Linux x86_64 (Ubuntu 22.04+)
 # ============================================================================
 
 # ── Stage 1: Dependencies ────────────────────────────────────────────────────
 FROM node:22-slim AS deps
 
-RUN corepack enable && corepack prepare pnpm@10.4.1 --activate
+# Install pnpm via npm (more reliable than corepack in restricted networks)
+RUN npm install -g pnpm@10.4.1
 
 WORKDIR /app
 
@@ -19,7 +20,7 @@ RUN pnpm install --frozen-lockfile
 # ── Stage 2: Build ───────────────────────────────────────────────────────────
 FROM node:22-slim AS builder
 
-RUN corepack enable && corepack prepare pnpm@10.4.1 --activate
+RUN npm install -g pnpm@10.4.1
 
 WORKDIR /app
 
@@ -32,7 +33,7 @@ RUN pnpm run build
 # ── Stage 3: Production ─────────────────────────────────────────────────────
 FROM node:22-slim AS production
 
-RUN corepack enable && corepack prepare pnpm@10.4.1 --activate
+RUN npm install -g pnpm@10.4.1
 
 # Install curl for health checks and tini for proper signal handling
 RUN apt-get update && apt-get install -y --no-install-recommends \
