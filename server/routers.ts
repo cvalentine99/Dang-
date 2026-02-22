@@ -11,6 +11,7 @@ import { otxRouter } from "./otx/otxRouter";
 import { notesRouter } from "./notes/notesRouter";
 import { localAuthRouter } from "./localAuth/localAuthRouter";
 import { adminUsersRouter } from "./admin/adminUsersRouter";
+import { graphRouter } from "./graph/graphRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -49,6 +50,9 @@ export const appRouter = router({
 
   // Admin user management (admin-only)
   adminUsers: adminUsersRouter,
+
+  // Knowledge Graph + HybridRAG Agentic Pipeline
+  graph: graphRouter,
 });
 
 export type AppRouter = typeof appRouter;

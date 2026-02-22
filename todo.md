@@ -670,3 +670,77 @@
 - [x] Auto-refresh cleans up on unmount and interval change
 - [x] Styled with Amethyst Nexus glass-morphism theme
 - [x] All 143 tests passing, TypeScript clean
+
+## Phase 48: HybridRAG Knowledge Graph Integration
+
+### Knowledge Graph Database Schema
+- [x] Create graph_endpoints table (agent_id, hostname, ip_address, os_version, architecture)
+- [x] Create graph_processes table (process_name, pid, state, startup_type, endpoint FK)
+- [x] Create graph_network_ports table (port_number, protocol, state, process FK)
+- [x] Create graph_software_packages table (package_name, version, architecture, vendor, endpoint FK)
+- [x] Create graph_identities table (username, uid, shell, is_admin, endpoint FK)
+- [x] Create graph_vulnerabilities table (cve_id, cvss_score, severity, software_package FK)
+- [x] Create graph_security_events table (rule_id, mitre_tactic, timestamp, severity_level, endpoint FK)
+- [x] Create graph_sync_status table (last_sync, entity_counts, status)
+- [x] Create investigation_sessions + investigation_notes tables
+- [x] Run migrations (0009_fresh_marrow.sql)
+
+### ETL Pipeline (Wazuh Indexer → Graph Tables)
+- [x] Build ETL service (etlService.ts) with 7 sync functions
+- [x] Sync wazuh-states-vulnerabilities-* → graph_vulnerabilities
+- [x] Sync wazuh-alerts-* → graph_security_events (incremental)
+- [x] Sync Wazuh Server API syscollector → endpoints, processes, network_ports, identities
+- [x] Add incremental sync support (track last sync timestamp via graph_sync_status)
+- [x] Create tRPC procedures for manual sync trigger and status (graphRouter.ts)
+
+### Agentic LLM Pipeline
+- [x] Build intent analysis module (structured JSON output with NER)
+- [x] Build graph query module (graphQueryService.ts with SQL JOINs)
+- [x] Build indexer search module (multi_match + BM25 queries)
+- [x] Build context assembly module (parallel retrieval via Promise.all)
+- [x] Build LLM synthesis module (SecondSight persona, chain-of-thought)
+- [x] Build follow-up suggestion generator
+- [x] Create tRPC mutation for analyst chat (graphRouter.ts)
+
+### Security Analyst Chat UI (/analyst)
+- [x] Build chat interface with message history and SecondSight persona
+- [x] Show LLM responses with markdown rendering (Streamdown)
+- [x] Display retrieval sources (Knowledge Graph, Wazuh Indexer, LLM Synthesis badges)
+- [x] Add raw JSON evidence toggle per message
+- [x] Show retrieval source indicators
+- [x] Add 6 suggested query buttons for common security questions
+
+### Knowledge Graph Visualization (/graph)
+- [x] Build interactive force-directed graph with D3.js
+- [x] Display entity nodes with type-specific colors (7 entity types)
+- [x] Display relationship edges between entities
+- [x] Click-to-inspect node details panel
+- [x] Entity type filter toggles (bottom bar)
+- [x] Search entities with text input
+- [x] Zoom/pan/reset controls
+- [x] Graph stats sidebar panel
+- [x] Empty state with link to Data Pipeline
+
+### Investigation Workspace (/investigations)
+- [x] Investigation sessions (create, list, view detail)
+- [x] Analyst notes per investigation (create, delete with timestamps)
+- [x] Status management (active, closed, archived) with filter tabs
+- [x] Tags for categorization
+- [x] Evidence collection placeholder
+- [x] Search investigations
+
+### ETL Pipeline Management UI (/pipeline)
+- [x] Show sync status per entity type (7 cards with last run, count, status)
+- [x] Manual "Run Full Sync" trigger button
+- [x] Pipeline flow visualization (Wazuh Server API → Indexer → Knowledge Graph → LLM)
+- [x] Entity count summary cards (Total Entities, Entity Types, Last Sync)
+- [x] Sync results display with success/failure per entity
+
+### Integration & Testing
+- [x] Add routes to App.tsx for /analyst, /graph, /investigations, /pipeline
+- [x] Add Intelligence group to sidebar (Security Analyst, Knowledge Graph, Investigations, Data Pipeline)
+- [x] Write 20 vitest tests for graph router (stats, ETL, graph queries, investigations CRUD)
+- [x] Verify TypeScript compiles clean (0 errors)
+- [x] Visual verification of all 4 pages in browser
+- [x] All 161 tests passing
+- [x] Save checkpoint

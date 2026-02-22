@@ -43,6 +43,10 @@ import {
   Radar,
   HeartPulse,
   UserCog,
+  Brain,
+  Network,
+  FolderSearch,
+  Database,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -64,6 +68,10 @@ const menuItems = [
   { icon: Monitor, label: "IT Hygiene", path: "/hygiene", group: "Posture" },
   { icon: Server, label: "Cluster Health", path: "/cluster", group: "System" },
   { icon: HeartPulse, label: "System Status", path: "/status", group: "System" },
+  { icon: Brain, label: "Security Analyst", path: "/analyst", group: "Intelligence" },
+  { icon: Network, label: "Knowledge Graph", path: "/graph", group: "Intelligence" },
+  { icon: FolderSearch, label: "Investigations", path: "/investigations", group: "Intelligence" },
+  { icon: Database, label: "Data Pipeline", path: "/pipeline", group: "Intelligence" },
   { icon: UserCog, label: "User Management", path: "/admin/users", group: "Admin" },
   { icon: StickyNote, label: "Analyst Notes", path: "/notes", group: "Tools" },
   { icon: Bot, label: "AI Assistant", path: "/assistant", group: "Tools" },
