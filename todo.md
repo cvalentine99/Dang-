@@ -206,3 +206,18 @@
 - [x] IT Hygiene: fallback packages, ports, processes, network interfaces
 - [x] Cluster Health: fallback daemon statuses, manager info, hourly stats, cluster nodes
 - [x] Each page uses mock as fallback, real API data when connected
+
+## Phase 25: Threat Hunting Dashboard (New Page)
+
+- [x] Backend: Uses existing wazuh endpoints for cross-source correlation
+- [x] Query Builder: IOC type selector with search input and quick hunt presets
+- [x] IOC Search: Search by IP, hash, CVE, filename, rule ID, MITRE ID, username across all data
+- [x] Correlation Engine: Cross-reference agents, rules, vulns, FIM, logs, MITRE techniques
+- [x] Hunt Timeline: Timestamped entries with severity indicators and source badges
+- [x] Hunt history: In-session hunt log with timestamps and match counts
+- [x] Results: Expandable source cards with match counts and raw JSON viewer
+- [x] IOC Stats: Source distribution pie, severity distribution, data source coverage bars
+- [x] Fallback data: Uses mock data from shared module when Wazuh not connected
+- [x] Add route (/hunting) and sidebar navigation entry under Detection group
+- [x] All 29 existing vitest tests still passing
+- [x] Save checkpoint

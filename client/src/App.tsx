@@ -16,6 +16,7 @@ import AnalystNotes from "./pages/AnalystNotes";
 import Assistant from "./pages/Assistant";
 import ITHygiene from "./pages/ITHygiene";
 import ClusterHealth from "./pages/ClusterHealth";
+import ThreatHunting from "./pages/ThreatHunting";
 
 function Router() {
   return (
@@ -30,6 +31,7 @@ function Router() {
         <Route path="/fim" component={FileIntegrity} />
         <Route path="/hygiene" component={ITHygiene} />
         <Route path="/cluster" component={ClusterHealth} />
+        <Route path="/hunting" component={ThreatHunting} />
         <Route path="/notes" component={AnalystNotes} />
         <Route path="/assistant" component={Assistant} />
         <Route path="/404" component={NotFound} />
