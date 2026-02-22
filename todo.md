@@ -311,3 +311,19 @@
 - [x] Lazy-loaded DriftComparison component for performance
 - [x] All 48 tests passing, TypeScript clean
 - [x] Save checkpoint
+
+## Phase 30: Known-Good Configuration Baselines
+
+- [x] Database table: config_baselines (id, userId, name, description, agentIds JSON, snapshotData JSON, createdAt, updatedAt)
+- [x] Backend CRUD: create, list, get, delete baselines (tRPC procedures in server/baselines/baselinesRouter.ts)
+- [x] "Save as Baseline" button with dialog (name, description, agent list preview)
+- [x] "Load Baseline" dialog with saved baselines list, active indicator, delete
+- [x] Live Comparison / Baseline Drift view mode toggle
+- [x] Baseline drift engine: computes new, removed, and changed items per agent per category
+- [x] Baseline drift table with change type badges (New/Removed/Changed), category filter, agent info
+- [x] Baseline metadata display (name, description, date saved, agent badges)
+- [x] Baseline drift KPI cards (total changes, package/service/user changes with breakdown)
+- [x] Color-coded row backgrounds for drift types (green=new, red=removed, amber=changed)
+- [x] Delete baseline from detail view and from load dialog
+- [x] Write vitest tests for baseline CRUD (14 tests, 62 total passing)
+- [x] Save checkpoint

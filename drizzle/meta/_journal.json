@@ -29,6 +29,13 @@
       "when": 1771751388413,
       "tag": "0003_nice_human_robot",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1771756319318,
+      "tag": "0004_strong_dark_beast",
+      "breakpoints": true
     }
   ]
 }

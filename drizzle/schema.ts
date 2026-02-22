@@ -97,3 +97,26 @@ export const savedSearches = mysqlTable("saved_searches", {
 
 export type SavedSearch = typeof savedSearches.$inferSelect;
 export type InsertSavedSearch = typeof savedSearches.$inferInsert;
+
+/**
+ * Configuration baselines — "known-good" snapshots of agent packages, services, and users.
+ * Used for drift detection over time. Never written back to Wazuh.
+ */
+export const configBaselines = mysqlTable("config_baselines", {
+  id: int("id").autoincrement().primaryKey(),
+  /** User who created this baseline */
+  userId: int("userId").notNull(),
+  /** Human-readable name for the baseline */
+  name: varchar("name", { length: 256 }).notNull(),
+  /** Optional description */
+  description: text("description"),
+  /** Comma-separated agent IDs included in this baseline */
+  agentIds: json("agentIds").$type<string[]>().notNull(),
+  /** Full snapshot: { packages: Record<agentId, pkg[]>, services: Record<agentId, svc[]>, users: Record<agentId, usr[]> } */
+  snapshotData: json("snapshotData").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ConfigBaseline = typeof configBaselines.$inferSelect;
+export type InsertConfigBaseline = typeof configBaselines.$inferInsert;

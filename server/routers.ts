@@ -5,6 +5,7 @@ import { publicProcedure, router } from "./_core/trpc";
 import { wazuhRouter } from "./wazuh/wazuhRouter";
 import { hybridragRouter } from "./hybridrag/hybridragRouter";
 import { savedSearchesRouter } from "./savedSearches/savedSearchesRouter";
+import { baselinesRouter } from "./baselines/baselinesRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -25,6 +26,9 @@ export const appRouter = router({
 
   // Saved search queries (SIEM + Threat Hunting)
   savedSearches: savedSearchesRouter,
+
+  // Configuration baselines for drift detection
+  baselines: baselinesRouter,
 });
 
 export type AppRouter = typeof appRouter;
