@@ -416,3 +416,27 @@
 - [x] Subscribed feed dashboard with recent pulses and stats
 - [x] Write vitest tests for OTX router (11 tests, 73 total passing)
 - [x] Save checkpoint
+
+## Phase 34: SOC Console Indexer Upgrade & SIEM OTX Cross-Reference
+
+### SOC Console Indexer-Powered Panels
+- [x] Threat Trends area chart (stacked by severity from alertsAggByLevel, with mock fallback)
+- [x] Top Talkers donut chart (agents ranked by alert volume from alertsAggByAgent, with mock fallback)
+- [x] Geographic Heatmap (country-level alert distribution from alertsGeoAgg, with mock fallback)
+- [x] Top Firing Rules table (rules ranked by trigger count from alertsAggByRule, with mock fallback)
+- [x] MITRE Tactic Activity bar chart (trending tactics from alertsAggByMitre, with mock fallback)
+- [x] Indexer connectivity indicator (green/yellow/red from indexer.status)
+- [x] Dual-source badges showing data source (Server API / Indexer / Mock) on every panel
+- [x] Graceful fallback to mock panels when Indexer not configured
+- [x] EPS gauge from Indexer alert count per second
+- [x] Time range selector (1h/6h/24h/7d/30d) for Indexer queries
+
+### SIEM Events OTX IOC Cross-Reference
+- [x] "Check in OTX" button on Source IP (public IPs only, skips RFC1918)
+- [x] "Check in OTX" button on Destination IP (public IPs only, skips RFC1918)
+- [x] OTX lookup dialog with pulse count, reputation, country, ASN KPI cards
+- [x] Threat verdict badge (Malicious/Suspicious/Clean) based on pulse count
+- [x] Related threat pulses list with author, date, tags, and OTX links
+- [x] Validation tags display
+- [x] All 73 tests passing, TypeScript clean
+- [x] Save checkpoint

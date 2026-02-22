@@ -12,9 +12,11 @@ import {
   Search, Filter, ChevronDown, ChevronRight, Clock, AlertTriangle,
   Shield, Eye, FileText, Terminal, ExternalLink, Copy, X, Layers,
   Activity, Database, Globe, Cpu, ArrowUpDown, Link2, Save,
-  BookmarkPlus, Bookmark, Trash2,
+  BookmarkPlus, Bookmark, Trash2, Radar, Loader2, AlertCircle,
+  CheckCircle2, MapPin, Hash,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -80,6 +82,9 @@ export default function SiemEvents() {
   const [saveDescription, setSaveDescription] = useState("");
   const [showSavedSearches, setShowSavedSearches] = useState(false);
 
+  // OTX IOC lookup state
+  const [otxLookupIndicator, setOtxLookupIndicator] = useState<{ type: "IPv4" | "IPv6" | "domain" | "hostname" | "file" | "url" | "cve"; value: string } | null>(null);
+
   // ─── API Queries ─────────────────────────────────────────────────────────
   const statusQ = trpc.wazuh.status.useQuery();
   const isConfigured = !!(statusQ.data as Record<string, unknown>)?.configured;
@@ -92,6 +97,14 @@ export default function SiemEvents() {
     { limit: 500, offset: 0 },
     { enabled: isConfigured }
   );
+
+  // OTX IOC lookup query
+  const otxLookupQ = trpc.otx.indicatorLookup.useQuery(
+    { type: otxLookupIndicator?.type ?? "IPv4", value: otxLookupIndicator?.value ?? "", section: "general" },
+    { enabled: !!otxLookupIndicator, retry: false, staleTime: 120_000 }
+  );
+  const otxStatusQ = trpc.otx.status.useQuery(undefined, { staleTime: 300_000 });
+  const isOtxConfigured = !!otxStatusQ.data?.configured;
 
   // Saved searches
   const savedSearchesQ = trpc.savedSearches.list.useQuery({ searchType: "siem" });
@@ -848,15 +861,52 @@ export default function SiemEvents() {
                         <h4 className="text-xs font-semibold text-violet-300">Source</h4>
                         <div className="space-y-1 text-xs">
                           {srcip && (
-                            <div className="flex justify-between">
+                            <div className="flex justify-between items-center">
                               <span className="text-slate-500">Source IP</span>
-                              <span className="font-mono text-slate-200">{srcip}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-slate-200">{srcip}</span>
+                                {isOtxConfigured && !srcip.startsWith("10.") && !srcip.startsWith("192.168.") && !srcip.startsWith("172.") && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setOtxLookupIndicator({ type: "IPv4", value: srcip }); }}
+                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium bg-violet-500/20 text-violet-300 border border-violet-500/30 hover:bg-violet-500/30 transition-colors"
+                                    title="Check in OTX"
+                                  >
+                                    <Radar className="h-2.5 w-2.5" /> OTX
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           )}
                           {(event.data as Record<string, unknown>)?.srcport ? (
                             <div className="flex justify-between">
                               <span className="text-slate-500">Source Port</span>
                               <span className="font-mono text-slate-200">{String((event.data as Record<string, unknown>).srcport)}</span>
+                            </div>
+                          ) : null}
+                          {(event.data as Record<string, unknown>)?.dstip ? (
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500">Dest IP</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-slate-200">{String((event.data as Record<string, unknown>).dstip)}</span>
+                                {isOtxConfigured && (() => {
+                                  const dip = String((event.data as Record<string, unknown>).dstip);
+                                  return !dip.startsWith("10.") && !dip.startsWith("192.168.") && !dip.startsWith("172.") ? (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setOtxLookupIndicator({ type: "IPv4", value: dip }); }}
+                                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium bg-violet-500/20 text-violet-300 border border-violet-500/30 hover:bg-violet-500/30 transition-colors"
+                                      title="Check in OTX"
+                                    >
+                                      <Radar className="h-2.5 w-2.5" /> OTX
+                                    </button>
+                                  ) : null;
+                                })()}
+                              </div>
+                            </div>
+                          ) : null}
+                          {(event.data as Record<string, unknown>)?.dstport ? (
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Dest Port</span>
+                              <span className="font-mono text-slate-200">{String((event.data as Record<string, unknown>).dstport)}</span>
                             </div>
                           ) : null}
                           {dstuser && (
@@ -1239,6 +1289,157 @@ export default function SiemEvents() {
           </div>
         )}
       </GlassPanel>
+
+      {/* ── OTX IOC Lookup Dialog ──────────────────────────────────────── */}
+      <Dialog open={!!otxLookupIndicator} onOpenChange={(open) => { if (!open) setOtxLookupIndicator(null); }}>
+        <DialogContent className="max-w-2xl bg-slate-900/95 border-violet-500/30 backdrop-blur-xl">
+          <DialogHeader>
+            <DialogTitle className="text-violet-300 flex items-center gap-2">
+              <Radar className="h-5 w-5" /> OTX Threat Intelligence Lookup
+            </DialogTitle>
+          </DialogHeader>
+          {otxLookupIndicator && (
+            <div className="space-y-4">
+              {/* Indicator info */}
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-black/30 border border-white/5">
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/30">
+                  {otxLookupIndicator.type}
+                </span>
+                <span className="font-mono text-sm text-slate-200">{otxLookupIndicator.value}</span>
+              </div>
+
+              {/* Loading state */}
+              {otxLookupQ.isLoading && (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 text-violet-400 animate-spin" />
+                  <span className="ml-2 text-sm text-slate-400">Querying OTX...</span>
+                </div>
+              )}
+
+              {/* Error state */}
+              {otxLookupQ.isError && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                  <AlertCircle className="h-4 w-4 text-red-400" />
+                  <span className="text-sm text-red-300">Failed to query OTX: {otxLookupQ.error?.message}</span>
+                </div>
+              )}
+
+              {/* Results */}
+              {otxLookupQ.data && !otxLookupQ.isLoading && (() => {
+                const d = otxLookupQ.data as Record<string, unknown>;
+                if (!d.configured) {
+                  return (
+                    <div className="text-center py-4 text-sm text-slate-500">OTX is not configured</div>
+                  );
+                }
+                const data = d.data as Record<string, unknown> | null;
+                if (!data) return <div className="text-center py-4 text-sm text-slate-500">No data returned</div>;
+
+                const pulseCount = Number((data.pulse_info as Record<string, unknown>)?.count ?? 0);
+                const pulses = ((data.pulse_info as Record<string, unknown>)?.pulses ?? []) as Array<Record<string, unknown>>;
+                const reputation = data.reputation as number | null | undefined;
+                const country = String((data as Record<string, unknown>)?.country_name ?? (data as Record<string, unknown>)?.country ?? "");
+                const asn = String((data as Record<string, unknown>)?.asn ?? "");
+                const validation = ((data as Record<string, unknown>)?.validation ?? []) as Array<Record<string, unknown>>;
+                const sections = ((data as Record<string, unknown>)?.sections ?? []) as string[];
+
+                return (
+                  <div className="space-y-4">
+                    {/* Summary KPIs */}
+                    <div className="grid grid-cols-4 gap-3">
+                      <div className="p-3 rounded-lg bg-black/20 border border-white/5 text-center">
+                        <p className={`text-lg font-display font-bold ${pulseCount > 0 ? "text-red-400" : "text-green-400"}`}>{pulseCount}</p>
+                        <p className="text-[10px] text-slate-500">Pulses</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-black/20 border border-white/5 text-center">
+                        <p className={`text-lg font-display font-bold ${reputation != null && reputation < 0 ? "text-red-400" : "text-green-400"}`}>
+                          {reputation != null ? reputation : "N/A"}
+                        </p>
+                        <p className="text-[10px] text-slate-500">Reputation</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-black/20 border border-white/5 text-center">
+                        <p className="text-lg font-display font-bold text-slate-200">{country || "—"}</p>
+                        <p className="text-[10px] text-slate-500">Country</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-black/20 border border-white/5 text-center">
+                        <p className="text-lg font-display font-bold text-slate-200 truncate">{asn || "—"}</p>
+                        <p className="text-[10px] text-slate-500">ASN</p>
+                      </div>
+                    </div>
+
+                    {/* Verdict */}
+                    <div className={`flex items-center gap-2 p-3 rounded-lg border ${
+                      pulseCount > 5 ? "bg-red-500/10 border-red-500/20" :
+                      pulseCount > 0 ? "bg-amber-500/10 border-amber-500/20" :
+                      "bg-green-500/10 border-green-500/20"
+                    }`}>
+                      {pulseCount > 5 ? (
+                        <><AlertCircle className="h-4 w-4 text-red-400" /><span className="text-sm text-red-300 font-medium">Malicious — Found in {pulseCount} threat pulses</span></>
+                      ) : pulseCount > 0 ? (
+                        <><AlertTriangle className="h-4 w-4 text-amber-400" /><span className="text-sm text-amber-300 font-medium">Suspicious — Found in {pulseCount} threat pulse{pulseCount > 1 ? "s" : ""}</span></>
+                      ) : (
+                        <><CheckCircle2 className="h-4 w-4 text-green-400" /><span className="text-sm text-green-300 font-medium">No known threats — Clean indicator</span></>
+                      )}
+                    </div>
+
+                    {/* Validation tags */}
+                    {validation.length > 0 && (
+                      <div>
+                        <h4 className="text-xs font-semibold text-violet-300 mb-2">Validation</h4>
+                        <div className="flex flex-wrap gap-1">
+                          {validation.map((v, i) => (
+                            <span key={i} className="px-2 py-0.5 rounded text-[10px] font-mono bg-violet-500/20 text-violet-300 border border-violet-500/30">
+                              {String(v.source ?? v.name ?? JSON.stringify(v))}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Related Pulses */}
+                    {pulses.length > 0 && (
+                      <div>
+                        <h4 className="text-xs font-semibold text-violet-300 mb-2">Related Threat Pulses ({pulseCount})</h4>
+                        <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+                          {pulses.slice(0, 10).map((p) => (
+                            <a
+                              key={String(p.id)}
+                              href={`https://otx.alienvault.com/pulse/${String(p.id)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center justify-between p-2 rounded-lg bg-black/20 border border-white/5 hover:border-violet-500/30 transition-colors group"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs text-slate-200 truncate group-hover:text-violet-300 transition-colors">{String(p.name)}</p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className="text-[10px] text-slate-500">{String(p.author_name ?? "—")}</span>
+                                  <span className="text-[10px] text-slate-600">•</span>
+                                  <span className="text-[10px] text-slate-500">{p.created ? new Date(String(p.created)).toLocaleDateString() : "—"}</span>
+                                  {(p.tags as string[] | undefined)?.slice(0, 3).map((tag) => (
+                                    <span key={tag} className="px-1 py-0.5 rounded text-[9px] bg-white/5 text-slate-400">{tag}</span>
+                                  ))}
+                                </div>
+                              </div>
+                              <ExternalLink className="h-3 w-3 text-slate-600 group-hover:text-violet-400 flex-shrink-0 ml-2" />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Available sections */}
+                    {sections.length > 0 && (
+                      <div className="text-[10px] text-slate-600">
+                        Available sections: {sections.join(", ")}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

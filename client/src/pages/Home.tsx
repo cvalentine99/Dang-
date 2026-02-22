@@ -13,9 +13,10 @@ import {
   Activity, AlertTriangle, Shield, ShieldCheck, Bug, Server,
   Cpu, Zap, Users, Clock, Target, BarChart3, Wifi, WifiOff,
   ArrowUpRight, ArrowDownRight, Eye, FileSearch, Monitor,
-  Database, Lock, Globe, TrendingUp, Layers, Radio,
+  Database, Lock, Globe, TrendingUp, Layers, Radio, Radar,
+  MapPin, Flame, Hash,
 } from "lucide-react";
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState } from "react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
   ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, Legend,
@@ -29,8 +30,31 @@ const COLORS = {
   yellow: "oklch(0.795 0.184 86.047)",
   red: "oklch(0.637 0.237 25.331)",
   orange: "oklch(0.705 0.191 22.216)",
+  pink: "oklch(0.656 0.241 354.308)",
+  blue: "oklch(0.623 0.214 259.815)",
 };
+
+const SEVERITY_COLORS: Record<string, string> = {
+  "0": "oklch(0.65 0.02 286)",
+  "1": "oklch(0.65 0.02 286)",
+  "2": "oklch(0.65 0.05 286)",
+  "3": COLORS.cyan,
+  "4": COLORS.cyan,
+  "5": COLORS.green,
+  "6": COLORS.green,
+  "7": COLORS.yellow,
+  "8": COLORS.yellow,
+  "9": COLORS.orange,
+  "10": COLORS.orange,
+  "11": COLORS.red,
+  "12": COLORS.red,
+  "13": COLORS.red,
+  "14": COLORS.pink,
+  "15": COLORS.pink,
+};
+
 const PIE_COLORS = [COLORS.green, COLORS.red, COLORS.yellow, COLORS.cyan, COLORS.purple, COLORS.orange];
+const TOP_TALKER_COLORS = [COLORS.red, COLORS.orange, COLORS.yellow, COLORS.purple, COLORS.cyan, COLORS.green, COLORS.pink, COLORS.blue];
 
 function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
   if (!active || !payload?.length) return null;
@@ -77,7 +101,12 @@ function ActionCard({ icon: Icon, label, path, color }: { icon: React.ElementTyp
   );
 }
 
-function ConnectivityItem({ label, subtitle, connected }: { label: string; subtitle: string; connected: boolean }) {
+function ConnectivityItem({ label, subtitle, connected, status }: { label: string; subtitle: string; connected: boolean; status?: string }) {
+  const statusColor = status === "green" ? "text-threat-low bg-threat-low/10 border-threat-low/20"
+    : status === "yellow" ? "text-yellow-400 bg-yellow-400/10 border-yellow-400/20"
+    : connected ? "text-threat-low bg-threat-low/10 border-threat-low/20"
+    : "text-threat-high bg-threat-high/10 border-threat-high/20";
+  const statusLabel = connected ? (status === "yellow" ? "Degraded" : "Online") : "Not Set";
   return (
     <div className="flex items-center justify-between py-2.5 px-3 rounded-lg bg-secondary/20 border border-border/20">
       <div className="flex items-center gap-3">
@@ -89,10 +118,24 @@ function ConnectivityItem({ label, subtitle, connected }: { label: string; subti
           <p className="text-[10px] text-muted-foreground">{subtitle}</p>
         </div>
       </div>
-      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${connected ? "text-threat-low bg-threat-low/10 border-threat-low/20" : "text-threat-high bg-threat-high/10 border-threat-high/20"}`}>
-        {connected ? "Online" : "Not Set"}
+      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${statusColor}`}>
+        {statusLabel}
       </span>
     </div>
+  );
+}
+
+/** Data source badge */
+function SourceBadge({ source }: { source: "indexer" | "server" | "mock" }) {
+  const config = {
+    indexer: { label: "Indexer", color: "text-threat-low bg-threat-low/10 border-threat-low/20" },
+    server: { label: "Server API", color: "text-primary bg-primary/10 border-primary/20" },
+    mock: { label: "Mock", color: "text-muted-foreground bg-secondary/30 border-border/30" },
+  }[source];
+  return (
+    <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded border ${config.color}`}>
+      {config.label}
+    </span>
   );
 }
 
@@ -102,10 +145,71 @@ function extractItems(raw: unknown): Array<Record<string, unknown>> {
   return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
 }
 
+// ── Mock data for Indexer panels when not connected ─────────────────────────
+const MOCK_THREAT_TRENDS = Array.from({ length: 24 }, (_, i) => ({
+  hour: `${String(i).padStart(2, "0")}:00`,
+  critical: Math.floor(Math.random() * 8) + 1,
+  high: Math.floor(Math.random() * 25) + 5,
+  medium: Math.floor(Math.random() * 60) + 20,
+  low: Math.floor(Math.random() * 120) + 40,
+  info: Math.floor(Math.random() * 200) + 80,
+}));
+
+const MOCK_TOP_TALKERS = [
+  { agentId: "003", agentName: "web-server-prod-01", count: 4521, avgLevel: 7.2 },
+  { agentId: "007", agentName: "db-server-prod-01", count: 3187, avgLevel: 8.1 },
+  { agentId: "001", agentName: "dc-primary-01", count: 2843, avgLevel: 5.4 },
+  { agentId: "005", agentName: "mail-gateway-01", count: 2156, avgLevel: 6.8 },
+  { agentId: "009", agentName: "vpn-gateway-01", count: 1892, avgLevel: 9.3 },
+  { agentId: "002", agentName: "app-server-01", count: 1654, avgLevel: 4.2 },
+  { agentId: "011", agentName: "dns-server-01", count: 1423, avgLevel: 3.9 },
+  { agentId: "004", agentName: "file-server-01", count: 987, avgLevel: 5.1 },
+];
+
+const MOCK_GEO_DATA = [
+  { country: "United States", count: 8432, avgLevel: 6.2 },
+  { country: "China", count: 5621, avgLevel: 9.1 },
+  { country: "Russia", count: 3847, avgLevel: 10.3 },
+  { country: "Germany", count: 2156, avgLevel: 4.8 },
+  { country: "Brazil", count: 1893, avgLevel: 5.7 },
+  { country: "India", count: 1654, avgLevel: 5.2 },
+  { country: "Netherlands", count: 1287, avgLevel: 7.4 },
+  { country: "South Korea", count: 943, avgLevel: 6.1 },
+  { country: "United Kingdom", count: 876, avgLevel: 4.3 },
+  { country: "France", count: 654, avgLevel: 5.9 },
+];
+
+const MOCK_TOP_RULES = [
+  { ruleId: "5710", description: "sshd: Attempt to login using a denied user.", count: 3241, level: 12 },
+  { ruleId: "5503", description: "PAM: User login failed.", count: 2876, level: 10 },
+  { ruleId: "31101", description: "Web server 400 error code.", count: 2543, level: 6 },
+  { ruleId: "5716", description: "sshd: Authentication success.", count: 1987, level: 3 },
+  { ruleId: "60103", description: "Integrity checksum changed.", count: 1654, level: 7 },
+  { ruleId: "5402", description: "Successful sudo to ROOT executed.", count: 1432, level: 5 },
+  { ruleId: "31104", description: "Web server 403 error code.", count: 1287, level: 6 },
+  { ruleId: "5501", description: "Login session opened.", count: 1098, level: 3 },
+  { ruleId: "87901", description: "Vulnerability detected in package.", count: 876, level: 8 },
+  { ruleId: "80791", description: "Docker: Container started.", count: 654, level: 3 },
+];
+
+const MOCK_MITRE_TRENDS = [
+  { tactic: "Initial Access", count: 4521, trend: 12 },
+  { tactic: "Execution", count: 3876, trend: -5 },
+  { tactic: "Persistence", count: 3241, trend: 8 },
+  { tactic: "Privilege Escalation", count: 2987, trend: 15 },
+  { tactic: "Defense Evasion", count: 2654, trend: -3 },
+  { tactic: "Credential Access", count: 2432, trend: 22 },
+  { tactic: "Discovery", count: 2187, trend: 1 },
+  { tactic: "Lateral Movement", count: 1876, trend: 18 },
+  { tactic: "Collection", count: 1543, trend: -8 },
+  { tactic: "Command & Control", count: 1287, trend: 6 },
+];
+
 export default function Home() {
   const utils = trpc.useUtils();
   const [, setLocation] = useLocation();
 
+  // ── Server API queries ──────────────────────────────────────────────────────
   const statusQ = trpc.wazuh.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
   const isConnected = statusQ.data?.configured === true && statusQ.data?.data != null;
 
@@ -118,7 +222,38 @@ export default function Home() {
   const mitreTacticsQ = trpc.wazuh.mitreTactics.useQuery(undefined, { retry: false, staleTime: 120_000, enabled: isConnected });
   const logsSummaryQ = trpc.wazuh.managerLogsSummary.useQuery(undefined, { retry: false, staleTime: 60_000, enabled: isConnected });
 
-  const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); }, [utils]);
+  // ── Indexer queries ─────────────────────────────────────────────────────────
+  const indexerStatusQ = trpc.indexer.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
+  const isIndexerConnected = indexerStatusQ.data?.configured === true && indexerStatusQ.data?.healthy === true;
+  const indexerClusterStatus = isIndexerConnected ? String((indexerStatusQ.data?.data as Record<string, unknown>)?.status ?? "unknown") : undefined;
+
+  const [indexerTimeRange] = useState({ from: "now-24h", to: "now" });
+
+  const alertsAggByLevelQ = trpc.indexer.alertsAggByLevel.useQuery(
+    { ...indexerTimeRange, interval: "1h" },
+    { retry: false, staleTime: 30_000, enabled: isIndexerConnected }
+  );
+  const alertsAggByAgentQ = trpc.indexer.alertsAggByAgent.useQuery(
+    { ...indexerTimeRange, topN: 8 },
+    { retry: false, staleTime: 30_000, enabled: isIndexerConnected }
+  );
+  const alertsGeoAggQ = trpc.indexer.alertsGeoAgg.useQuery(
+    { ...indexerTimeRange, topN: 10 },
+    { retry: false, staleTime: 60_000, enabled: isIndexerConnected }
+  );
+  const alertsAggByRuleQ = trpc.indexer.alertsAggByRule.useQuery(
+    { ...indexerTimeRange, topN: 10 },
+    { retry: false, staleTime: 30_000, enabled: isIndexerConnected }
+  );
+  const alertsAggByMitreQ = trpc.indexer.alertsAggByMitre.useQuery(
+    { ...indexerTimeRange },
+    { retry: false, staleTime: 60_000, enabled: isIndexerConnected }
+  );
+
+  const handleRefresh = useCallback(() => {
+    utils.wazuh.invalidate();
+    utils.indexer.invalidate();
+  }, [utils]);
 
   // ── Agent summary (real or fallback) ──────────────────────────────────────
   const agentData = useMemo(() => {
@@ -135,7 +270,7 @@ export default function Home() {
   }, [agentSummaryQ.data, isConnected]);
 
   // ── EPS data ──────────────────────────────────────────────────────────────
-  const epsData: { eps: number; totalEvents: number; decodedEvents: number; droppedEvents: number } = useMemo(() => {
+  const epsData = useMemo(() => {
     if (isConnected && analysisdQ.data) {
       const items = extractItems(analysisdQ.data);
       const first = items[0];
@@ -145,7 +280,7 @@ export default function Home() {
     return { eps: Number(ds.events_received ?? 0), totalEvents: Number(ds.events_received ?? 0), decodedEvents: Number(ds.syscheck_events_decoded ?? 0) + Number(ds.alerts_written ?? 0), droppedEvents: Number(ds.events_dropped ?? 0) };
   }, [analysisdQ.data, isConnected]);
 
-  // ── Hourly trend ──────────────────────────────────────────────────────────
+  // ── Hourly trend (Server API) ────────────────────────────────────────────
   const hourlyData = useMemo(() => {
     const raw = isConnected ? statsHourlyQ.data : MOCK_MANAGER_STATS;
     const items = extractItems(raw);
@@ -166,8 +301,8 @@ export default function Home() {
     return Object.entries(first).filter(([k]) => !["affected_items", "total_affected_items", "total_failed_items", "failed_items"].includes(k)).map(([name, status]) => ({ name, status: String(status) }));
   }, [managerStatusQ.data, isConnected]);
 
-  // ── Top rules ─────────────────────────────────────────────────────────────
-  const topRules = useMemo(() => {
+  // ── Top rules (Server API definition) ─────────────────────────────────────
+  const topRulesDef = useMemo(() => {
     const raw = isConnected ? rulesQ.data : MOCK_RULES;
     return extractItems(raw).slice(0, 8);
   }, [rulesQ.data, isConnected]);
@@ -178,7 +313,7 @@ export default function Home() {
     return extractItems(raw).slice(0, 8);
   }, [agentsQ.data, isConnected]);
 
-  // ── MITRE tactics ─────────────────────────────────────────────────────────
+  // ── MITRE tactics (Server API) ────────────────────────────────────────────
   const mitreData = useMemo(() => {
     const raw = isConnected ? mitreTacticsQ.data : MOCK_MITRE_TACTICS;
     return extractItems(raw).slice(0, 14).map(t => ({
@@ -211,6 +346,110 @@ export default function Home() {
     { name: "Pending", value: agentData.pending },
   ].filter(d => d.value > 0), [agentData]);
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // INDEXER DATA — Threat Trends, Top Talkers, Geo, Top Rules, MITRE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** Threat Trends: stacked severity area chart from alertsAggByLevel */
+  const threatTrendsData = useMemo(() => {
+    if (isIndexerConnected && alertsAggByLevelQ.data?.data) {
+      const aggs = (alertsAggByLevelQ.data.data as unknown as Record<string, unknown>)?.aggregations as Record<string, unknown> | undefined;
+      const timeline = aggs?.timeline as { buckets?: Array<{ key_as_string: string; levels: { buckets: Array<{ key: number; doc_count: number }> } }> } | undefined;
+      if (timeline?.buckets) {
+        return timeline.buckets.map(b => {
+          const levelMap: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+          for (const lb of b.levels.buckets) {
+            const lvl = lb.key;
+            if (lvl >= 12) levelMap.critical += lb.doc_count;
+            else if (lvl >= 9) levelMap.high += lb.doc_count;
+            else if (lvl >= 6) levelMap.medium += lb.doc_count;
+            else if (lvl >= 3) levelMap.low += lb.doc_count;
+            else levelMap.info += lb.doc_count;
+          }
+          const ts = new Date(b.key_as_string);
+          return { hour: `${String(ts.getHours()).padStart(2, "0")}:00`, ...levelMap };
+        });
+      }
+    }
+    return MOCK_THREAT_TRENDS;
+  }, [alertsAggByLevelQ.data, isIndexerConnected]);
+
+  const threatTrendsSource: "indexer" | "mock" = isIndexerConnected && alertsAggByLevelQ.data?.data ? "indexer" : "mock";
+
+  /** Top Talkers: agents ranked by alert volume */
+  const topTalkersData = useMemo(() => {
+    if (isIndexerConnected && alertsAggByAgentQ.data?.data) {
+      const aggs = (alertsAggByAgentQ.data.data as unknown as Record<string, unknown>)?.aggregations as Record<string, unknown> | undefined;
+      const topAgents = aggs?.top_agents as { buckets?: Array<{ key: string; doc_count: number; agent_name: { buckets: Array<{ key: string }> }; avg_level: { value: number } }> } | undefined;
+      if (topAgents?.buckets) {
+        return topAgents.buckets.map(b => ({
+          agentId: b.key,
+          agentName: b.agent_name?.buckets?.[0]?.key ?? `Agent ${b.key}`,
+          count: b.doc_count,
+          avgLevel: Math.round((b.avg_level?.value ?? 0) * 10) / 10,
+        }));
+      }
+    }
+    return MOCK_TOP_TALKERS;
+  }, [alertsAggByAgentQ.data, isIndexerConnected]);
+
+  const topTalkersSource: "indexer" | "mock" = isIndexerConnected && alertsAggByAgentQ.data?.data ? "indexer" : "mock";
+
+  /** Geographic distribution */
+  const geoData = useMemo(() => {
+    if (isIndexerConnected && alertsGeoAggQ.data?.data) {
+      const aggs = (alertsGeoAggQ.data.data as unknown as Record<string, unknown>)?.aggregations as Record<string, unknown> | undefined;
+      const countries = aggs?.countries as { buckets?: Array<{ key: string; doc_count: number; avg_level: { value: number } }> } | undefined;
+      if (countries?.buckets) {
+        return countries.buckets.map(b => ({
+          country: b.key,
+          count: b.doc_count,
+          avgLevel: Math.round((b.avg_level?.value ?? 0) * 10) / 10,
+        }));
+      }
+    }
+    return MOCK_GEO_DATA;
+  }, [alertsGeoAggQ.data, isIndexerConnected]);
+
+  const geoSource: "indexer" | "mock" = isIndexerConnected && alertsGeoAggQ.data?.data ? "indexer" : "mock";
+
+  /** Top Firing Rules from Indexer */
+  const topFiringRules = useMemo(() => {
+    if (isIndexerConnected && alertsAggByRuleQ.data?.data) {
+      const aggs = (alertsAggByRuleQ.data.data as unknown as Record<string, unknown>)?.aggregations as Record<string, unknown> | undefined;
+      const topRules = aggs?.top_rules as { buckets?: Array<{ key: string; doc_count: number; rule_description: { buckets: Array<{ key: string }> }; rule_level: { value: number } }> } | undefined;
+      if (topRules?.buckets) {
+        return topRules.buckets.map(b => ({
+          ruleId: b.key,
+          description: b.rule_description?.buckets?.[0]?.key ?? "—",
+          count: b.doc_count,
+          level: Math.round(b.rule_level?.value ?? 0),
+        }));
+      }
+    }
+    return MOCK_TOP_RULES;
+  }, [alertsAggByRuleQ.data, isIndexerConnected]);
+
+  const topFiringSource: "indexer" | "mock" = isIndexerConnected && alertsAggByRuleQ.data?.data ? "indexer" : "mock";
+
+  /** MITRE Tactic Trends from Indexer */
+  const mitreTrends = useMemo(() => {
+    if (isIndexerConnected && alertsAggByMitreQ.data?.data) {
+      const aggs = (alertsAggByMitreQ.data.data as unknown as Record<string, unknown>)?.aggregations as Record<string, unknown> | undefined;
+      const tactics = aggs?.tactics as { buckets?: Array<{ key: string; doc_count: number }> } | undefined;
+      if (tactics?.buckets) {
+        return tactics.buckets.map(b => ({
+          tactic: b.key,
+          count: b.doc_count,
+          trend: 0,
+        }));
+      }
+    }
+    return MOCK_MITRE_TRENDS;
+  }, [alertsAggByMitreQ.data, isIndexerConnected]);
+
+  const mitreSource: "indexer" | "mock" = isIndexerConnected && alertsAggByMitreQ.data?.data ? "indexer" : "mock";
+
   const isLoading = statusQ.isLoading;
 
   return (
@@ -225,13 +464,16 @@ export default function Home() {
           <StatCard label="Disconnected" value={agentData.disconnected} icon={AlertTriangle} colorClass="text-threat-high" trend={agentData.disconnected > 0 ? "Needs attention" : undefined} trendUp={false} />
           <StatCard label="Audit Events" value={logSummary.info.toLocaleString()} icon={Zap} colorClass="text-info-cyan" trend={logSummary.errors > 0 ? `${logSummary.errors} failures (24h)` : undefined} trendUp={false} />
           <StatCard label="Log Errors" value={logSummary.errors} icon={AlertTriangle} colorClass="text-threat-critical" trend={logSummary.warnings > 0 ? `${logSummary.warnings} warnings` : undefined} trendUp={false} />
-          <StatCard label="Rules Loaded" value={topRules.length > 0 ? topRules.length : "—"} icon={Shield} colorClass="text-primary" />
+          <StatCard label="Rules Loaded" value={topRulesDef.length > 0 ? topRulesDef.length : "—"} icon={Shield} colorClass="text-primary" />
         </div>
 
-        {/* ── Row 2: EPS Gauge + Hourly Trends + Agent Distribution ─────── */}
+        {/* ── Row 2: EPS Gauge + Threat Trends (Indexer) + Fleet Status ──── */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <GlassPanel className="lg:col-span-3 flex flex-col items-center justify-center py-6">
-            <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2"><Cpu className="h-4 w-4 text-primary" /> Events Per Second</h3>
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Cpu className="h-4 w-4 text-primary" /> Events Per Second</h3>
+              <SourceBadge source={isConnected ? "server" : "mock"} />
+            </div>
             <EpsGauge eps={epsData.eps} maxEps={10000} />
             <div className="grid grid-cols-2 gap-4 mt-4 w-full text-center">
               <div><p className="text-lg font-display font-bold text-foreground">{epsData.totalEvents.toLocaleString()}</p><p className="text-[10px] text-muted-foreground">Total Events</p></div>
@@ -242,8 +484,204 @@ export default function Home() {
 
           <GlassPanel className="lg:col-span-6">
             <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-primary" /> Threat Trends — Last 24h
+              </h3>
+              <SourceBadge source={threatTrendsSource} />
+            </div>
+            <ResponsiveContainer width="100%" height={210}>
+              <AreaChart data={threatTrendsData}>
+                <defs>
+                  <linearGradient id="gradCritical" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={COLORS.pink} stopOpacity={0.5} /><stop offset="95%" stopColor={COLORS.pink} stopOpacity={0} /></linearGradient>
+                  <linearGradient id="gradHigh" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={COLORS.red} stopOpacity={0.4} /><stop offset="95%" stopColor={COLORS.red} stopOpacity={0} /></linearGradient>
+                  <linearGradient id="gradMedium" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={COLORS.yellow} stopOpacity={0.3} /><stop offset="95%" stopColor={COLORS.yellow} stopOpacity={0} /></linearGradient>
+                  <linearGradient id="gradLow" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={COLORS.green} stopOpacity={0.2} /><stop offset="95%" stopColor={COLORS.green} stopOpacity={0} /></linearGradient>
+                  <linearGradient id="gradInfo" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={COLORS.cyan} stopOpacity={0.15} /><stop offset="95%" stopColor={COLORS.cyan} stopOpacity={0} /></linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.04 286 / 20%)" />
+                <XAxis dataKey="hour" tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 10 }} />
+                <YAxis tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 10 }} />
+                <ReTooltip content={<ChartTooltip />} />
+                <Area type="monotone" dataKey="info" stackId="1" stroke={COLORS.cyan} fill="url(#gradInfo)" strokeWidth={1} name="Info (0-2)" />
+                <Area type="monotone" dataKey="low" stackId="1" stroke={COLORS.green} fill="url(#gradLow)" strokeWidth={1} name="Low (3-5)" />
+                <Area type="monotone" dataKey="medium" stackId="1" stroke={COLORS.yellow} fill="url(#gradMedium)" strokeWidth={1.5} name="Medium (6-8)" />
+                <Area type="monotone" dataKey="high" stackId="1" stroke={COLORS.red} fill="url(#gradHigh)" strokeWidth={2} name="High (9-11)" />
+                <Area type="monotone" dataKey="critical" stackId="1" stroke={COLORS.pink} fill="url(#gradCritical)" strokeWidth={2} name="Critical (12+)" />
+                <Legend wrapperStyle={{ fontSize: 10, color: "oklch(0.65 0.02 286)" }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </GlassPanel>
+
+          <GlassPanel className="lg:col-span-3">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Fleet Status</h3>
+              <SourceBadge source={isConnected ? "server" : "mock"} />
+            </div>
+            <ResponsiveContainer width="100%" height={210}>
+              <PieChart>
+                <Pie data={agentPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value" stroke="none">
+                  {agentPieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                </Pie>
+                <ReTooltip content={<ChartTooltip />} />
+                <Legend wrapperStyle={{ fontSize: 10, color: "oklch(0.65 0.02 286)" }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </GlassPanel>
+        </div>
+
+        {/* ── Row 3: Top Talkers + Geographic Heatmap + Top Firing Rules ─── */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <GlassPanel className="lg:col-span-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Flame className="h-4 w-4 text-threat-high" /> Top Talkers</h3>
+              <SourceBadge source={topTalkersSource} />
+            </div>
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie data={topTalkersData.slice(0, 8)} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={2} dataKey="count" nameKey="agentName" stroke="none">
+                  {topTalkersData.slice(0, 8).map((_, i) => <Cell key={i} fill={TOP_TALKER_COLORS[i % TOP_TALKER_COLORS.length]} />)}
+                </Pie>
+                <ReTooltip content={<ChartTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="space-y-1 mt-2 max-h-[100px] overflow-y-auto">
+              {topTalkersData.slice(0, 5).map((t, i) => (
+                <div key={t.agentId} className="flex items-center justify-between py-1 px-2 rounded bg-secondary/20">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: TOP_TALKER_COLORS[i] }} />
+                    <span className="text-[10px] text-foreground truncate max-w-[120px]">{t.agentName}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono text-muted-foreground">{t.count.toLocaleString()}</span>
+                    <ThreatBadge level={threatLevelFromNumber(Math.round(t.avgLevel))} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </GlassPanel>
+
+          <GlassPanel className="lg:col-span-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Globe className="h-4 w-4 text-info-cyan" /> Geographic Threat Distribution</h3>
+              <SourceBadge source={geoSource} />
+            </div>
+            <div className="space-y-1.5 max-h-[340px] overflow-y-auto">
+              {geoData.map((g, i) => {
+                const maxCount = geoData[0]?.count ?? 1;
+                const pct = (g.count / maxCount) * 100;
+                const barColor = g.avgLevel >= 9 ? COLORS.red : g.avgLevel >= 6 ? COLORS.orange : g.avgLevel >= 3 ? COLORS.yellow : COLORS.green;
+                return (
+                  <div key={g.country} className="group">
+                    <div className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-secondary/20 transition-colors">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-[10px] text-muted-foreground w-4 text-right">{i + 1}</span>
+                        <MapPin className="h-3 w-3 shrink-0" style={{ color: barColor }} />
+                        <span className="text-xs text-foreground truncate">{g.country}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-24 h-1.5 rounded-full bg-secondary/40 overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: barColor }} />
+                        </div>
+                        <span className="text-[10px] font-mono text-foreground w-12 text-right">{g.count.toLocaleString()}</span>
+                        <ThreatBadge level={threatLevelFromNumber(Math.round(g.avgLevel))} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </GlassPanel>
+
+          <GlassPanel className="lg:col-span-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Hash className="h-4 w-4 text-primary" /> Top Firing Rules</h3>
+              <SourceBadge source={topFiringSource} />
+            </div>
+            <div className="space-y-1.5 max-h-[340px] overflow-y-auto">
+              {topFiringRules.map((r) => (
+                <div key={r.ruleId} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-secondary/20 transition-colors cursor-pointer" onClick={() => setLocation("/rules")}>
+                  <span className="text-[10px] font-mono text-primary w-10 shrink-0">{r.ruleId}</span>
+                  <ThreatBadge level={threatLevelFromNumber(r.level)} />
+                  <span className="text-[10px] text-foreground truncate flex-1">{r.description}</span>
+                  <span className="text-[10px] font-mono text-muted-foreground shrink-0">{r.count.toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          </GlassPanel>
+        </div>
+
+        {/* ── Row 4: Quick Actions + MITRE Trends (Indexer) + API Connectivity */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <GlassPanel className="lg:col-span-3">
+            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /> Quick Actions</h3>
+            <div className="space-y-2">
+              <ActionCard icon={Eye} label="View Alerts" path="/alerts" color={COLORS.red} />
+              <ActionCard icon={Bug} label="Vulnerabilities" path="/vulnerabilities" color={COLORS.orange} />
+              <ActionCard icon={Target} label="MITRE ATT&CK" path="/mitre" color={COLORS.purple} />
+              <ActionCard icon={ShieldCheck} label="Compliance" path="/compliance" color={COLORS.green} />
+              <ActionCard icon={FileSearch} label="File Integrity" path="/fim" color={COLORS.cyan} />
+              <ActionCard icon={Monitor} label="IT Hygiene" path="/hygiene" color={COLORS.yellow} />
+              <ActionCard icon={Radar} label="Threat Intel" path="/threat-intel" color={COLORS.pink} />
+            </div>
+          </GlassPanel>
+
+          <GlassPanel className="lg:col-span-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Target className="h-4 w-4 text-primary" /> MITRE ATT&CK Tactic Activity</h3>
+              <SourceBadge source={mitreSource} />
+            </div>
+            <div className="space-y-1.5 max-h-[280px] overflow-y-auto">
+              {mitreTrends.map((t, i) => {
+                const maxCount = mitreTrends[0]?.count ?? 1;
+                const pct = (t.count / maxCount) * 100;
+                return (
+                  <div key={t.tactic} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-secondary/20 transition-colors cursor-pointer" onClick={() => setLocation("/mitre")}>
+                    <span className="text-[10px] text-muted-foreground w-4 text-right">{i + 1}</span>
+                    <span className="text-[10px] text-foreground truncate w-36">{t.tactic}</span>
+                    <div className="flex-1 h-2 rounded-full bg-secondary/40 overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: COLORS.purple, boxShadow: `0 0 6px ${COLORS.purple}40` }} />
+                    </div>
+                    <span className="text-[10px] font-mono text-foreground w-12 text-right">{t.count.toLocaleString()}</span>
+                    {t.trend !== 0 && (
+                      <span className={`text-[9px] flex items-center gap-0.5 ${t.trend > 0 ? "text-threat-high" : "text-threat-low"}`}>
+                        {t.trend > 0 ? <ArrowUpRight className="h-2.5 w-2.5" /> : <ArrowDownRight className="h-2.5 w-2.5" />}
+                        {Math.abs(t.trend)}%
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </GlassPanel>
+
+          <GlassPanel className="lg:col-span-4">
+            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2"><Radio className="h-4 w-4 text-primary" /> API Connectivity</h3>
+            <div className="space-y-2 mb-4">
+              <ConnectivityItem label="Wazuh Manager" subtitle="REST API v4.x" connected={isConnected} />
+              <ConnectivityItem label="Wazuh Indexer" subtitle="OpenSearch / Elasticsearch" connected={isIndexerConnected} status={indexerClusterStatus} />
+              <ConnectivityItem label="AlienVault OTX" subtitle="Threat Intelligence Feed" connected={true} />
+            </div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-3 mt-4 flex items-center gap-2"><Server className="h-4 w-4 text-primary" /> Manager Daemons</h3>
+            <div className="space-y-1.5 max-h-[140px] overflow-y-auto">
+              {daemonData.map((d) => (
+                <div key={d.name} className="flex items-center justify-between py-1.5 px-3 rounded bg-secondary/20 border border-border/20">
+                  <span className="text-[11px] font-mono text-foreground">{d.name}</span>
+                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${d.status === "running" ? "text-threat-low bg-threat-low/10 border-threat-low/20" : "text-threat-critical bg-threat-critical/10 border-threat-critical/20"}`}>{d.status}</span>
+                </div>
+              ))}
+            </div>
+          </GlassPanel>
+        </div>
+
+        {/* ── Row 5: Event Ingestion + Fleet Agents ───────────────────────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <GlassPanel>
+            <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /> Event Ingestion — Last 24h</h3>
-              {(isConnected && statsHourlyQ.data) ? <RawJsonViewer data={statsHourlyQ.data as Record<string, unknown>} title="Hourly Stats" /> : null}
+              <div className="flex items-center gap-2">
+                <SourceBadge source={isConnected ? "server" : "mock"} />
+                {(isConnected && statsHourlyQ.data) ? <RawJsonViewer data={statsHourlyQ.data as Record<string, unknown>} title="Hourly Stats" /> : null}
+              </div>
             </div>
             <ResponsiveContainer width="100%" height={210}>
               <AreaChart data={hourlyData}>
@@ -262,101 +700,13 @@ export default function Home() {
             </ResponsiveContainer>
           </GlassPanel>
 
-          <GlassPanel className="lg:col-span-3">
-            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Fleet Status</h3>
-            <ResponsiveContainer width="100%" height={210}>
-              <PieChart>
-                <Pie data={agentPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value" stroke="none">
-                  {agentPieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                </Pie>
-                <ReTooltip content={<ChartTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 10, color: "oklch(0.65 0.02 286)" }} />
-              </PieChart>
-            </ResponsiveContainer>
-          </GlassPanel>
-        </div>
-
-        {/* ── Row 3: Quick Actions + MITRE Tactics + API Connectivity ───── */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          <GlassPanel className="lg:col-span-3">
-            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /> Quick Actions</h3>
-            <div className="space-y-2">
-              <ActionCard icon={Eye} label="View Alerts" path="/alerts" color={COLORS.red} />
-              <ActionCard icon={Bug} label="Vulnerabilities" path="/vulnerabilities" color={COLORS.orange} />
-              <ActionCard icon={Target} label="MITRE ATT&CK" path="/mitre" color={COLORS.purple} />
-              <ActionCard icon={ShieldCheck} label="Compliance" path="/compliance" color={COLORS.green} />
-              <ActionCard icon={FileSearch} label="File Integrity" path="/fim" color={COLORS.cyan} />
-              <ActionCard icon={Monitor} label="IT Hygiene" path="/hygiene" color={COLORS.yellow} />
-            </div>
-          </GlassPanel>
-
-          <GlassPanel className="lg:col-span-5">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Target className="h-4 w-4 text-primary" /> MITRE ATT&CK Tactic Coverage</h3>
-            </div>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={mitreData} layout="vertical" margin={{ left: 90 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.04 286 / 20%)" />
-                <XAxis type="number" tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 10 }} />
-                <YAxis type="category" dataKey="name" tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 10 }} width={85} />
-                <ReTooltip content={<ChartTooltip />} />
-                <Bar dataKey="count" fill={COLORS.purple} radius={[0, 4, 4, 0]} name="Techniques" />
-              </BarChart>
-            </ResponsiveContainer>
-          </GlassPanel>
-
-          <GlassPanel className="lg:col-span-4">
-            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2"><Radio className="h-4 w-4 text-primary" /> API Connectivity</h3>
-            <div className="space-y-2 mb-4">
-              <ConnectivityItem label="Wazuh Manager" subtitle="REST API v4.x" connected={isConnected} />
-              <ConnectivityItem label="Wazuh Indexer" subtitle="OpenSearch / Elasticsearch" connected={false} />
-              <ConnectivityItem label="Nemotron LLM" subtitle="Local NVIDIA Inference" connected={false} />
-            </div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-3 mt-4 flex items-center gap-2"><Server className="h-4 w-4 text-primary" /> Manager Daemons</h3>
-            <div className="space-y-1.5 max-h-[140px] overflow-y-auto">
-              {daemonData.map((d) => (
-                <div key={d.name} className="flex items-center justify-between py-1.5 px-3 rounded bg-secondary/20 border border-border/20">
-                  <span className="text-[11px] font-mono text-foreground">{d.name}</span>
-                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${d.status === "running" ? "text-threat-low bg-threat-low/10 border-threat-low/20" : "text-threat-critical bg-threat-critical/10 border-threat-critical/20"}`}>{d.status}</span>
-                </div>
-              ))}
-            </div>
-          </GlassPanel>
-        </div>
-
-        {/* ── Row 4: Top Rules + Recent Agents ─────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <GlassPanel>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Shield className="h-4 w-4 text-primary" /> Top Rules by Severity</h3>
-              {(isConnected && rulesQ.data) ? <RawJsonViewer data={rulesQ.data as Record<string, unknown>} title="Rules Data" /> : null}
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead><tr className="border-b border-border/30">
-                  <th className="text-left py-2 px-2 text-muted-foreground font-medium">Rule ID</th>
-                  <th className="text-left py-2 px-2 text-muted-foreground font-medium">Level</th>
-                  <th className="text-left py-2 px-2 text-muted-foreground font-medium">Description</th>
-                  <th className="text-left py-2 px-2 text-muted-foreground font-medium">Groups</th>
-                </tr></thead>
-                <tbody>
-                  {topRules.map((rule) => (
-                    <tr key={String(rule.id)} className="border-b border-border/10 hover:bg-secondary/20 transition-colors">
-                      <td className="py-2 px-2 font-mono text-primary">{String(rule.id)}</td>
-                      <td className="py-2 px-2"><ThreatBadge level={threatLevelFromNumber(Number(rule.level ?? 0))} /></td>
-                      <td className="py-2 px-2 text-foreground max-w-xs truncate">{String(rule.description ?? "")}</td>
-                      <td className="py-2 px-2 text-muted-foreground max-w-[200px] truncate">{Array.isArray(rule.groups) ? (rule.groups as string[]).join(", ") : "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </GlassPanel>
-
           <GlassPanel>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Clock className="h-4 w-4 text-primary" /> Fleet Agents</h3>
-              {(isConnected && agentsQ.data) ? <RawJsonViewer data={agentsQ.data as Record<string, unknown>} title="Agents Data" /> : null}
+              <div className="flex items-center gap-2">
+                <SourceBadge source={isConnected ? "server" : "mock"} />
+                {(isConnected && agentsQ.data) ? <RawJsonViewer data={agentsQ.data as Record<string, unknown>} title="Agents Data" /> : null}
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
