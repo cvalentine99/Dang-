@@ -20,30 +20,43 @@ import ThreatHunting from "./pages/ThreatHunting";
 import SiemEvents from "./pages/SiemEvents";
 import RulesetExplorer from "./pages/RulesetExplorer";
 import ThreatIntel from "./pages/ThreatIntel";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import Status from "./pages/Status";
 
 function Router() {
   return (
-    <DashboardLayout>
-      <Switch>
-        <Route path="/" component={Home} />
-        <Route path="/agents" component={AgentHealth} />
-        <Route path="/alerts" component={AlertsTimeline} />
-        <Route path="/vulnerabilities" component={Vulnerabilities} />
-        <Route path="/mitre" component={MitreAttack} />
-        <Route path="/compliance" component={Compliance} />
-        <Route path="/fim" component={FileIntegrity} />
-        <Route path="/hygiene" component={ITHygiene} />
-        <Route path="/cluster" component={ClusterHealth} />
-        <Route path="/siem" component={SiemEvents} />
-        <Route path="/hunting" component={ThreatHunting} />
-        <Route path="/rules" component={RulesetExplorer} />
-        <Route path="/threat-intel" component={ThreatIntel} />
-        <Route path="/notes" component={AnalystNotes} />
-        <Route path="/assistant" component={Assistant} />
-        <Route path="/404" component={NotFound} />
-        <Route component={NotFound} />
-      </Switch>
-    </DashboardLayout>
+    <Switch>
+      {/* Auth routes — outside DashboardLayout */}
+      <Route path="/login" component={Login} />
+      <Route path="/register" component={Register} />
+
+      {/* Dashboard routes — inside DashboardLayout */}
+      <Route>
+        <DashboardLayout>
+          <Switch>
+            <Route path="/" component={Home} />
+            <Route path="/agents" component={AgentHealth} />
+            <Route path="/alerts" component={AlertsTimeline} />
+            <Route path="/vulnerabilities" component={Vulnerabilities} />
+            <Route path="/mitre" component={MitreAttack} />
+            <Route path="/compliance" component={Compliance} />
+            <Route path="/fim" component={FileIntegrity} />
+            <Route path="/hygiene" component={ITHygiene} />
+            <Route path="/cluster" component={ClusterHealth} />
+            <Route path="/siem" component={SiemEvents} />
+            <Route path="/hunting" component={ThreatHunting} />
+            <Route path="/rules" component={RulesetExplorer} />
+            <Route path="/threat-intel" component={ThreatIntel} />
+            <Route path="/notes" component={AnalystNotes} />
+            <Route path="/assistant" component={Assistant} />
+            <Route path="/status" component={Status} />
+            <Route path="/404" component={NotFound} />
+            <Route component={NotFound} />
+          </Switch>
+        </DashboardLayout>
+      </Route>
+    </Switch>
   );
 }
 

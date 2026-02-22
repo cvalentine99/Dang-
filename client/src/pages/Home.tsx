@@ -6,6 +6,7 @@ import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge, threatLevelFromNumber } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { ExportButton } from "@/components/shared/ExportButton";
+import { ThreatMap } from "@/components/shared/ThreatMap";
 import { EXPORT_COLUMNS } from "@/lib/exportUtils";
 import {
   MOCK_AGENT_SUMMARY, MOCK_MANAGER_STATS, MOCK_MANAGER_STATUS,
@@ -243,6 +244,10 @@ export default function Home() {
     { ...indexerTimeRange, topN: 10 },
     { retry: false, staleTime: 60_000, enabled: isIndexerConnected }
   );
+  const alertsGeoEnrichedQ = trpc.indexer.alertsGeoEnriched.useQuery(
+    { ...indexerTimeRange, topN: 20 },
+    { retry: false, staleTime: 60_000, enabled: isIndexerConnected }
+  );
   const alertsAggByRuleQ = trpc.indexer.alertsAggByRule.useQuery(
     { ...indexerTimeRange, topN: 10 },
     { retry: false, staleTime: 30_000, enabled: isIndexerConnected }
@@ -397,8 +402,28 @@ export default function Home() {
 
   const topTalkersSource: "indexer" | "mock" = isIndexerConnected && alertsAggByAgentQ.data?.data ? "indexer" : "mock";
 
-  /** Geographic distribution */
+  /** Geographic distribution — prefer GeoIP-enriched endpoint, fallback to basic agg, then mock */
   const geoData = useMemo(() => {
+    // Try enriched GeoIP data first (includes coordinates, cities, IPs)
+    if (isIndexerConnected && alertsGeoEnrichedQ.data?.data) {
+      const enriched = alertsGeoEnrichedQ.data.data as Array<{
+        country: string; count: number; avgLevel: number;
+        lat: number; lng: number; cities: string[]; topIps: string[]; source: string;
+      }>;
+      if (enriched.length > 0) {
+        return enriched.map(e => ({
+          country: e.country,
+          count: e.count,
+          avgLevel: e.avgLevel,
+          lat: e.lat,
+          lng: e.lng,
+          cities: e.cities,
+          topIps: e.topIps,
+          source: e.source,
+        }));
+      }
+    }
+    // Fallback to basic geo agg
     if (isIndexerConnected && alertsGeoAggQ.data?.data) {
       const aggs = (alertsGeoAggQ.data.data as unknown as Record<string, unknown>)?.aggregations as Record<string, unknown> | undefined;
       const countries = aggs?.countries as { buckets?: Array<{ key: string; doc_count: number; avg_level: { value: number } }> } | undefined;
@@ -411,9 +436,9 @@ export default function Home() {
       }
     }
     return MOCK_GEO_DATA;
-  }, [alertsGeoAggQ.data, isIndexerConnected]);
+  }, [alertsGeoEnrichedQ.data, alertsGeoAggQ.data, isIndexerConnected]);
 
-  const geoSource: "indexer" | "mock" = isIndexerConnected && alertsGeoAggQ.data?.data ? "indexer" : "mock";
+  const geoSource: "indexer" | "mock" = isIndexerConnected && (alertsGeoEnrichedQ.data?.data || alertsGeoAggQ.data?.data) ? "indexer" : "mock";
 
   /** Top Firing Rules from Indexer */
   const topFiringRules = useMemo(() => {
@@ -565,35 +590,27 @@ export default function Home() {
             </div>
           </GlassPanel>
 
-          <GlassPanel className="lg:col-span-4">
-            <div className="flex items-center justify-between mb-3">
+          <GlassPanel className="lg:col-span-4 !p-0 overflow-hidden">
+            <div className="flex items-center justify-between px-4 pt-3 pb-2">
               <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Globe className="h-4 w-4 text-info-cyan" /> Geographic Threat Distribution</h3>
               <SourceBadge source={geoSource} />
             </div>
-            <div className="space-y-1.5 max-h-[340px] overflow-y-auto">
-              {geoData.map((g, i) => {
-                const maxCount = geoData[0]?.count ?? 1;
-                const pct = (g.count / maxCount) * 100;
-                const barColor = g.avgLevel >= 9 ? COLORS.red : g.avgLevel >= 6 ? COLORS.orange : g.avgLevel >= 3 ? COLORS.yellow : COLORS.green;
-                return (
-                  <div key={g.country} className="group">
-                    <div className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-secondary/20 transition-colors">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-[10px] text-muted-foreground w-4 text-right">{i + 1}</span>
-                        <MapPin className="h-3 w-3 shrink-0" style={{ color: barColor }} />
-                        <span className="text-xs text-foreground truncate">{g.country}</span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="w-24 h-1.5 rounded-full bg-secondary/40 overflow-hidden">
-                          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: barColor }} />
-                        </div>
-                        <span className="text-[10px] font-mono text-foreground w-12 text-right">{g.count.toLocaleString()}</span>
-                        <ThreatBadge level={threatLevelFromNumber(Math.round(g.avgLevel))} />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="h-[340px] relative">
+              <ThreatMap data={geoData} className="w-full h-full" />
+              {/* Legend overlay */}
+              <div className="absolute bottom-2 left-2 flex items-center gap-2 px-2 py-1 rounded-md" style={{ background: 'rgba(15, 10, 26, 0.85)', backdropFilter: 'blur(8px)', border: '1px solid rgba(139, 92, 246, 0.15)' }}>
+                <span className="text-[9px] text-muted-foreground">Severity:</span>
+                <span className="inline-block w-2 h-2 rounded-full" style={{ background: '#06b6d4' }} />
+                <span className="text-[9px] text-muted-foreground">Info</span>
+                <span className="inline-block w-2 h-2 rounded-full" style={{ background: '#a855f7' }} />
+                <span className="text-[9px] text-muted-foreground">Low</span>
+                <span className="inline-block w-2 h-2 rounded-full" style={{ background: '#eab308' }} />
+                <span className="text-[9px] text-muted-foreground">Med</span>
+                <span className="inline-block w-2 h-2 rounded-full" style={{ background: '#f97316' }} />
+                <span className="text-[9px] text-muted-foreground">High</span>
+                <span className="inline-block w-2 h-2 rounded-full" style={{ background: '#ef4444' }} />
+                <span className="text-[9px] text-muted-foreground">Crit</span>
+              </div>
             </div>
           </GlassPanel>
 

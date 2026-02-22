@@ -1,23 +1,51 @@
+# Dependencies (re-installed in container)
 node_modules
+
+# Build output (rebuilt in container)
 dist
 build
+client/dist
+
+# Git
 .git
 .gitignore
+
+# IDE / editor
 .vscode
 .idea
+*.swp
+*.swo
+*~
+
+# Logs
 .manus-logs
 .webdev
 *.log
-*.md
-!README.md
-!DOCKER.md
+
+# Environment (secrets)
 .env
 .env.*
 !.env.example
+
+# Documentation (keep for reference in image)
+*.md
+!README.md
+!DOCKER.md
+
+# Test / coverage
 coverage
 .nyc_output
 *.tsbuildinfo
+
+# Temp
 tmp
 temp
+
+# OS files
 .DS_Store
 Thumbs.db
+
+# Docker files (prevent recursive copy)
+Dockerfile
+docker-compose.yml
+docker-compose.*.yml

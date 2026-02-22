@@ -26,7 +26,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build frontend (Vite) and backend (esbuild)
+# Build frontend (Vite → dist/public/) and backend (esbuild → dist/index.js)
 RUN pnpm run build
 
 # ── Stage 3: Production ─────────────────────────────────────────────────────
@@ -42,13 +42,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy dependency manifests and install production-only deps
+# Copy package.json for npm_package_version at runtime
 COPY package.json pnpm-lock.yaml ./
 COPY patches/ ./patches/
 
-RUN pnpm install --frozen-lockfile --prod
+# Install all dependencies (not --prod) because the built server
+# imports vite.config for static file serving path resolution
+RUN pnpm install --frozen-lockfile --prod=false && pnpm store prune
 
 # Copy built artifacts from builder
+# esbuild bundles server → dist/index.js
+# Vite builds client  → dist/public/ (index.html, assets/)
 COPY --from=builder /app/dist ./dist
 
 # Copy drizzle migrations for runtime migration support
@@ -70,9 +74,9 @@ ENV PORT=3000
 
 EXPOSE 3000
 
-# Health check — hits the /api/health endpoint
+# Health check — hits the lightweight /api/health endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD curl -f http://localhost:3000/api/health || exit 1
+    CMD curl -f http://localhost:${PORT:-3000}/api/health || exit 1
 
 # Use tini as init system for proper signal handling
 ENTRYPOINT ["tini", "--"]

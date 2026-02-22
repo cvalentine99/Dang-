@@ -98,6 +98,8 @@ export const indexerRouter = router({
         mitreTactic: z.string().optional(),
         mitreTechnique: z.string().optional(),
         ruleId: z.string().optional(),
+        srcip: z.string().optional(),
+        geoCountry: z.string().optional(),
         sortField: z.enum(["timestamp", "rule.level", "agent.id"]).default("timestamp"),
         sortOrder: z.enum(["asc", "desc"]).default("desc"),
       })
@@ -113,6 +115,8 @@ export const indexerRouter = router({
       if (input.mitreTactic) filters.push({ term: { "rule.mitre.tactic": input.mitreTactic } });
       if (input.mitreTechnique) filters.push({ term: { "rule.mitre.id": input.mitreTechnique } });
       if (input.ruleId) filters.push({ term: { "rule.id": input.ruleId } });
+      if (input.srcip) filters.push({ term: { "data.srcip": input.srcip } });
+      if (input.geoCountry) filters.push({ term: { "GeoLocation.country_name": input.geoCountry } });
 
       const must: Array<Record<string, unknown>> = [];
       if (input.query) {
@@ -278,6 +282,133 @@ export const indexerRouter = router({
         },
         "alerts"
       );
+    }),
+
+  /** GeoIP-enriched geographic distribution — resolves source IPs to coordinates */
+  alertsGeoEnriched: publicProcedure
+    .input(timeRangeSchema.extend({ topN: z.number().int().min(1).max(100).default(30) }))
+    .query(async ({ input }) => {
+      // First, get alerts with source IPs
+      const result = await safeSearch(
+        INDEX_PATTERNS.ALERTS,
+        {
+          query: boolQuery({
+            filter: [
+              timeRangeFilter(input.from, input.to),
+            ],
+          }),
+          size: 0,
+          aggs: {
+            // Try GeoLocation first (Wazuh-enriched)
+            geo_countries: {
+              ...termsAgg("GeoLocation.country_name", input.topN),
+              aggs: {
+                avg_level: { avg: { field: "rule.level" } },
+                avg_lat: { avg: { field: "GeoLocation.latitude" } },
+                avg_lon: { avg: { field: "GeoLocation.longitude" } },
+                cities: termsAgg("GeoLocation.city_name", 5),
+                top_ips: termsAgg("data.srcip", 10),
+              },
+            },
+            // Also aggregate by source IP for GeoIP fallback
+            source_ips: {
+              ...termsAgg("data.srcip", 200),
+              aggs: {
+                avg_level: { avg: { field: "rule.level" } },
+              },
+            },
+          },
+        },
+        "alerts"
+      );
+
+      if (!result.data) return result;
+
+      // Extract aggregation data
+      const aggs = (result.data as unknown as Record<string, unknown>)?.aggregations as Record<string, unknown> | undefined;
+      const geoCountries = aggs?.geo_countries as { buckets?: Array<{ key: string; doc_count: number; avg_level: { value: number }; avg_lat: { value: number | null }; avg_lon: { value: number | null }; cities: { buckets: Array<{ key: string; doc_count: number }> }; top_ips: { buckets: Array<{ key: string; doc_count: number }> } }> } | undefined;
+      const sourceIps = aggs?.source_ips as { buckets?: Array<{ key: string; doc_count: number; avg_level: { value: number } }> } | undefined;
+
+      // Build enriched results
+      const enrichedCountries: Array<{
+        country: string;
+        count: number;
+        avgLevel: number;
+        lat: number;
+        lng: number;
+        cities: string[];
+        topIps: string[];
+        source: "wazuh-geo" | "geoip-lite";
+      }> = [];
+
+      // Use Wazuh GeoLocation data if available
+      if (geoCountries?.buckets && geoCountries.buckets.length > 0) {
+        for (const bucket of geoCountries.buckets) {
+          enrichedCountries.push({
+            country: bucket.key,
+            count: bucket.doc_count,
+            avgLevel: Math.round((bucket.avg_level?.value ?? 0) * 10) / 10,
+            lat: bucket.avg_lat?.value ?? 0,
+            lng: bucket.avg_lon?.value ?? 0,
+            cities: bucket.cities?.buckets?.map(c => c.key) ?? [],
+            topIps: bucket.top_ips?.buckets?.map(ip => ip.key) ?? [],
+            source: "wazuh-geo",
+          });
+        }
+      }
+
+      // Enrich remaining source IPs via geoip-lite for IPs not covered by Wazuh GeoLocation
+      const coveredIps = new Set(enrichedCountries.flatMap(c => c.topIps));
+      const uncoveredIps = sourceIps?.buckets
+        ?.filter(b => !coveredIps.has(b.key))
+        ?.slice(0, 100) ?? [];
+
+      if (uncoveredIps.length > 0) {
+        const { batchLookupIPs, aggregateByCountry } = await import("../geoip/geoipService");
+        const lookups = batchLookupIPs(uncoveredIps.map(b => b.key));
+        const geoResults = Array.from(lookups.values()).filter(r => r.country !== null);
+        const countryAggs = aggregateByCountry(geoResults);
+
+        // Merge with existing or add new
+        for (const ca of countryAggs) {
+          const existing = enrichedCountries.find(e => e.country === ca.country);
+          if (existing) {
+            // Merge counts
+            const matchingIps = uncoveredIps.filter(b => {
+              const lookup = lookups.get(b.key);
+              return lookup?.country === ca.country;
+            });
+            const additionalCount = matchingIps.reduce((sum, b) => sum + b.doc_count, 0);
+            existing.count += additionalCount;
+          } else {
+            // Calculate count from matching IPs
+            const matchingIps = uncoveredIps.filter(b => {
+              const lookup = lookups.get(b.key);
+              return lookup?.country === ca.country;
+            });
+            const totalCount = matchingIps.reduce((sum, b) => sum + b.doc_count, 0);
+            const avgLevel = matchingIps.reduce((sum, b) => sum + (b.avg_level?.value ?? 0), 0) / (matchingIps.length || 1);
+            enrichedCountries.push({
+              country: ca.country,
+              count: totalCount,
+              avgLevel: Math.round(avgLevel * 10) / 10,
+              lat: ca.lat,
+              lng: ca.lng,
+              cities: ca.cities,
+              topIps: ca.ips.slice(0, 10),
+              source: "geoip-lite",
+            });
+          }
+        }
+      }
+
+      // Sort by count descending and limit
+      enrichedCountries.sort((a, b) => b.count - a.count);
+
+      return {
+        configured: true,
+        data: enrichedCountries.slice(0, input.topN),
+      };
     }),
 
   /** Compliance framework alert aggregation (PCI DSS, HIPAA, NIST, GDPR) */

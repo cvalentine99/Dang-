@@ -107,7 +107,7 @@ preflight() {
 
   # Validate required variables
   local missing=0
-  for var in JWT_SECRET WAZUH_HOST WAZUH_USER WAZUH_PASS; do
+  for var in JWT_SECRET; do
     val=$(grep "^${var}=" .env 2>/dev/null | cut -d'=' -f2-)
     if [ -z "$val" ] || [[ "$val" == *"CHANGE_ME"* ]]; then
       err "Required variable ${var} is not set or still has placeholder value"
@@ -120,6 +120,19 @@ preflight() {
     exit 1
   fi
   ok "Required environment variables are set"
+
+  # Warn about optional but recommended variables
+  local wazuh_host=$(grep "^WAZUH_HOST=" .env 2>/dev/null | cut -d'=' -f2-)
+  if [ -z "$wazuh_host" ]; then
+    warn "WAZUH_HOST not set — app will start but Wazuh features will be unavailable"
+    info "Set WAZUH_HOST, WAZUH_USER, and WAZUH_PASS to enable Wazuh integration"
+  fi
+
+  # Check local auth credentials
+  local admin_pass=$(grep "^LOCAL_ADMIN_PASS=" .env 2>/dev/null | cut -d'=' -f2-)
+  if [ -n "$admin_pass" ] && [[ "$admin_pass" == *"CHANGE_ME"* ]]; then
+    warn "LOCAL_ADMIN_PASS still has placeholder value — change it or remove it"
+  fi
 
   # Proxy-specific checks
   if [ "$PROXY_MODE" = "caddy" ]; then

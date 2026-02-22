@@ -23,7 +23,8 @@ import {
   Zap, Target, Eye, ExternalLink, Filter, RefreshCw,
   Database, Radio,
 } from "lucide-react";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { useSearch } from "wouter";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
   ResponsiveContainer, Legend, AreaChart, Area,
@@ -155,13 +156,26 @@ const MOCK_RULE_DIST = generateMockRuleDistribution();
 
 export default function AlertsTimeline() {
   const utils = trpc.useUtils();
+  const searchString = useSearch();
+  const urlParams = useMemo(() => new URLSearchParams(searchString), [searchString]);
+
   const [timeRange, setTimeRange] = useState<string>("now-24h");
   const [levelFilter, setLevelFilter] = useState<string>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [countryFilter, setCountryFilter] = useState<string>("");
+  const [srcipFilter, setSrcipFilter] = useState<string>("");
   const [page, setPage] = useState(0);
   const [selectedAlert, setSelectedAlert] = useState<Record<string, unknown> | null>(null);
   const pageSize = 50;
+
+  // Parse URL search params for country/srcip filters from ThreatMap click-to-filter
+  useEffect(() => {
+    const country = urlParams.get("country");
+    const srcip = urlParams.get("srcip");
+    if (country) setCountryFilter(country);
+    if (srcip) setSrcipFilter(srcip);
+  }, [urlParams]);
 
   // ── Server API queries ─────────────────────────────────────────────────
   const statusQ = trpc.wazuh.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
@@ -179,6 +193,8 @@ export default function AlertsTimeline() {
     query: searchQuery || undefined,
     ruleLevel: levelFilter !== "all" ? Number(levelFilter) : undefined,
     agentId: agentFilter !== "all" ? agentFilter : undefined,
+    srcip: srcipFilter || undefined,
+    geoCountry: countryFilter || undefined,
     sortField: "timestamp", sortOrder: "desc",
   }, { retry: false, staleTime: 15_000, enabled: isIndexerConnected });
 
@@ -500,6 +516,30 @@ export default function AlertsTimeline() {
                 label="Export"
               />
             </div>
+            {/* Active geo-filter badges from ThreatMap click-to-filter */}
+            {(countryFilter || srcipFilter) && (
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <span className="text-[10px] text-muted-foreground">Active Filters:</span>
+                {countryFilter && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                    <Target className="h-3 w-3" /> Country: {countryFilter}
+                    <button onClick={() => setCountryFilter("")} className="ml-1 hover:text-destructive">&times;</button>
+                  </span>
+                )}
+                {srcipFilter && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full bg-threat-high/10 text-threat-high border border-threat-high/20">
+                    <Zap className="h-3 w-3" /> Source IP: {srcipFilter}
+                    <button onClick={() => setSrcipFilter("")} className="ml-1 hover:text-destructive">&times;</button>
+                  </span>
+                )}
+                <button
+                  onClick={() => { setCountryFilter(""); setSrcipFilter(""); }}
+                  className="text-[10px] text-muted-foreground hover:text-foreground underline"
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="overflow-x-auto">
