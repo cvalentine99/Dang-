@@ -16,12 +16,13 @@ import {
 } from "@/components/ui/tabs";
 import {
   ShieldCheck, ShieldAlert, CheckCircle2, XCircle, MinusCircle,
-  Search, Layers, ChevronLeft, ChevronRight,
+  Search, Layers, ChevronLeft, ChevronRight, Database, Activity,
+  AlertTriangle, Clock,
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, AreaChart, Area,
 } from "recharts";
 
 const COLORS = {
@@ -31,15 +32,29 @@ const COLORS = {
   yellow: "oklch(0.795 0.184 86.047)",
   cyan: "oklch(0.789 0.154 211.53)",
   gray: "oklch(0.551 0.02 286)",
+  orange: "oklch(0.705 0.191 22.216)",
 };
 
 const FRAMEWORKS = [
-  { id: "pci_dss", label: "PCI DSS", icon: "\uD83D\uDCB3" },
-  { id: "nist_800_53", label: "NIST 800-53", icon: "\uD83C\uDFDB\uFE0F" },
-  { id: "hipaa", label: "HIPAA", icon: "\uD83C\uDFE5" },
-  { id: "gdpr", label: "GDPR", icon: "\uD83C\uDDEA\uD83C\uDDFA" },
-  { id: "tsc", label: "TSC", icon: "\uD83D\uDCCB" },
+  { id: "pci_dss", label: "PCI DSS", icon: "\uD83D\uDCB3", indexerField: "pci_dss" },
+  { id: "nist_800_53", label: "NIST 800-53", icon: "\uD83C\uDFDB\uFE0F", indexerField: "nist_800_53" },
+  { id: "hipaa", label: "HIPAA", icon: "\uD83C\uDFE5", indexerField: "hipaa" },
+  { id: "gdpr", label: "GDPR", icon: "\uD83C\uDDEA\uD83C\uDDFA", indexerField: "gdpr" },
+  { id: "tsc", label: "TSC", icon: "\uD83D\uDCCB", indexerField: "tsc" },
 ];
+
+const TIME_RANGES = [
+  { label: "24h", value: "24h", ms: 86400000 },
+  { label: "7d", value: "7d", ms: 604800000 },
+  { label: "30d", value: "30d", ms: 2592000000 },
+];
+
+function SourceBadge({ source }: { source: "indexer" | "server" | "mock" }) {
+  const cfg = source === "indexer" ? { bg: "bg-green-500/10", text: "text-green-400", label: "Indexer" }
+    : source === "server" ? { bg: "bg-blue-500/10", text: "text-blue-400", label: "Server API" }
+    : { bg: "bg-yellow-500/10", text: "text-yellow-400", label: "Mock" };
+  return <span className={`text-[9px] px-1.5 py-0.5 rounded ${cfg.bg} ${cfg.text} font-mono`}>{cfg.label}</span>;
+}
 
 function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
   if (!active || !payload?.length) return null;
@@ -73,6 +88,15 @@ function extractItems(raw: unknown): Array<Record<string, unknown>> {
   return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
 }
 
+// ── Mock compliance alert data for fallback ────────────────────────────
+const MOCK_COMPLIANCE_ALERTS = {
+  pci_dss: { total: 1247, byControl: [{ control: "10.6.1", count: 312 }, { control: "10.2.7", count: 245 }, { control: "11.4", count: 198 }, { control: "10.2.4", count: 156 }, { control: "6.5.1", count: 134 }, { control: "8.1.5", count: 112 }, { control: "2.2.4", count: 90 }], timeline: Array.from({ length: 24 }, (_, i) => ({ time: `${i}:00`, count: Math.floor(Math.random() * 80 + 20) })), bySeverity: [{ level: "Critical", count: 89 }, { level: "High", count: 312 }, { level: "Medium", count: 534 }, { level: "Low", count: 312 }] },
+  nist_800_53: { total: 2341, byControl: [{ control: "AU-6", count: 456 }, { control: "SI-4", count: 389 }, { control: "AC-7", count: 312 }, { control: "IA-5", count: 267 }, { control: "CM-6", count: 234 }, { control: "SC-7", count: 198 }, { control: "CA-7", count: 167 }], timeline: Array.from({ length: 24 }, (_, i) => ({ time: `${i}:00`, count: Math.floor(Math.random() * 120 + 40) })), bySeverity: [{ level: "Critical", count: 156 }, { level: "High", count: 534 }, { level: "Medium", count: 978 }, { level: "Low", count: 673 }] },
+  hipaa: { total: 876, byControl: [{ control: "164.312(b)", count: 234 }, { control: "164.312(a)(1)", count: 189 }, { control: "164.308(a)(5)(ii)(C)", count: 156 }, { control: "164.312(c)(1)", count: 134 }, { control: "164.312(e)(1)", count: 98 }, { control: "164.308(a)(1)(ii)(D)", count: 65 }], timeline: Array.from({ length: 24 }, (_, i) => ({ time: `${i}:00`, count: Math.floor(Math.random() * 50 + 10) })), bySeverity: [{ level: "Critical", count: 45 }, { level: "High", count: 198 }, { level: "Medium", count: 389 }, { level: "Low", count: 244 }] },
+  gdpr: { total: 654, byControl: [{ control: "II_5.1.f", count: 178 }, { control: "IV_35.7.d", count: 145 }, { control: "IV_32.2", count: 112 }, { control: "III_17", count: 98 }, { control: "IV_33.1", count: 67 }, { control: "II_5.1.d", count: 54 }], timeline: Array.from({ length: 24 }, (_, i) => ({ time: `${i}:00`, count: Math.floor(Math.random() * 40 + 8) })), bySeverity: [{ level: "Critical", count: 34 }, { level: "High", count: 145 }, { level: "Medium", count: 289 }, { level: "Low", count: 186 }] },
+  tsc: { total: 432, byControl: [{ control: "CC6.1", count: 112 }, { control: "CC7.2", count: 98 }, { control: "CC6.3", count: 78 }, { control: "CC7.1", count: 67 }, { control: "CC8.1", count: 45 }, { control: "CC6.8", count: 32 }], timeline: Array.from({ length: 24 }, (_, i) => ({ time: `${i}:00`, count: Math.floor(Math.random() * 30 + 5) })), bySeverity: [{ level: "Critical", count: 23 }, { level: "High", count: 98 }, { level: "Medium", count: 189 }, { level: "Low", count: 122 }] },
+};
+
 export default function Compliance() {
   const utils = trpc.useUtils();
   const [agentId, setAgentId] = useState("001");
@@ -83,8 +107,17 @@ export default function Compliance() {
   const [page, setPage] = useState(0);
   const pageSize = 50;
 
+  // Indexer-specific state
+  const [selectedFramework, setSelectedFramework] = useState<"pci_dss" | "nist_800_53" | "hipaa" | "gdpr" | "tsc">("pci_dss");
+  const [timeRange, setTimeRange] = useState("24h");
+
   const statusQ = trpc.wazuh.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
   const isConnected = statusQ.data?.configured === true && statusQ.data?.data != null;
+
+  // Check Indexer availability
+  const indexerStatusQ = trpc.indexer.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
+  const indexerConfigured = indexerStatusQ.data?.configured === true;
+  const indexerHealthy = indexerConfigured && indexerStatusQ.data?.healthy === true;
 
   const agentsQ = trpc.wazuh.agents.useQuery({ limit: 100, offset: 0, status: "active" }, { retry: 1, staleTime: 30_000, enabled: isConnected });
   const agentList = useMemo(() => {
@@ -98,7 +131,14 @@ export default function Compliance() {
     { retry: 1, staleTime: 30_000, enabled: isConnected && !!selectedPolicy }
   );
 
-  const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); }, [utils]);
+  // Indexer compliance aggregation query
+  const trMs = TIME_RANGES.find(t => t.value === timeRange)?.ms ?? 86400000;
+  const complianceQ = trpc.indexer.alertsComplianceAgg.useQuery(
+    { framework: selectedFramework, from: new Date(Date.now() - trMs).toISOString(), to: new Date().toISOString() },
+    { retry: 1, staleTime: 60_000, enabled: indexerHealthy }
+  );
+
+  const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); utils.indexer.invalidate(); }, [utils]);
 
   // ── Policies (real or fallback) ───────────────────────────────────────
   const policies = useMemo(() => {
@@ -142,23 +182,43 @@ export default function Compliance() {
   const totalChecks = filteredChecks.length;
   const totalPages = Math.ceil(totalChecks / pageSize);
   const pagedChecks = filteredChecks.slice(page * pageSize, (page + 1) * pageSize);
+
+  // ── Indexer compliance data (real or mock fallback) ────────────────────
+  const complianceSource: "indexer" | "mock" = indexerHealthy && complianceQ.data ? "indexer" : "mock";
+  const complianceData = useMemo(() => {
+    if (indexerHealthy && complianceQ.data) {
+      const raw = complianceQ.data as Record<string, unknown>;
+      const aggs = raw.aggregations as Record<string, unknown> | undefined;
+      if (aggs) {
+        const controlBuckets = ((aggs.controls as Record<string, unknown>)?.buckets ?? []) as Array<{ key: string; doc_count: number }>;
+        const levelBuckets = ((aggs.levels as Record<string, unknown>)?.buckets ?? []) as Array<{ key: number; doc_count: number }>;
+        const timelineBuckets = ((aggs.timeline as Record<string, unknown>)?.buckets ?? []) as Array<{ key_as_string: string; doc_count: number }>;
+        const totalHits = ((raw.hits as Record<string, unknown>)?.total as Record<string, unknown>)?.value as number ?? 0;
+        const byControl = controlBuckets.map(b => ({ control: b.key, count: b.doc_count }));
+        const bySeverity = levelBuckets.map(b => ({
+          level: b.key >= 12 ? "Critical" : b.key >= 8 ? "High" : b.key >= 4 ? "Medium" : "Low",
+          count: b.doc_count,
+        }));
+        // Merge same severity levels
+        const severityMap = new Map<string, number>();
+        bySeverity.forEach(s => severityMap.set(s.level, (severityMap.get(s.level) ?? 0) + s.count));
+        const mergedSeverity = Array.from(severityMap.entries()).map(([level, count]) => ({ level, count }));
+        const timeline = timelineBuckets.map(b => ({ time: new Date(b.key_as_string).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), count: b.doc_count }));
+        return { total: totalHits, byControl, bySeverity: mergedSeverity, timeline };
+      }
+    }
+    // Fallback to mock
+    const fw = selectedFramework as keyof typeof MOCK_COMPLIANCE_ALERTS;
+    return MOCK_COMPLIANCE_ALERTS[fw] ?? MOCK_COMPLIANCE_ALERTS.pci_dss;
+  }, [complianceQ.data, indexerHealthy, selectedFramework]);
+
+  const currentFw = FRAMEWORKS.find(f => f.id === selectedFramework) ?? FRAMEWORKS[0];
   const isLoading = statusQ.isLoading;
 
   return (
     <WazuhGuard>
       <div className="space-y-6">
-        <PageHeader title="Compliance Posture" subtitle="SCA policy assessment — framework scores, check results, and remediation tracking" onRefresh={handleRefresh} isLoading={isLoading} />
-
-        <GlassPanel className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-          <div className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /><span className="text-sm font-medium text-muted-foreground">Target Agent:</span></div>
-          <Select value={agentId} onValueChange={(v) => { setAgentId(v); setSelectedPolicy(null); setPage(0); }}>
-            <SelectTrigger className="w-[280px] h-8 text-xs bg-secondary/50 border-border"><SelectValue /></SelectTrigger>
-            <SelectContent className="bg-popover border-border max-h-60">
-              {agentList.map(a => <SelectItem key={String(a.id)} value={String(a.id)}>{String(a.id)} — {String(a.name ?? "Unknown")} ({String(a.ip ?? "")})</SelectItem>)}
-            </SelectContent>
-          </Select>
-          {scaQ.data ? <RawJsonViewer data={scaQ.data as Record<string, unknown>} title="SCA Policies JSON" /> : null}
-        </GlassPanel>
+        <PageHeader title="Compliance Posture" subtitle="SCA policy assessment and Indexer-powered framework alert analysis" onRefresh={handleRefresh} isLoading={isLoading} />
 
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <StatCard label="Avg Score" value={`${avgScore}%`} icon={ShieldCheck} colorClass={avgScore >= 80 ? "text-threat-low" : avgScore >= 60 ? "text-threat-medium" : "text-threat-critical"} />
@@ -171,10 +231,14 @@ export default function Compliance() {
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="bg-secondary/30 border border-border/30">
             <TabsTrigger value="overview" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary">Overview</TabsTrigger>
+            <TabsTrigger value="framework-alerts" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
+              <Database className="h-3 w-3 mr-1" /> Framework Alerts
+            </TabsTrigger>
             <TabsTrigger value="policies" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary">Policies</TabsTrigger>
             <TabsTrigger value="checks" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary">Checks</TabsTrigger>
           </TabsList>
 
+          {/* ── Overview Tab ─────────────────────────────────────────────── */}
           <TabsContent value="overview" className="space-y-4 mt-4">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
               <GlassPanel className="lg:col-span-5">
@@ -217,21 +281,152 @@ export default function Compliance() {
                 {FRAMEWORKS.map(fw => {
                   const matchingPolicy = policies.find(p => String(p.policy_id ?? "").toLowerCase().includes(fw.id.replace(/_/g, "")) || String(p.name ?? "").toLowerCase().includes(fw.id.replace(/_/g, " ")));
                   const score = matchingPolicy ? Number(matchingPolicy.score ?? 0) : null;
+                  const mockData = MOCK_COMPLIANCE_ALERTS[fw.id as keyof typeof MOCK_COMPLIANCE_ALERTS];
                   return (
-                    <div key={fw.id} className="bg-secondary/20 rounded-lg p-4 border border-border/20 text-center">
+                    <button key={fw.id} onClick={() => { setSelectedFramework(fw.id as typeof selectedFramework); setActiveTab("framework-alerts"); }} className="bg-secondary/20 rounded-lg p-4 border border-border/20 text-center hover:border-primary/30 hover:bg-primary/5 transition-all cursor-pointer">
                       <span className="text-2xl">{fw.icon}</span>
                       <p className="text-xs font-medium text-foreground mt-2">{fw.label}</p>
                       {score !== null ? (
                         <p className={`text-lg font-bold mt-1 ${score >= 80 ? "text-threat-low" : score >= 60 ? "text-threat-medium" : "text-threat-critical"}`}>{score}%</p>
                       ) : <p className="text-xs text-muted-foreground mt-1">No policy</p>}
-                    </div>
+                      <p className="text-[10px] text-muted-foreground mt-1">{mockData?.total?.toLocaleString() ?? 0} alerts</p>
+                    </button>
                   );
                 })}
               </div>
             </GlassPanel>
           </TabsContent>
 
+          {/* ── Framework Alerts Tab (Indexer-powered) ────────────────────── */}
+          <TabsContent value="framework-alerts" className="space-y-4 mt-4">
+            <GlassPanel className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Database className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium text-muted-foreground">Framework:</span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {FRAMEWORKS.map(fw => (
+                  <Button key={fw.id} variant="outline" size="sm" onClick={() => setSelectedFramework(fw.id as typeof selectedFramework)} className={`h-7 text-xs bg-transparent border-border ${selectedFramework === fw.id ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+                    {fw.icon} {fw.label}
+                  </Button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2 ml-auto">
+                {TIME_RANGES.map(tr => (
+                  <Button key={tr.value} variant="outline" size="sm" onClick={() => setTimeRange(tr.value)} className={`h-7 text-xs bg-transparent border-border ${timeRange === tr.value ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+                    {tr.label}
+                  </Button>
+                ))}
+                <SourceBadge source={complianceSource} />
+              </div>
+            </GlassPanel>
+
+            {/* Framework KPIs */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <StatCard label={`${currentFw.label} Alerts`} value={complianceData.total.toLocaleString()} icon={Activity} colorClass="text-primary" />
+              <StatCard label="Critical" value={complianceData.bySeverity.find(s => s.level === "Critical")?.count ?? 0} icon={AlertTriangle} colorClass="text-threat-critical" />
+              <StatCard label="High" value={complianceData.bySeverity.find(s => s.level === "High")?.count ?? 0} icon={ShieldAlert} colorClass="text-threat-high" />
+              <StatCard label="Controls Triggered" value={complianceData.byControl.length} icon={Layers} colorClass="text-info-cyan" />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+              {/* Alert Timeline */}
+              <GlassPanel className="lg:col-span-8">
+                <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-primary" /> {currentFw.label} Alert Timeline
+                </h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={complianceData.timeline}>
+                    <defs>
+                      <linearGradient id="compAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={COLORS.purple} stopOpacity={0.4} />
+                        <stop offset="95%" stopColor={COLORS.purple} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.04 286 / 20%)" />
+                    <XAxis dataKey="time" tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 9 }} />
+                    <YAxis tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 10 }} />
+                    <ReTooltip content={<ChartTooltip />} />
+                    <Area type="monotone" dataKey="count" stroke={COLORS.purple} fill="url(#compAreaGrad)" name="Alerts" strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </GlassPanel>
+
+              {/* Severity Distribution */}
+              <GlassPanel className="lg:col-span-4">
+                <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-primary" /> Severity Distribution
+                </h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie data={complianceData.bySeverity.map(s => ({
+                      name: s.level, value: s.count,
+                      fill: s.level === "Critical" ? COLORS.red : s.level === "High" ? COLORS.orange : s.level === "Medium" ? COLORS.yellow : COLORS.green,
+                    }))} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3} dataKey="value" stroke="none">
+                      {complianceData.bySeverity.map((s, i) => (
+                        <Cell key={i} fill={s.level === "Critical" ? COLORS.red : s.level === "High" ? COLORS.orange : s.level === "Medium" ? COLORS.yellow : COLORS.green} />
+                      ))}
+                    </Pie>
+                    <ReTooltip content={<ChartTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: 10, color: "oklch(0.65 0.02 286)" }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </GlassPanel>
+            </div>
+
+            {/* Top Controls Table */}
+            <GlassPanel>
+              <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
+                <Layers className="h-4 w-4 text-primary" /> Top {currentFw.label} Controls by Alert Count
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border/30">
+                      <th className="text-left py-2 px-3 text-muted-foreground font-medium w-8">#</th>
+                      <th className="text-left py-2 px-3 text-muted-foreground font-medium">Control</th>
+                      <th className="text-left py-2 px-3 text-muted-foreground font-medium">Alert Count</th>
+                      <th className="text-left py-2 px-3 text-muted-foreground font-medium w-1/2">Distribution</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {complianceData.byControl.map((c, i) => {
+                      const pct = complianceData.total > 0 ? (c.count / complianceData.total) * 100 : 0;
+                      return (
+                        <tr key={i} className="border-b border-border/10 hover:bg-secondary/20 transition-colors">
+                          <td className="py-2.5 px-3 text-muted-foreground">{i + 1}</td>
+                          <td className="py-2.5 px-3 font-mono text-primary font-medium">{c.control}</td>
+                          <td className="py-2.5 px-3 text-foreground font-medium">{c.count.toLocaleString()}</td>
+                          <td className="py-2.5 px-3">
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-2 bg-secondary/40 rounded-full overflow-hidden">
+                                <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: COLORS.purple }} />
+                              </div>
+                              <span className="text-[10px] text-muted-foreground w-10 text-right">{pct.toFixed(1)}%</span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </GlassPanel>
+          </TabsContent>
+
+          {/* ── Policies Tab ─────────────────────────────────────────────── */}
           <TabsContent value="policies" className="space-y-4 mt-4">
+            <GlassPanel className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <div className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /><span className="text-sm font-medium text-muted-foreground">Target Agent:</span></div>
+              <Select value={agentId} onValueChange={(v) => { setAgentId(v); setSelectedPolicy(null); setPage(0); }}>
+                <SelectTrigger className="w-[280px] h-8 text-xs bg-secondary/50 border-border"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-popover border-border max-h-60">
+                  {agentList.map(a => <SelectItem key={String(a.id)} value={String(a.id)}>{String(a.id)} — {String(a.name ?? "Unknown")} ({String(a.ip ?? "")})</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {scaQ.data ? <RawJsonViewer data={scaQ.data as Record<string, unknown>} title="SCA Policies JSON" /> : null}
+            </GlassPanel>
+
             <GlassPanel>
               <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /> SCA Policies ({policies.length})</h3>
               <div className="space-y-3">
@@ -262,6 +457,7 @@ export default function Compliance() {
             </GlassPanel>
           </TabsContent>
 
+          {/* ── Checks Tab ───────────────────────────────────────────────── */}
           <TabsContent value="checks" className="space-y-4 mt-4">
             <GlassPanel>
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">

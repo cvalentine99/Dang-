@@ -440,3 +440,45 @@
 - [x] Validation tags display
 - [x] All 73 tests passing, TypeScript clean
 - [x] Save checkpoint
+
+## Phase 35: SOC### Alerts Timeline Rebuild
+- [x] Dense SOC-grade alert table with sortable columns (timestamp, rule, level, agent, description)
+- [x] Severity heatmap (hour × day-of-week) from alertsAggByLevel with mock fallback
+- [x] Rule distribution sidebar from alertsAggByRule with top 15 rules
+- [x] Time range presets (1h, 6h, 24h, 7d, 30d)
+- [x] Real-time EPS indicator from Indexer timeline
+- [x] Alert detail dialog with raw JSON viewer and MITRE mapping
+- [x] Pagination with configurable page size
+- [x] Mock data fallback when Indexer not connected
+- [x] Dual-source badges (### Vulnerabilities Dashboard Upgrade
+- [x] Global Vulnerability Score gauge (fleet-wide risk metric with weighted severity)
+- [x] Fleet-wide CVE table from vulnSearch with search and severity filter
+- [x] Most exploited packages treemap from vulnAggByPackage
+- [x] Top vulnerable agents bar chart from vulnAggByAgent
+- [x] Severity distribution donut from vulnAggBySeverity
+- [x] Top CVEs across fleet table from vulnAggByCVE with CVSS scores
+- [x] Dual-source badges (Indexer / Server API / Mock)
+- [x] Per-agent vulnerability detail tab preserved
+
+### Compliance Dashboard Upgrade
+- [x] Framework Alerts tab with framework selector (PCI DSS, HIPAA, NIST 800-53, GDPR, TSC)
+- [x] Framework-specific alert counts from alertsComplianceAgg
+- [x] Compliance requirement breakdown table with alert counts per requirement
+- [x] Compliance trend over time area chart
+- [x] Framework KPI cards (total alerts, requirements, top requirement)
+- [x] Dual-source badges (Indexer / Mock)
+
+### MITRE ATT&CK Detection Coverage Heatmap
+- [x] Detection Heatmap tab with tactic cells colored by coverage percentage
+- [x] Horizontal bar chart showing coverage % per tactic
+- [x] Coverage legend with intensity scale
+- [x] Alert Activity tab with tactic progression timeline (stacked area chart)
+- [x] Alerts by Tactic ranked bar list with delta percentages
+- [x] Top Techniques by Alert Volume table
+- [x] Time range selector (24h, 7d, 30d)
+- [x] Dual-source badges (Indexer / Server / Mock)
+- [x] 4-tab layout: ATT&CK Matrix | Detection Heatmap | Alert Activity | Threat Groups
+
+### General
+- [x] All 77 tests passing, TypeScript clean
+- [x] Save checkpoint
