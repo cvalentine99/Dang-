@@ -555,5 +555,9 @@
 - [x] CI/CD documentation in DOCKER.md
 - [x] README badges for CI status and container registry
 - [x] README.md with project overview, architecture, quick start
-- [x] Push workflows to GitHub repository (requires user push due to workflows permission)
+- [x] Push workflows to GitHub repository
+- [x] Fix CI-incompatible tests (database mocking, env var skipping)
+- [x] Fix Docker image name (trailing hyphen → dang-siem)
+- [x] CI passing: all 3 jobs (Typecheck, Test, Build) green
+- [x] Docker Build passing: multi-platform image pushed to ghcr.io/cvalentine99/dang-siem:latest
 - [x] Save checkpoint
