@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/cvalentine99/Dang-/actions/workflows/ci.yml/badge.svg)](https://github.com/cvalentine99/Dang-/actions/workflows/ci.yml)
 [![Docker Build](https://github.com/cvalentine99/Dang-/actions/workflows/docker.yml/badge.svg)](https://github.com/cvalentine99/Dang-/actions/workflows/docker.yml)
-[![GHCR](https://img.shields.io/badge/ghcr.io-cvalentine99%2Fdang--latest-purple?logo=github)](https://ghcr.io/cvalentine99/dang-)
+[![GHCR](https://img.shields.io/badge/ghcr.io-cvalentine99%2Fdang--siem-purple?logo=github)](https://ghcr.io/cvalentine99/dang-siem)
 [![License: MIT](https://img.shields.io/badge/License-MIT-violet.svg)](LICENSE)
 
 An analyst-grade web application that visualizes and correlates **Wazuh security telemetry** — agents, alerts, vulnerabilities, FIM, CIS compliance, and MITRE ATT&CK mappings — through a read-only proxy architecture. Built for SOC analysts on ultrawide monitors.
@@ -55,7 +55,7 @@ cp env.docker.template .env
 Or pull the pre-built image from GHCR:
 
 ```bash
-docker pull ghcr.io/cvalentine99/dang-:latest
+docker pull ghcr.io/cvalentine99/dang-siem:latest
 ```
 
 See **[DOCKER.md](DOCKER.md)** for full deployment documentation including environment variables, HTTPS proxy setup, health checks, and CI/CD pipeline details.

@@ -29,7 +29,9 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  # Hardcoded because github.repository (cvalentine99/Dang-) has a trailing
+  # hyphen that produces invalid Docker tags. Docker tags cannot end with '-'.
+  IMAGE_NAME: cvalentine99/dang-siem
 
 permissions:
   contents: read

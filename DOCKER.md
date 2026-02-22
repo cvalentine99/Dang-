@@ -609,13 +609,13 @@ When code is pushed to `main` or a version tag is created, the Docker workflow b
 
 ```bash
 # Latest from main
-docker pull ghcr.io/cvalentine99/dang-:latest
+docker pull ghcr.io/cvalentine99/dang-siem:latest
 
 # Specific version
-docker pull ghcr.io/cvalentine99/dang-:1.2.3
+docker pull ghcr.io/cvalentine99/dang-siem:1.2.3
 
 # Specific commit
-docker pull ghcr.io/cvalentine99/dang-:sha-abc1234
+docker pull ghcr.io/cvalentine99/dang-siem:sha-abc1234
 ```
 
 **Using the GHCR image instead of building locally:**
@@ -625,7 +625,7 @@ Replace the `build` section in `docker-compose.yml` with an `image` reference:
 ```yaml
 services:
   app:
-    image: ghcr.io/cvalentine99/dang-:latest
+    image: ghcr.io/cvalentine99/dang-siem:latest
     # Remove the 'build' block
     # build:
     #   context: .

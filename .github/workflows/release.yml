@@ -50,13 +50,13 @@ jobs:
           echo "Pull the image from GitHub Container Registry:" >> changelog.md
           echo "" >> changelog.md
           echo "\`\`\`bash" >> changelog.md
-          echo "docker pull ghcr.io/${{ github.repository }}:${CURRENT_TAG#v}" >> changelog.md
+          echo "docker pull ghcr.io/cvalentine99/dang-siem:${CURRENT_TAG#v}" >> changelog.md
           echo "\`\`\`" >> changelog.md
           echo "" >> changelog.md
           echo "Or use the latest tag:" >> changelog.md
           echo "" >> changelog.md
           echo "\`\`\`bash" >> changelog.md
-          echo "docker pull ghcr.io/${{ github.repository }}:latest" >> changelog.md
+          echo "docker pull ghcr.io/cvalentine99/dang-siem:latest" >> changelog.md
           echo "\`\`\`" >> changelog.md
 
       - name: Create GitHub Release
