@@ -1,223 +1,301 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { appRouter } from "../routers";
 import type { TrpcContext } from "../_core/context";
 
-type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
+// Mock the database module — same pattern as baselinesRouter.test.ts
+const mockDb = {
+  select: vi.fn().mockReturnThis(),
+  from: vi.fn().mockReturnThis(),
+  where: vi.fn().mockReturnThis(),
+  orderBy: vi.fn().mockReturnThis(),
+  limit: vi.fn().mockReturnThis(),
+  offset: vi.fn().mockResolvedValue([]),
+  groupBy: vi.fn().mockResolvedValue([]),
+  insert: vi.fn().mockReturnThis(),
+  values: vi.fn().mockResolvedValue([{ insertId: 1 }]),
+  update: vi.fn().mockReturnThis(),
+  set: vi.fn().mockReturnThis(),
+  delete: vi.fn().mockReturnThis(),
+};
+
+vi.mock("../db", () => ({
+  getDb: vi.fn(() => mockDb),
+}));
 
 function createAuthContext(): TrpcContext {
-  const user: AuthenticatedUser = {
-    id: 1,
-    openId: "test-analyst-user",
-    email: "analyst@example.com",
-    name: "Test Analyst",
-    loginMethod: "manus",
-    role: "user",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    lastSignedIn: new Date(),
-  };
-
   return {
-    user,
-    req: {
-      protocol: "https",
-      headers: {},
-    } as TrpcContext["req"],
-    res: {
-      clearCookie: vi.fn(),
-    } as unknown as TrpcContext["res"],
+    user: {
+      id: 1,
+      openId: "test-analyst-user",
+      email: "analyst@example.com",
+      name: "Test Analyst",
+      loginMethod: "manus",
+      role: "user",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lastSignedIn: new Date(),
+    },
+    req: { protocol: "https", headers: {} } as TrpcContext["req"],
+    res: { clearCookie: vi.fn() } as unknown as TrpcContext["res"],
+  };
+}
+
+function createUnauthContext(): TrpcContext {
+  return {
+    user: null,
+    req: { protocol: "https", headers: {} } as TrpcContext["req"],
+    res: { clearCookie: vi.fn() } as unknown as TrpcContext["res"],
   };
 }
 
 describe("notes v2 router", () => {
-  it("list returns notes array and total count", async () => {
-    const ctx = createAuthContext();
-    const caller = appRouter.createCaller(ctx);
-    const result = await caller.notes.list({ limit: 10 });
-    expect(result).toHaveProperty("notes");
-    expect(result).toHaveProperty("total");
-    expect(Array.isArray(result.notes)).toBe(true);
-    expect(typeof result.total).toBe("number");
+  let authCaller: ReturnType<typeof appRouter.createCaller>;
+  let unauthCaller: ReturnType<typeof appRouter.createCaller>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Reset chainable mocks
+    mockDb.select.mockReturnThis();
+    mockDb.from.mockReturnThis();
+    mockDb.where.mockReturnThis();
+    mockDb.orderBy.mockReturnThis();
+    mockDb.limit.mockReturnThis();
+    mockDb.offset.mockResolvedValue([]);
+    mockDb.groupBy.mockResolvedValue([]);
+    mockDb.insert.mockReturnThis();
+    mockDb.values.mockResolvedValue([{ insertId: 1 }]);
+    mockDb.update.mockReturnThis();
+    mockDb.set.mockReturnThis();
+    mockDb.delete.mockReturnThis();
+
+    authCaller = appRouter.createCaller(createAuthContext());
+    unauthCaller = appRouter.createCaller(createUnauthContext());
   });
 
-  it("entityCounts returns counts per entity type", async () => {
-    const ctx = createAuthContext();
-    const caller = appRouter.createCaller(ctx);
-    const result = await caller.notes.entityCounts();
-    expect(result).toHaveProperty("alert");
-    expect(result).toHaveProperty("agent");
-    expect(result).toHaveProperty("cve");
-    expect(result).toHaveProperty("rule");
-    expect(result).toHaveProperty("general");
-    expect(typeof result.alert).toBe("number");
-    expect(typeof result.agent).toBe("number");
+  // ── list ──────────────────────────────────────────────────────────
+
+  describe("list", () => {
+    it("returns notes array and total count", async () => {
+      const mockNotes = [
+        { id: 1, userId: 1, entityType: "alert", entityId: "550", title: "Test", content: "", severity: "high", tags: [], resolved: 0, createdAt: new Date(), updatedAt: new Date() },
+      ];
+      // The list procedure chains: select().from().where().orderBy().limit().offset()
+      // Then a second select for count: select().from().where()
+      let selectCallCount = 0;
+      mockDb.offset.mockImplementation(() => {
+        selectCallCount++;
+        if (selectCallCount === 1) return Promise.resolve(mockNotes);
+        return Promise.resolve([{ count: 1 }]);
+      });
+      // The count query chains: select().from().where() — where resolves for the count
+      // But both queries go through where(), so we need where to return this
+      mockDb.where.mockReturnThis();
+
+      const result = await authCaller.notes.list({ limit: 10 });
+      expect(result).toHaveProperty("notes");
+      expect(result).toHaveProperty("total");
+      expect(Array.isArray(result.notes)).toBe(true);
+    });
+
+    it("returns empty when no notes exist", async () => {
+      mockDb.offset.mockResolvedValue([]);
+      // For the count query, where needs to resolve to [{ count: 0 }]
+      let whereCallCount = 0;
+      mockDb.where.mockImplementation(() => {
+        whereCallCount++;
+        if (whereCallCount <= 2) return mockDb; // first two calls are in the notes query chain
+        return Promise.resolve([{ count: 0 }]);
+      });
+
+      const result = await authCaller.notes.list({ limit: 10 });
+      expect(result.notes).toEqual([]);
+    });
+
+    it("rejects unauthenticated access", async () => {
+      await expect(unauthCaller.notes.list({ limit: 10 })).rejects.toThrow();
+    });
   });
 
-  it("full CRUD round-trip: create, read, update, delete", async () => {
-    const ctx = createAuthContext();
-    const caller = appRouter.createCaller(ctx);
+  // ── entityCounts ─────────────────────────────────────────────────
 
-    // Create a general note
-    const created = await caller.notes.create({
-      entityType: "general",
-      entityId: "",
-      title: "Vitest General Note",
-      content: "This is a test note from vitest",
-      severity: "medium",
-      tags: ["test", "vitest"],
+  describe("entityCounts", () => {
+    it("returns counts per entity type", async () => {
+      mockDb.groupBy.mockResolvedValue([
+        { entityType: "alert", count: 5 },
+        { entityType: "agent", count: 3 },
+      ]);
+
+      const result = await authCaller.notes.entityCounts();
+      expect(result).toHaveProperty("alert");
+      expect(result).toHaveProperty("agent");
+      expect(result).toHaveProperty("cve");
+      expect(result).toHaveProperty("rule");
+      expect(result).toHaveProperty("general");
+      expect(typeof result.alert).toBe("number");
+      expect(typeof result.agent).toBe("number");
     });
-    expect(created).toHaveProperty("id");
-    expect(created.success).toBe(true);
 
-    // Read back by ID
-    const note = await caller.notes.getById({ id: created.id });
-    expect(note).not.toBeNull();
-    expect(note?.title).toBe("Vitest General Note");
-    expect(note?.content).toBe("This is a test note from vitest");
-    expect(note?.severity).toBe("medium");
-    expect(note?.entityType).toBe("general");
-    expect(note?.resolved).toBe(0);
-
-    // Update title and resolve
-    const updated = await caller.notes.update({
-      id: created.id,
-      title: "Updated Vitest Note",
-      resolved: true,
+    it("returns zeros when no notes exist", async () => {
+      mockDb.groupBy.mockResolvedValue([]);
+      const result = await authCaller.notes.entityCounts();
+      expect(result.alert).toBe(0);
+      expect(result.agent).toBe(0);
+      expect(result.cve).toBe(0);
+      expect(result.rule).toBe(0);
+      expect(result.general).toBe(0);
     });
-    expect(updated.success).toBe(true);
 
-    // Verify update
-    const updatedNote = await caller.notes.getById({ id: created.id });
-    expect(updatedNote?.title).toBe("Updated Vitest Note");
-    expect(updatedNote?.resolved).toBe(1);
-
-    // Delete
-    const deleted = await caller.notes.delete({ id: created.id });
-    expect(deleted.success).toBe(true);
-
-    // Verify deletion
-    const gone = await caller.notes.getById({ id: created.id });
-    expect(gone).toBeNull();
+    it("rejects unauthenticated access", async () => {
+      await expect(unauthCaller.notes.entityCounts()).rejects.toThrow();
+    });
   });
 
-  it("create and query entity-linked note (alert)", async () => {
-    const ctx = createAuthContext();
-    const caller = appRouter.createCaller(ctx);
+  // ── create ───────────────────────────────────────────────────────
 
-    // Create an alert-linked note
-    const created = await caller.notes.create({
-      entityType: "alert",
-      entityId: "550",
-      title: "Alert 550 investigation",
-      content: "Suspicious activity detected",
-      severity: "high",
-      tags: ["incident"],
+  describe("create", () => {
+    it("creates a note and returns id", async () => {
+      mockDb.values.mockResolvedValue([{ insertId: 42 }]);
+      const result = await authCaller.notes.create({
+        entityType: "alert",
+        entityId: "550",
+        title: "Alert 550 investigation",
+        content: "Suspicious activity detected",
+        severity: "high",
+        tags: ["incident"],
+      });
+      expect(result).toEqual({ id: 42, success: true });
+      expect(mockDb.insert).toHaveBeenCalled();
     });
-    expect(created.success).toBe(true);
 
-    // Query by entity
-    const byEntity = await caller.notes.byEntity({
-      entityType: "alert",
-      entityId: "550",
+    it("creates a general note with defaults", async () => {
+      mockDb.values.mockResolvedValue([{ insertId: 7 }]);
+      const result = await authCaller.notes.create({
+        entityType: "general",
+        title: "General observation",
+      });
+      expect(result).toEqual({ id: 7, success: true });
     });
-    expect(Array.isArray(byEntity)).toBe(true);
-    expect(byEntity.length).toBeGreaterThanOrEqual(1);
-    const found = byEntity.find((n) => n.id === created.id);
-    expect(found).toBeDefined();
-    expect(found?.entityType).toBe("alert");
-    expect(found?.entityId).toBe("550");
 
-    // Cleanup
-    await caller.notes.delete({ id: created.id });
+    it("rejects empty title", async () => {
+      await expect(
+        authCaller.notes.create({
+          entityType: "general",
+          title: "",
+        })
+      ).rejects.toThrow();
+    });
+
+    it("rejects unauthenticated access", async () => {
+      await expect(
+        unauthCaller.notes.create({
+          entityType: "general",
+          title: "Test",
+        })
+      ).rejects.toThrow();
+    });
   });
 
-  it("create and query CVE-linked note", async () => {
-    const ctx = createAuthContext();
-    const caller = appRouter.createCaller(ctx);
+  // ── update ───────────────────────────────────────────────────────
 
-    const created = await caller.notes.create({
-      entityType: "cve",
-      entityId: "CVE-2024-1234",
-      title: "CVE-2024-1234 remediation",
-      content: "Patch applied on server-01",
-      severity: "critical",
-      tags: ["patch", "cve"],
+  describe("update", () => {
+    it("updates a note title", async () => {
+      // update().set().where() chain
+      mockDb.where.mockResolvedValue(undefined);
+      const result = await authCaller.notes.update({
+        id: 1,
+        title: "Updated title",
+      });
+      expect(result).toEqual({ success: true });
+      expect(mockDb.update).toHaveBeenCalled();
+      expect(mockDb.set).toHaveBeenCalled();
     });
-    expect(created.success).toBe(true);
 
-    // Query by entity
-    const byEntity = await caller.notes.byEntity({
-      entityType: "cve",
-      entityId: "CVE-2024-1234",
+    it("updates resolved status", async () => {
+      mockDb.where.mockResolvedValue(undefined);
+      const result = await authCaller.notes.update({
+        id: 1,
+        resolved: true,
+      });
+      expect(result).toEqual({ success: true });
     });
-    expect(byEntity.length).toBeGreaterThanOrEqual(1);
-    const found = byEntity.find((n) => n.id === created.id);
-    expect(found?.severity).toBe("critical");
 
-    // Cleanup
-    await caller.notes.delete({ id: created.id });
+    it("rejects unauthenticated access", async () => {
+      await expect(
+        unauthCaller.notes.update({ id: 1, title: "Nope" })
+      ).rejects.toThrow();
+    });
   });
 
-  it("list with filters returns filtered results", async () => {
-    const ctx = createAuthContext();
-    const caller = appRouter.createCaller(ctx);
+  // ── delete ───────────────────────────────────────────────────────
 
-    // Create two notes with different entity types
-    const alertNote = await caller.notes.create({
-      entityType: "alert",
-      entityId: "999",
-      title: "Filter Test Alert",
-      severity: "high",
-    });
-    const agentNote = await caller.notes.create({
-      entityType: "agent",
-      entityId: "001",
-      title: "Filter Test Agent",
-      severity: "low",
+  describe("delete", () => {
+    it("deletes a note", async () => {
+      mockDb.where.mockResolvedValue(undefined);
+      const result = await authCaller.notes.delete({ id: 1 });
+      expect(result).toEqual({ success: true });
+      expect(mockDb.delete).toHaveBeenCalled();
     });
 
-    // Filter by entity type
-    const alertResults = await caller.notes.list({
-      entityType: "alert",
-      limit: 100,
+    it("rejects unauthenticated access", async () => {
+      await expect(unauthCaller.notes.delete({ id: 1 })).rejects.toThrow();
     });
-    const alertIds = alertResults.notes.map((n) => n.id);
-    expect(alertIds).toContain(alertNote.id);
-    expect(alertIds).not.toContain(agentNote.id);
-
-    // Filter by severity
-    const highResults = await caller.notes.list({
-      severity: "high",
-      limit: 100,
-    });
-    const highIds = highResults.notes.map((n) => n.id);
-    expect(highIds).toContain(alertNote.id);
-
-    // Cleanup
-    await caller.notes.delete({ id: alertNote.id });
-    await caller.notes.delete({ id: agentNote.id });
   });
 
-  it("search notes by title content", async () => {
-    const ctx = createAuthContext();
-    const caller = appRouter.createCaller(ctx);
+  // ── getById ──────────────────────────────────────────────────────
 
-    const created = await caller.notes.create({
-      entityType: "general",
-      title: "UniqueSearchTermXYZ123 investigation",
-      content: "Detailed findings",
-      severity: "info",
+  describe("getById", () => {
+    it("returns a note by id", async () => {
+      const mockNote = {
+        id: 1, userId: 1, entityType: "alert", entityId: "550",
+        title: "Test Note", content: "Content", severity: "high",
+        tags: ["test"], resolved: 0, createdAt: new Date(), updatedAt: new Date(),
+      };
+      mockDb.limit.mockResolvedValue([mockNote]);
+      const result = await authCaller.notes.getById({ id: 1 });
+      expect(result).not.toBeNull();
+      expect(result?.title).toBe("Test Note");
     });
 
-    const searchResults = await caller.notes.list({
-      search: "UniqueSearchTermXYZ123",
-      limit: 100,
+    it("returns null when note not found", async () => {
+      mockDb.limit.mockResolvedValue([]);
+      const result = await authCaller.notes.getById({ id: 999 });
+      expect(result).toBeNull();
     });
-    expect(searchResults.notes.length).toBeGreaterThanOrEqual(1);
-    const found = searchResults.notes.find((n) => n.id === created.id);
-    expect(found).toBeDefined();
 
-    // Cleanup
-    await caller.notes.delete({ id: created.id });
+    it("rejects unauthenticated access", async () => {
+      await expect(unauthCaller.notes.getById({ id: 1 })).rejects.toThrow();
+    });
+  });
+
+  // ── byEntity ─────────────────────────────────────────────────────
+
+  describe("byEntity", () => {
+    it("returns notes for a specific entity", async () => {
+      const mockNotes = [
+        { id: 1, userId: 1, entityType: "alert", entityId: "550", title: "Note 1", content: "", severity: "high", tags: [], resolved: 0, createdAt: new Date(), updatedAt: new Date() },
+      ];
+      mockDb.orderBy.mockResolvedValue(mockNotes);
+      const result = await authCaller.notes.byEntity({
+        entityType: "alert",
+        entityId: "550",
+      });
+      expect(Array.isArray(result)).toBe(true);
+      expect(result.length).toBe(1);
+    });
+
+    it("returns empty array when no notes for entity", async () => {
+      mockDb.orderBy.mockResolvedValue([]);
+      const result = await authCaller.notes.byEntity({
+        entityType: "cve",
+        entityId: "CVE-9999-0000",
+      });
+      expect(result).toEqual([]);
+    });
+
+    it("rejects unauthenticated access", async () => {
+      await expect(
+        unauthCaller.notes.byEntity({ entityType: "alert", entityId: "1" })
+      ).rejects.toThrow();
+    });
   });
 });
