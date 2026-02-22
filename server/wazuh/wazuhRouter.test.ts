@@ -165,4 +165,30 @@ describe("wazuh router", () => {
     const result = await caller.wazuh.mitreTactics({ limit: 10, offset: 0 });
     expect(result).toBeDefined();
   });
+
+  // ── IT Hygiene Ecosystem: Extensions / Services / Identity ──────────────
+
+  it("agentBrowserExtensions endpoint returns data with fallback", async () => {
+    const result = await caller.wazuh.agentBrowserExtensions({ agentId: "001", limit: 50, offset: 0 });
+    expect(result).toBeDefined();
+    expect(result).toHaveProperty("data");
+  });
+
+  it("agentServices endpoint returns data with fallback", async () => {
+    const result = await caller.wazuh.agentServices({ agentId: "001", limit: 50, offset: 0 });
+    expect(result).toBeDefined();
+    expect(result).toHaveProperty("data");
+  });
+
+  it("agentUsers endpoint returns data with fallback", async () => {
+    const result = await caller.wazuh.agentUsers({ agentId: "001", limit: 50, offset: 0 });
+    expect(result).toBeDefined();
+    expect(result).toHaveProperty("data");
+  });
+
+  it("agentGroups2 endpoint returns data with fallback", async () => {
+    const result = await caller.wazuh.agentGroups2({ agentId: "001", limit: 50, offset: 0 });
+    expect(result).toBeDefined();
+    expect(result).toHaveProperty("data");
+  });
 });

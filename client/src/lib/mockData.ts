@@ -806,3 +806,98 @@ export const MOCK_RULE_FILES = {
     failed_items: [],
   },
 };
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// BROWSER EXTENSIONS (syscollector)
+// ═══════════════════════════════════════════════════════════════════════
+export const MOCK_BROWSER_EXTENSIONS = {
+  data: {
+    affected_items: [
+      { name: "uBlock Origin", browser: "Chrome", version: "1.57.2", description: "An efficient blocker: easy on memory, yet can load and enforce thousands more filters.", path: "C:\\Users\\admin\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Extensions\\cjpalhdlnbpafiamejdnhcphjbkeiagm" },
+      { name: "Bitwarden", browser: "Chrome", version: "2024.6.2", description: "A secure and free password manager for all of your devices.", path: "C:\\Users\\admin\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Extensions\\nngceckbapebfimnlniiiahkandclblb" },
+      { name: "HTTPS Everywhere", browser: "Firefox", version: "2024.1.11", description: "Encrypt the web! HTTPS Everywhere is a Firefox extension to protect your communications.", path: "/home/analyst/.mozilla/firefox/profiles/extensions/https-everywhere@eff.org" },
+      { name: "React Developer Tools", browser: "Chrome", version: "5.2.0", description: "Adds React debugging tools to the Chrome Developer Tools.", path: "C:\\Users\\dev\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Extensions\\fmkadmapgofadopljbjfkapdkoienihi" },
+      { name: "LastPass", browser: "Edge", version: "4.128.0", description: "LastPass, an award-winning password manager.", path: "C:\\Users\\admin\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\Extensions\\hdokiejnpimakedhajhdlcegeplioahd" },
+      { name: "Tampermonkey", browser: "Chrome", version: "5.1.1", description: "The world's most popular userscript manager.", path: "C:\\Users\\dev\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Extensions\\dhdgffkkebhmkfjojejmpbldmpobfkfo" },
+      { name: "Grammarly", browser: "Chrome", version: "14.1150.0", description: "AI-powered writing assistant for Gmail, Facebook, Twitter, LinkedIn.", path: "C:\\Users\\admin\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Extensions\\kbfnbcaeplbcioakkpcpgfkobkghlhen" },
+      { name: "NoScript Security Suite", browser: "Firefox", version: "11.4.29", description: "Maximum protection for your browser: allows active content only for trusted domains.", path: "/home/analyst/.mozilla/firefox/profiles/extensions/{73a6fe31-595d-460b-a920-fcc0f8843232}.xpi" },
+    ],
+    total_affected_items: 8,
+    total_failed_items: 0,
+    failed_items: [],
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// SYSTEM SERVICES (syscollector)
+// ═══════════════════════════════════════════════════════════════════════
+export const MOCK_SERVICES = {
+  data: {
+    affected_items: [
+      { name: "sshd", display_name: "OpenSSH Daemon", state: "running", start_type: "auto", description: "OpenSSH server daemon", pid: 1234 },
+      { name: "wazuh-agent", display_name: "Wazuh Agent", state: "running", start_type: "auto", description: "Wazuh HIDS agent", pid: 2345 },
+      { name: "auditd", display_name: "Linux Audit Daemon", state: "running", start_type: "auto", description: "Security auditing service", pid: 567 },
+      { name: "rsyslog", display_name: "System Logging Service", state: "running", start_type: "auto", description: "Rocket-fast system for log processing", pid: 890 },
+      { name: "cron", display_name: "Cron Daemon", state: "running", start_type: "auto", description: "Regular background program processing daemon", pid: 678 },
+      { name: "nginx", display_name: "NGINX HTTP Server", state: "running", start_type: "auto", description: "A high performance web server and reverse proxy", pid: 3456 },
+      { name: "docker", display_name: "Docker Engine", state: "running", start_type: "auto", description: "Docker Application Container Engine", pid: 4567 },
+      { name: "fail2ban", display_name: "Fail2Ban Service", state: "running", start_type: "auto", description: "Daemon to ban hosts that cause multiple authentication errors", pid: 5678 },
+      { name: "postfix", display_name: "Postfix Mail Transport Agent", state: "stopped", start_type: "manual", description: "Postfix Mail Transport Agent", pid: null },
+      { name: "cups", display_name: "CUPS Printing Service", state: "stopped", start_type: "disabled", description: "CUPS Scheduler", pid: null },
+      { name: "bluetooth", display_name: "Bluetooth Service", state: "stopped", start_type: "disabled", description: "Bluetooth management daemon", pid: null },
+      { name: "ntp", display_name: "Network Time Protocol", state: "running", start_type: "auto", description: "Network Time Protocol daemon", pid: 789 },
+      { name: "ufw", display_name: "Uncomplicated Firewall", state: "running", start_type: "auto", description: "Uncomplicated firewall", pid: 456 },
+      { name: "apparmor", display_name: "AppArmor Security", state: "running", start_type: "auto", description: "AppArmor initialization", pid: 345 },
+    ],
+    total_affected_items: 14,
+    total_failed_items: 0,
+    failed_items: [],
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// LOCAL USERS (syscollector)
+// ═══════════════════════════════════════════════════════════════════════
+export const MOCK_USERS = {
+  data: {
+    affected_items: [
+      { name: "root", uid: "0", gid: "0", home: "/root", shell: "/bin/bash", login: "2025-02-20T08:15:00Z", last_login: "2025-02-21T14:30:00Z" },
+      { name: "admin", uid: "1000", gid: "1000", home: "/home/admin", shell: "/bin/bash", login: "2025-02-21T09:00:00Z", last_login: "2025-02-21T16:45:00Z" },
+      { name: "analyst", uid: "1001", gid: "1001", home: "/home/analyst", shell: "/bin/bash", login: "2025-02-21T08:30:00Z", last_login: "2025-02-21T17:00:00Z" },
+      { name: "www-data", uid: "33", gid: "33", home: "/var/www", shell: "/usr/sbin/nologin", login: null, last_login: null },
+      { name: "sshd", uid: "74", gid: "74", home: "/run/sshd", shell: "/usr/sbin/nologin", login: null, last_login: null },
+      { name: "nobody", uid: "65534", gid: "65534", home: "/nonexistent", shell: "/usr/sbin/nologin", login: null, last_login: null },
+      { name: "mysql", uid: "27", gid: "27", home: "/var/lib/mysql", shell: "/bin/false", login: null, last_login: null },
+      { name: "postgres", uid: "26", gid: "26", home: "/var/lib/postgresql", shell: "/bin/bash", login: "2025-02-19T10:00:00Z", last_login: "2025-02-20T12:00:00Z" },
+      { name: "deploy", uid: "1002", gid: "1002", home: "/home/deploy", shell: "/bin/bash", login: "2025-02-18T14:00:00Z", last_login: "2025-02-21T11:30:00Z" },
+      { name: "docker", uid: "999", gid: "999", home: "/nonexistent", shell: "/usr/sbin/nologin", login: null, last_login: null },
+    ],
+    total_affected_items: 10,
+    total_failed_items: 0,
+    failed_items: [],
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// LOCAL GROUPS (syscollector)
+// ═══════════════════════════════════════════════════════════════════════
+export const MOCK_GROUPS = {
+  data: {
+    affected_items: [
+      { name: "root", gid: "0", members: ["root"] },
+      { name: "sudo", gid: "27", members: ["admin", "deploy"] },
+      { name: "docker", gid: "999", members: ["admin", "deploy", "analyst"] },
+      { name: "adm", gid: "4", members: ["admin", "analyst"] },
+      { name: "www-data", gid: "33", members: ["www-data", "admin"] },
+      { name: "ssh", gid: "74", members: ["sshd"] },
+      { name: "staff", gid: "50", members: ["admin", "analyst", "deploy"] },
+      { name: "users", gid: "100", members: ["admin", "analyst", "deploy", "postgres"] },
+      { name: "wazuh", gid: "1003", members: ["wazuh"] },
+      { name: "audit", gid: "1004", members: ["admin", "analyst"] },
+    ],
+    total_affected_items: 10,
+    total_failed_items: 0,
+    failed_items: [],
+  },
+};

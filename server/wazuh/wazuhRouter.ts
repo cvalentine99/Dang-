@@ -276,6 +276,50 @@ export const wazuhRouter = router({
     ),
 
   // ══════════════════════════════════════════════════════════════════════════════
+  // SYSCOLLECTOR — EXTENSIONS / SERVICES / IDENTITY
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  /** Browser extensions installed on the agent (Windows only) */
+  agentBrowserExtensions: publicProcedure
+    .input(z.object({ agentId: agentIdSchema, ...paginationSchema.shape }))
+    .query(({ input }) =>
+      proxyGet(`/syscollector/${input.agentId}/browser_extensions`, {
+        limit: input.limit,
+        offset: input.offset,
+      }).catch(() => ({ data: { affected_items: [], total_affected_items: 0 } }))
+    ),
+
+  /** System services / daemons (Windows services, systemd units) */
+  agentServices: publicProcedure
+    .input(z.object({ agentId: agentIdSchema, ...paginationSchema.shape }))
+    .query(({ input }) =>
+      proxyGet(`/syscollector/${input.agentId}/services`, {
+        limit: input.limit,
+        offset: input.offset,
+      }).catch(() => ({ data: { affected_items: [], total_affected_items: 0 } }))
+    ),
+
+  /** Local users on the agent */
+  agentUsers: publicProcedure
+    .input(z.object({ agentId: agentIdSchema, ...paginationSchema.shape }))
+    .query(({ input }) =>
+      proxyGet(`/syscollector/${input.agentId}/users`, {
+        limit: input.limit,
+        offset: input.offset,
+      }).catch(() => ({ data: { affected_items: [], total_affected_items: 0 } }))
+    ),
+
+  /** Local groups on the agent */
+  agentGroups2: publicProcedure
+    .input(z.object({ agentId: agentIdSchema, ...paginationSchema.shape }))
+    .query(({ input }) =>
+      proxyGet(`/syscollector/${input.agentId}/groups`, {
+        limit: input.limit,
+        offset: input.offset,
+      }).catch(() => ({ data: { affected_items: [], total_affected_items: 0 } }))
+    ),
+
+  // ══════════════════════════════════════════════════════════════════════════════
   // ALERTS / RULES
   // ══════════════════════════════════════════════════════════════════════════════
   rules: publicProcedure

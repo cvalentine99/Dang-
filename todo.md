@@ -274,3 +274,22 @@
 - [x] Delete saved search functionality
 - [x] Write vitest tests for saved search CRUD (15 tests passing)
 - [x] Save checkpoint
+
+## Phase 28: IT Hygiene Ecosystem — Three-Column Rebuild
+
+- [x] Three-column layout: Software & Network | Extensions & Services | Identity & Access
+- [x] Agent selector dropdown for per-agent data
+- [x] Packages table with name, version, architecture, vendor, format, description
+- [x] Open ports table with protocol, local/remote IP, port, PID, process, state
+- [x] Running processes table with PID, name, state, user, PPID, priority, threads, CMD
+- [x] Browser extensions table with name, browser, version, description, path
+- [x] System services table with name, display name, state, startup type, PID, description
+- [x] Local users table with username, UID, GID, home, shell, type badge, last login
+- [x] Local groups table with name, GID, members, member count
+- [x] KPI summary row with 8 stat cards (packages, ports, processes, extensions, services, running, users, interactive)
+- [x] Privilege summary panels for users and privileged groups
+- [x] Browser distribution and startup type distribution summaries
+- [x] Mock data fallback for all categories (browser extensions, services, users, groups)
+- [x] Backend endpoints: agentBrowserExtensions, agentServices, agentUsers, agentGroups2
+- [x] Write vitest tests (4 new tests, 48 total passing)
+- [x] Save checkpoint
