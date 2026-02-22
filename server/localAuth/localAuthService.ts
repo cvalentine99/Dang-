@@ -130,6 +130,11 @@ export async function loginLocalUser(input: {
 
   const user = userRows[0];
 
+  // Block disabled users
+  if (user.isDisabled) {
+    throw new Error("This account has been disabled. Contact an administrator.");
+  }
+
   if (!user.passwordHash) {
     throw new Error(
       "This account uses OAuth login. Please sign in via the OAuth provider."

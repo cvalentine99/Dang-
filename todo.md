@@ -555,5 +555,225 @@
 - [x] CI/CD documentation in DOCKER.md
 - [x] README badges for CI status and container registry
 - [x] README.md with project overview, architecture, quick start
-- [x] Push workflows to GitHub repository (requires user push due to workflows permission)
+- [x] Push workflows to GitHub repository
+- [x] Fix CI-incompatible tests (database mocking, env var skipping)
+- [x] Fix Docker image name (trailing hyphen → dang-siem)
+- [x] CI passing: all 3 jobs (Typecheck, Test, Build) green
+- [x] Docker Build passing: multi-platform image pushed to ghcr.io/cvalentine99/dang-siem:latest
 - [x] Save checkpoint
+
+## Phase 40: Geographic Threat Distribution Map
+
+- [x] Replace table-based Geographic Threat Distribution with interactive map
+- [x] Build ThreatMap component with country-level threat heatmap circles
+- [x] Country hover tooltips showing threat count, avg severity, and threat level
+- [x] Amethyst Nexus themed map (dark tiles, purple/violet heat colors, severity legend)
+- [x] Save checkpoint
+
+## Phase 41: Threat Map Enhancements (GeoIP, Click-to-Filter, Pulse Animation)
+
+- [x] Backend: GeoIP enrichment endpoint (IP-to-country lookup using geoip-lite/MaxMind GeoLite2)
+- [x] Backend: Aggregate alert source IPs to country-level threat data with real coordinat- [x] Frontend: Replace static country centroids with GeoIP-resolved attack origin points
+- [x] Frontend: Animated pulse effect on highest-severity threat circles (critical/high)
+- [x] Frontend: Click-to-filter — clicking a country circle navigates to Alerts Timeline filtered by that country
+- [x] Frontend: Alerts Timeline accepts country/srcip filter from URL search params with active filter badges
+- [x] Backend: alertsSearch now supports srcip and geoCountry filter params
+- [x] Save checkpoint
+
+## Phase 42: Dockerfile Fix — --prod strips Vite runtime dependency
+
+- [x] Fix Dockerfile line 49: copy full node_modules from deps stage instead of reinstalling with --prod
+- [x] Save checkpoint
+
+## Phase 43: Fix production runtime error
+
+- [x] Diagnose runtime error: TypeError Invalid URL from getLoginUrl() when VITE_OAUTH_PORTAL_URL not set in Docker
+- [x] Fix: Add guard in const.ts getLoginUrl() — returns "/" fallback when OAuth vars missing, try/catch on URL construction
+- [x] Save checkpoint
+
+## Phase 44: Local Auth, Env Validation, Status Dashboard
+
+### Local JWT Auth for Docker
+- [x] Add passwordHash column to users table (nullable for OAuth users)
+- [x] Create local auth service (bcrypt password hashing, JWT token generation/verification)
+- [x] Create local auth tRPC endpoints (register, login) that work alongside existing OAuth
+- [x] Auto-detect auth mode: if OAUTH_SERVER_URL is set use Manus OAuth, otherwise use local auth
+- [x] Seed default admin user via env vars (LOCAL_ADMIN_USER, LOCAL_ADMIN_PASS)
+- [x] Build login page UI with Amethyst Nexus styling
+- [x] Build register page UI (first user becomes admin, star badge)
+- [x] Update DashboardLayout sign-in button to auto-detect auth mode and route to /login or OAuth
+- [x] Add /login and /register routes outside DashboardLayout in App.tsx
+
+### Environment Variable Validation
+- [x] Add boot-time validation for required env vars (DATABASE_URL, JWT_SECRET)
+- [x] Add boot-time validation for Wazuh env vars (WAZUH_HOST, WAZUH_USER, WAZUH_PASS)
+- [x] Print clear error messages with missing variable names and descriptions
+- [x] Categorize as required vs optional with graceful degradation
+
+### Status Dashboard
+- [x] Create /api/status endpoint with Wazuh Manager, Wazuh Indexer, and MySQL connectivity checks
+- [x] Build /status frontend page with connection status cards and latency indicators
+- [x] Show environment configuration summary (which auth mode, which features enabled)
+- [x] Auto-refresh status checks with manual retry button
+- [x] Write vitest tests for local auth, env validation, and status endpoint
+- [x] Fix /api/status timeout (parallel checks with 5s timeout instead of 45s sequential)
+- [x] Save checkpoint
+
+## Phase 45: Docker Compose Self-Hosted Deployment
+
+### Docker Configuration
+- [x] Review and update multi-stage Dockerfile (correct build output paths, add package.json for runtime)
+- [x] Update .dockerignore to exclude dev files
+- [x] Update docker-compose.yml — add LOCAL_ADMIN_USER/PASS, make Wazuh vars optional (not :?required)
+- [x] Update env.docker.template with local auth vars and descriptions
+- [x] Verify docker-entrypoint.sh handles DB wait, migrations, and server start
+- [x] Update DOCKER.md — add local auth section, status dashboard docs, env validation docs
+- [x] Update deploy.sh — make Wazuh vars optional with warnings instead of hard errors
+- [x] Verify TypeScript compiles clean (0 errors) and all 127 tests pass
+- [x] Save checkpoint
+
+## Phase 46: GitHub Push & Docker Build Verification
+
+### GitHub Push
+- [x] Push all changes to cvalentine99/Dang- repository (commit baa93c6)
+
+### Docker Build Test
+- [x] Run docker compose build to verify the multi-stage Dockerfile builds successfully (fixed missing geoipService.ts)
+- [x] Run docker compose up -d to start app + MySQL containers
+- [x] Verify MySQL container reaches healthy state (instant)
+- [x] Verify app container starts and passes health check (status: healthy)
+- [x] Verify environment validation prints correct output on startup (clear diagnostics with ✅/⚠️)
+- [x] Verify database migrations run successfully ("migrations applied successfully")
+- [x] Test /api/health endpoint returns 200 ({status:"healthy",database:"connected"})
+- [x] Test /api/status endpoint returns connectivity info (database connected, wazuh not_configured)
+- [x] Test local auth login flow — admin login ✅, wrong password rejected ✅, new user registration ✅
+- [x] Fix: missing geoipService.ts in GitHub repo
+- [x] Fix: Dockerfile corepack→npm for better network compatibility
+
+## Phase 47: Admin User Management & Status Auto-Refresh
+
+### Admin User Management Panel (/admin/users)
+- [x] Add admin-only tRPC procedures: list, updateRole, resetPassword, toggleDisabled
+- [x] Add isDisabled column to users table (migration 0008)
+- [x] Build /admin/users page with user table, role badges, status badges, search, pagination
+- [x] Implement role promote/demote (admin ↔ user) with confirmation dialog
+- [x] Implement password reset (admin sets new password) with dialog — local auth only
+- [x] Implement disable/enable user toggle with confirmation dialog
+- [x] Add /admin/users route and Admin sidebar group with User Management entry
+- [x] Prevent admin from demoting/disabling themselves (self-protection)
+- [x] Block disabled users from logging in (localAuthService check)
+- [x] Write 16 vitest tests (access control, self-protection, input validation, list query)
+
+### Status Dashboard Auto-Refresh
+- [x] Add operator-controlled auto-refresh interval selector (Off, 15s, 30s, 60s, 5m)
+- [x] Show countdown timer when auto-refresh is active
+- [x] Auto-refresh cleans up on unmount and interval change
+- [x] Styled with Amethyst Nexus glass-morphism theme
+- [x] All 143 tests passing, TypeScript clean
+
+## Phase 48: HybridRAG Knowledge Graph Integration
+
+### Knowledge Graph Database Schema
+- [x] Create graph_endpoints table (agent_id, hostname, ip_address, os_version, architecture)
+- [x] Create graph_processes table (process_name, pid, state, startup_type, endpoint FK)
+- [x] Create graph_network_ports table (port_number, protocol, state, process FK)
+- [x] Create graph_software_packages table (package_name, version, architecture, vendor, endpoint FK)
+- [x] Create graph_identities table (username, uid, shell, is_admin, endpoint FK)
+- [x] Create graph_vulnerabilities table (cve_id, cvss_score, severity, software_package FK)
+- [x] Create graph_security_events table (rule_id, mitre_tactic, timestamp, severity_level, endpoint FK)
+- [x] Create graph_sync_status table (last_sync, entity_counts, status)
+- [x] Create investigation_sessions + investigation_notes tables
+- [x] Run migrations (0009_fresh_marrow.sql)
+
+### ETL Pipeline (Wazuh Indexer → Graph Tables)
+- [x] Build ETL service (etlService.ts) with 7 sync functions
+- [x] Sync wazuh-states-vulnerabilities-* → graph_vulnerabilities
+- [x] Sync wazuh-alerts-* → graph_security_events (incremental)
+- [x] Sync Wazuh Server API syscollector → endpoints, processes, network_ports, identities
+- [x] Add incremental sync support (track last sync timestamp via graph_sync_status)
+- [x] Create tRPC procedures for manual sync trigger and status (graphRouter.ts)
+
+### Agentic LLM Pipeline
+- [x] Build intent analysis module (structured JSON output with NER)
+- [x] Build graph query module (graphQueryService.ts with SQL JOINs)
+- [x] Build indexer search module (multi_match + BM25 queries)
+- [x] Build context assembly module (parallel retrieval via Promise.all)
+- [x] Build LLM synthesis module (SecondSight persona, chain-of-thought)
+- [x] Build follow-up suggestion generator
+- [x] Create tRPC mutation for analyst chat (graphRouter.ts)
+
+### Security Analyst Chat UI (/analyst)
+- [x] Build chat interface with message history and SecondSight persona
+- [x] Show LLM responses with markdown rendering (Streamdown)
+- [x] Display retrieval sources (Knowledge Graph, Wazuh Indexer, LLM Synthesis badges)
+- [x] Add raw JSON evidence toggle per message
+- [x] Show retrieval source indicators
+- [x] Add 6 suggested query buttons for common security questions
+
+### Knowledge Graph Visualization (/graph)
+- [x] Build interactive force-directed graph with D3.js
+- [x] Display entity nodes with type-specific colors (7 entity types)
+- [x] Display relationship edges between entities
+- [x] Click-to-inspect node details panel
+- [x] Entity type filter toggles (bottom bar)
+- [x] Search entities with text input
+- [x] Zoom/pan/reset controls
+- [x] Graph stats sidebar panel
+- [x] Empty state with link to Data Pipeline
+
+### Investigation Workspace (/investigations)
+- [x] Investigation sessions (create, list, view detail)
+- [x] Analyst notes per investigation (create, delete with timestamps)
+- [x] Status management (active, closed, archived) with filter tabs
+- [x] Tags for categorization
+- [x] Evidence collection placeholder
+- [x] Search investigations
+
+### ETL Pipeline Management UI (/pipeline)
+- [x] Show sync status per entity type (7 cards with last run, count, status)
+- [x] Manual "Run Full Sync" trigger button
+- [x] Pipeline flow visualization (Wazuh Server API → Indexer → Knowledge Graph → LLM)
+- [x] Entity count summary cards (Total Entities, Entity Types, Last Sync)
+- [x] Sync results display with success/failure per entity
+
+### Integration & Testing
+- [x] Add routes to App.tsx for /analyst, /graph, /investigations, /pipeline
+- [x] Add Intelligence group to sidebar (Security Analyst, Knowledge Graph, Investigations, Data Pipeline)
+- [x] Write 20 vitest tests for graph router (stats, ETL, graph queries, investigations CRUD)
+- [x] Verify TypeScript compiles clean (0 errors)
+- [x] Visual verification of all 4 pages in browser
+- [x] All 161 tests passing
+- [x] Save checkpoint
+
+## Phase 49: GitHub Push + Docker Rebuild + Report Export + Attack Paths
+
+### GitHub Push & Docker Rebuild
+- [ ] Sync all latest files to cvalentine99/Dang- repository
+- [ ] Rebuild Docker image and verify container starts
+- [ ] Test health check and status endpoint in Docker
+
+### Investigation Report Export
+- [ ] Backend: tRPC procedure to generate investigation report data (timeline, notes, evidence)
+- [ ] Backend: Generate Markdown report string from investigation data
+- [ ] Backend: Generate PDF report using fpdf2/weasyprint from Markdown
+- [ ] Frontend: Add "Export Report" button to investigation detail view
+- [ ] Frontend: Download options (Markdown, PDF)
+- [ ] Include investigation metadata (title, status, tags, created/updated dates)
+- [ ] Include all analyst notes with timestamps
+- [ ] Include evidence items and timeline entries
+
+### Attack Path Highlighting (Knowledge Graph)
+- [ ] Backend: Build attack path detection algorithm (multi-hop traversal)
+- [ ] Backend: Find paths from vulnerability → software_package → endpoint → identity → security_event
+- [ ] Backend: Score paths by severity (CVSS + alert level)
+- [ ] Frontend: Add "Show Attack Paths" toggle to Knowledge Graph page
+- [ ] Frontend: Highlight path edges with animated gradient (red/orange for critical)
+- [ ] Frontend: Path detail panel showing hop-by-hop breakdown
+- [ ] Frontend: Path severity indicator and kill chain stage labels
+
+### Testing
+- [ ] Write vitest tests for report export procedures
+- [ ] Write vitest tests for attack path detection
+- [ ] Verify TypeScript compiles clean
+- [ ] All tests passing
+- [ ] Save checkpoint

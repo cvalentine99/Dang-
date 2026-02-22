@@ -23,6 +23,11 @@ import ThreatIntel from "./pages/ThreatIntel";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Status from "./pages/Status";
+import AdminUsers from "./pages/AdminUsers";
+import AnalystChat from "./pages/AnalystChat";
+import KnowledgeGraph from "./pages/KnowledgeGraph";
+import Investigations from "./pages/Investigations";
+import DataPipeline from "./pages/DataPipeline";
 
 function Router() {
   return (
@@ -51,6 +56,11 @@ function Router() {
             <Route path="/notes" component={AnalystNotes} />
             <Route path="/assistant" component={Assistant} />
             <Route path="/status" component={Status} />
+            <Route path="/admin/users" component={AdminUsers} />
+            <Route path="/analyst" component={AnalystChat} />
+            <Route path="/graph" component={KnowledgeGraph} />
+            <Route path="/investigations" component={Investigations} />
+            <Route path="/pipeline" component={DataPipeline} />
             <Route path="/404" component={NotFound} />
             <Route component={NotFound} />
           </Switch>

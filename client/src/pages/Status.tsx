@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { GlassPanel } from "@/components/shared/GlassPanel";
+import { Button } from "@/components/ui/button";
 import {
   Database,
   Shield,
@@ -18,8 +19,20 @@ import {
   Users,
   Activity,
   Zap,
+  Timer,
+  TimerOff,
   type LucideIcon,
 } from "lucide-react";
+
+// ── Auto-Refresh Intervals ──────────────────────────────────────────────────
+
+const REFRESH_OPTIONS = [
+  { label: "Off", value: 0 },
+  { label: "15s", value: 15 },
+  { label: "30s", value: 30 },
+  { label: "60s", value: 60 },
+  { label: "5m", value: 300 },
+] as const;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -187,6 +200,10 @@ export default function Status() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  const [refreshInterval, setRefreshInterval] = useState(0); // seconds, 0 = off
+  const [countdown, setCountdown] = useState(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchStatus = useCallback(async () => {
     setIsLoading(true);
@@ -204,9 +221,41 @@ export default function Status() {
     }
   }, []);
 
+  // Initial fetch
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);
+
+  // Auto-refresh interval
+  useEffect(() => {
+    // Clear existing timers
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    intervalRef.current = null;
+    countdownRef.current = null;
+
+    if (refreshInterval > 0) {
+      setCountdown(refreshInterval);
+
+      // Countdown ticker (every second)
+      countdownRef.current = setInterval(() => {
+        setCountdown((prev) => (prev <= 1 ? refreshInterval : prev - 1));
+      }, 1000);
+
+      // Actual refresh
+      intervalRef.current = setInterval(() => {
+        fetchStatus();
+        setCountdown(refreshInterval);
+      }, refreshInterval * 1000);
+    } else {
+      setCountdown(0);
+    }
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
+  }, [refreshInterval, fetchStatus]);
 
   const overallStyle = data ? OVERALL_COLORS[data.status] : OVERALL_COLORS.unhealthy;
   const OverallIcon = overallStyle.icon;
@@ -223,7 +272,36 @@ export default function Status() {
         subtitle="Connection health, latency, and configuration overview"
         onRefresh={fetchStatus}
         isLoading={isLoading}
-      />
+      >
+        {/* Auto-refresh control */}
+        <div className="flex items-center gap-1.5 rounded-lg px-1 py-1" style={{ background: "oklch(0.18 0.03 286 / 60%)", border: "1px solid oklch(0.3 0.04 286 / 30%)" }}>
+          {refreshInterval > 0 ? (
+            <Timer className="w-3.5 h-3.5 ml-2 text-primary animate-pulse" />
+          ) : (
+            <TimerOff className="w-3.5 h-3.5 ml-2 text-muted-foreground" />
+          )}
+          {REFRESH_OPTIONS.map((opt) => (
+            <Button
+              key={opt.value}
+              variant={refreshInterval === opt.value ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setRefreshInterval(opt.value)}
+              className={`h-7 px-2.5 text-xs font-mono ${
+                refreshInterval === opt.value
+                  ? "bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {opt.label}
+            </Button>
+          ))}
+          {refreshInterval > 0 && (
+            <span className="text-[10px] font-mono text-muted-foreground ml-1 mr-2 tabular-nums">
+              {countdown}s
+            </span>
+          )}
+        </div>
+      </PageHeader>
 
       {/* Overall Status Banner */}
       <div

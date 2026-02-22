@@ -5,3 +5,4 @@ export { RefreshControl } from "./RefreshControl";
 export { RawJsonViewer } from "./RawJsonViewer";
 export { ExportButton } from "./ExportButton";
 export { AddNoteDialog, NoteCountBadge } from "./AddNoteDialog";
+export { ThreatMap } from "./ThreatMap";
