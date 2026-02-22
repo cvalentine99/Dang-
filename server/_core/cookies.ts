@@ -39,10 +39,14 @@ export function getSessionCookieOptions(
   //       ? hostname
   //       : undefined;
 
+  const secure = isSecureRequest(req);
   return {
     httpOnly: true,
     path: "/",
-    sameSite: "none",
-    secure: isSecureRequest(req),
+    // sameSite "none" requires secure=true (HTTPS). On plain HTTP (Docker
+    // self-hosted on localhost), the browser silently rejects the cookie,
+    // causing a login redirect loop. Use "lax" for HTTP connections.
+    sameSite: secure ? "none" : "lax",
+    secure,
   };
 }
