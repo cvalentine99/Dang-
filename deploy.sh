@@ -5,11 +5,14 @@
 #
 # Usage:
 #   chmod +x deploy.sh
-#   ./deploy.sh              # Full build + start
-#   ./deploy.sh --rebuild    # Force rebuild without cache
-#   ./deploy.sh --stop       # Stop all services
-#   ./deploy.sh --logs       # Follow logs
-#   ./deploy.sh --status     # Show service status
+#   ./deploy.sh                     # HTTP only on port 3000
+#   ./deploy.sh --proxy caddy       # HTTPS via Caddy (auto Let's Encrypt)
+#   ./deploy.sh --proxy nginx       # HTTPS via Nginx (bring your own certs)
+#   ./deploy.sh --rebuild           # Force rebuild without cache
+#   ./deploy.sh --stop              # Stop all services
+#   ./deploy.sh --logs              # Follow logs
+#   ./deploy.sh --status            # Show service status
+#   ./deploy.sh --generate-certs    # Generate self-signed certs for Nginx
 # ============================================================================
 
 set -euo pipefail
@@ -21,14 +24,50 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 log()   { echo -e "${PURPLE}[dang]${NC} $1"; }
 ok()    { echo -e "${GREEN}[✓]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
 err()   { echo -e "${RED}[✗]${NC} $1"; }
+info()  { echo -e "${CYAN}[i]${NC} $1"; }
 
-# ── Pre-flight checks ───────────────────────────────────────────────────────
+PROXY_MODE=""
+COMPOSE_FILES="-f docker-compose.yml"
+
+# ── Parse arguments ─────────────────────────────────────────────────────────
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --proxy)
+        PROXY_MODE="${2:-}"
+        if [[ "$PROXY_MODE" != "caddy" && "$PROXY_MODE" != "nginx" ]]; then
+          err "Invalid proxy mode: '$PROXY_MODE'. Use 'caddy' or 'nginx'."
+          exit 1
+        fi
+        shift 2
+        ;;
+      --rebuild|--stop|--logs|--status|--generate-certs)
+        # These are handled by the case statement in main
+        break
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+}
+
+# ── Build compose file list based on proxy mode ────────────────────────────
+setup_compose_files() {
+  if [ -n "$PROXY_MODE" ]; then
+    COMPOSE_FILES="-f docker-compose.yml -f docker-compose.${PROXY_MODE}.yml"
+    log "Proxy mode: ${CYAN}${PROXY_MODE}${NC}"
+  fi
+}
+
+# ── Pre-flight checks ──────────────────────────────────────────────────────
 preflight() {
   log "Running pre-flight checks..."
 
@@ -81,12 +120,62 @@ preflight() {
     exit 1
   fi
   ok "Required environment variables are set"
+
+  # Proxy-specific checks
+  if [ "$PROXY_MODE" = "caddy" ]; then
+    local domain=$(grep "^DANG_DOMAIN=" .env 2>/dev/null | cut -d'=' -f2-)
+    if [ -z "$domain" ]; then
+      warn "DANG_DOMAIN not set in .env — defaulting to 'localhost' (self-signed)"
+      info "For production, set DANG_DOMAIN=your.domain.com and ACME_EMAIL=you@email.com"
+    else
+      ok "Caddy domain: ${domain}"
+    fi
+  fi
+
+  if [ "$PROXY_MODE" = "nginx" ]; then
+    if [ ! -f "proxy/nginx/ssl/dang.crt" ] || [ ! -f "proxy/nginx/ssl/dang.key" ]; then
+      warn "SSL certificates not found in proxy/nginx/ssl/"
+      warn "Generate self-signed certs with: ./deploy.sh --generate-certs"
+      warn "Or place your own dang.crt and dang.key in proxy/nginx/ssl/"
+      err "Cannot start Nginx without certificates."
+      exit 1
+    fi
+    ok "SSL certificates found"
+  fi
 }
 
-# ── Commands ─────────────────────────────────────────────────────────────────
+# ── Generate self-signed certificates ──────────────────────────────────────
+cmd_generate_certs() {
+  log "Generating self-signed SSL certificates for Nginx..."
+
+  mkdir -p proxy/nginx/ssl
+
+  local cn="${1:-dang.local}"
+
+  openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout proxy/nginx/ssl/dang.key \
+    -out proxy/nginx/ssl/dang.crt \
+    -subj "/C=US/ST=Security/L=SOC/O=Dang SIEM/CN=${cn}" \
+    2>/dev/null
+
+  ok "Self-signed certificate generated for CN=${cn}"
+  info "Certificate: proxy/nginx/ssl/dang.crt"
+  info "Private key: proxy/nginx/ssl/dang.key"
+  info "Valid for: 365 days"
+  echo ""
+  warn "Self-signed certs will show browser warnings. For production, use Let's Encrypt."
+  info "Consider using Caddy instead (--proxy caddy) for automatic Let's Encrypt certs."
+}
+
+# ── Commands ────────────────────────────────────────────────────────────────
 cmd_start() {
   preflight
+  setup_compose_files
+
   log "Building and starting Dang! SIEM..."
+  if [ -n "$PROXY_MODE" ]; then
+    info "HTTPS proxy: ${PROXY_MODE}"
+  fi
 
   local build_args=""
   if [ "${1:-}" = "--rebuild" ]; then
@@ -94,10 +183,10 @@ cmd_start() {
     log "Forcing rebuild without cache..."
   fi
 
-  docker compose build $build_args
+  docker compose $COMPOSE_FILES build $build_args
   ok "Docker image built successfully"
 
-  docker compose up -d
+  docker compose $COMPOSE_FILES up -d
   ok "Services started"
 
   log "Waiting for health check..."
@@ -119,39 +208,85 @@ cmd_start() {
   fi
 
   echo ""
-  echo -e "${PURPLE}╔══════════════════════════════════════════════════╗${NC}"
-  echo -e "${PURPLE}║${NC}  ${GREEN}Dang! SIEM is running${NC}                          ${PURPLE}║${NC}"
-  echo -e "${PURPLE}║${NC}                                                  ${PURPLE}║${NC}"
-  local port=$(grep "^APP_PORT=" .env 2>/dev/null | cut -d'=' -f2-)
-  port=${port:-3000}
-  echo -e "${PURPLE}║${NC}  Web UI:  ${GREEN}http://localhost:${port}${NC}                ${PURPLE}║${NC}"
-  echo -e "${PURPLE}║${NC}  Health:  ${GREEN}http://localhost:${port}/api/health${NC}     ${PURPLE}║${NC}"
-  echo -e "${PURPLE}╚══════════════════════════════════════════════════╝${NC}"
+  echo -e "${PURPLE}╔══════════════════════════════════════════════════════════════╗${NC}"
+  echo -e "${PURPLE}║${NC}  ${GREEN}Dang! SIEM is running${NC}                                      ${PURPLE}║${NC}"
+  echo -e "${PURPLE}║${NC}                                                              ${PURPLE}║${NC}"
+
+  if [ "$PROXY_MODE" = "caddy" ]; then
+    local domain=$(grep "^DANG_DOMAIN=" .env 2>/dev/null | cut -d'=' -f2-)
+    domain=${domain:-localhost}
+    echo -e "${PURPLE}║${NC}  Web UI:  ${GREEN}https://${domain}${NC}                            ${PURPLE}║${NC}"
+    echo -e "${PURPLE}║${NC}  Proxy:   ${CYAN}Caddy (auto TLS)${NC}                               ${PURPLE}║${NC}"
+  elif [ "$PROXY_MODE" = "nginx" ]; then
+    echo -e "${PURPLE}║${NC}  Web UI:  ${GREEN}https://localhost${NC}                              ${PURPLE}║${NC}"
+    echo -e "${PURPLE}║${NC}  Proxy:   ${CYAN}Nginx (TLS)${NC}                                    ${PURPLE}║${NC}"
+  else
+    local port=$(grep "^APP_PORT=" .env 2>/dev/null | cut -d'=' -f2-)
+    port=${port:-3000}
+    echo -e "${PURPLE}║${NC}  Web UI:  ${GREEN}http://localhost:${port}${NC}                            ${PURPLE}║${NC}"
+    echo -e "${PURPLE}║${NC}  Proxy:   ${YELLOW}None (HTTP only)${NC}                               ${PURPLE}║${NC}"
+  fi
+
+  echo -e "${PURPLE}║${NC}  Health:  ${GREEN}http://localhost:3000/api/health${NC} (internal)     ${PURPLE}║${NC}"
+  echo -e "${PURPLE}╚══════════════════════════════════════════════════════════════╝${NC}"
+
+  if [ -z "$PROXY_MODE" ]; then
+    echo ""
+    info "For HTTPS, re-run with: ./deploy.sh --proxy caddy"
+  fi
 }
 
 cmd_stop() {
+  setup_compose_files
   log "Stopping Dang! SIEM..."
-  docker compose down
+  docker compose $COMPOSE_FILES down
   ok "All services stopped"
 }
 
 cmd_logs() {
-  docker compose logs -f --tail=100
+  setup_compose_files
+  docker compose $COMPOSE_FILES logs -f --tail=100
 }
 
 cmd_status() {
+  setup_compose_files
   echo ""
   log "Service Status:"
-  docker compose ps
+  docker compose $COMPOSE_FILES ps
   echo ""
   log "Health Check:"
   local port=$(grep "^APP_PORT=" .env 2>/dev/null | cut -d'=' -f2-)
   port=${port:-3000}
-  curl -s "http://localhost:${port}/api/health" 2>/dev/null | python3 -m json.tool 2>/dev/null || warn "App not reachable"
+  curl -s "http://localhost:${port}/api/health" 2>/dev/null | python3 -m json.tool 2>/dev/null || warn "App not reachable on port ${port}"
+
+  if [ "$PROXY_MODE" = "caddy" ]; then
+    echo ""
+    log "Caddy Status:"
+    docker compose $COMPOSE_FILES exec caddy caddy version 2>/dev/null || warn "Caddy not reachable"
+  fi
+
+  if [ "$PROXY_MODE" = "nginx" ]; then
+    echo ""
+    log "Nginx Status:"
+    docker compose $COMPOSE_FILES exec nginx nginx -t 2>/dev/null || warn "Nginx not reachable"
+  fi
 }
 
-# ── Main ─────────────────────────────────────────────────────────────────────
-case "${1:-}" in
+# ── Main ────────────────────────────────────────────────────────────────────
+# Extract --proxy before other args
+ALL_ARGS=("$@")
+parse_args "$@"
+
+# Find the command arg (skip --proxy and its value)
+CMD=""
+for arg in "${ALL_ARGS[@]}"; do
+  case "$arg" in
+    --proxy|caddy|nginx) continue ;;
+    --*) CMD="$arg"; break ;;
+  esac
+done
+
+case "${CMD:-start}" in
   --stop)
     cmd_stop
     ;;
@@ -163,6 +298,9 @@ case "${1:-}" in
     ;;
   --rebuild)
     cmd_start --rebuild
+    ;;
+  --generate-certs)
+    cmd_generate_certs "${2:-dang.local}"
     ;;
   *)
     cmd_start

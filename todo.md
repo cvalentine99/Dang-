@@ -529,3 +529,15 @@
 - [x] Apply fixes from code review findings
 - [x] Run vitest suite (101 tests passing) and verify Docker build (Vite + esbuild compile clean)
 - [x] Save checkpoint
+
+## Phase 38: HTTPS Reverse Proxy (Caddy + Nginx)
+
+- [x] Create Caddyfile with automatic HTTPS and reverse proxy to app
+- [x] Create nginx.conf with TLS termination and reverse proxy config
+- [x] Create docker-compose.caddy.yml override for Caddy profile
+- [x] Create docker-compose.nginx.yml override for Nginx profile
+- [x] Create proxy/ssl directory structure for Nginx certs
+- [x] Update deploy.sh with --proxy caddy|nginx flag and --generate-certs
+- [x] Update env.docker.template with domain/email variables
+- [x] Update DOCKER.md with comprehensive HTTPS setup instructions
+- [x] Save checkpoint
