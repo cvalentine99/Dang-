@@ -32,8 +32,9 @@ cp env.docker.template .env
 
 # 3. Edit .env with your credentials
 nano .env
-#    Required: JWT_SECRET, WAZUH_HOST, WAZUH_USER, WAZUH_PASS
-#    Generate JWT_SECRET: openssl rand -hex 32
+#    Required: JWT_SECRET (generate with: openssl rand -hex 32)
+#    Recommended: WAZUH_HOST, WAZUH_USER, WAZUH_PASS
+#    Optional: LOCAL_ADMIN_USER, LOCAL_ADMIN_PASS (seeded admin account)
 
 # 4. Build and start
 chmod +x deploy.sh
@@ -64,11 +65,28 @@ See the [HTTPS Reverse Proxy](#https-reverse-proxy) section for full details.
 | Variable | Description | Example |
 |---|---|---|
 | `JWT_SECRET` | Session signing key (generate with `openssl rand -hex 32`) | `a1b2c3d4e5f6...` |
-| `WAZUH_HOST` | Wazuh Manager hostname or IP | `192.168.50.213` |
-| `WAZUH_USER` | Wazuh API username | `wazuh-wui` |
-| `WAZUH_PASS` | Wazuh API password | `MySecretPass` |
 
-### Wazuh Indexer (Required for SIEM Events and Threat Hunting)
+### Authentication (Local Auth Mode)
+
+When `OAUTH_SERVER_URL` is empty (the default for self-hosted), the app runs in **local auth mode** with JWT-based username/password login. If you set `LOCAL_ADMIN_USER` and `LOCAL_ADMIN_PASS`, that account is seeded as admin on first startup. Otherwise, the first user to register via the `/register` page becomes admin.
+
+| Variable | Description | Default |
+|---|---|---|
+| `LOCAL_ADMIN_USER` | Seeded admin username | *(none — first registrant becomes admin)* |
+| `LOCAL_ADMIN_PASS` | Seeded admin password | *(none)* |
+
+### Wazuh Manager API (Recommended)
+
+The app can start without Wazuh credentials, but all agent, alert, and vulnerability features will show "not configured" on the `/status` page.
+
+| Variable | Description | Default |
+|---|---|---|
+| `WAZUH_HOST` | Wazuh Manager hostname or IP | *(none)* |
+| `WAZUH_PORT` | Wazuh Manager API port | `55000` |
+| `WAZUH_USER` | Wazuh API username | *(none)* |
+| `WAZUH_PASS` | Wazuh API password | *(none)* |
+
+### Wazuh Indexer (Recommended for SIEM Events and Threat Hunting)
 
 | Variable | Description | Default |
 |---|---|---|
@@ -234,6 +252,49 @@ Response:
 ```
 
 Docker uses this endpoint for automatic health monitoring. Unhealthy containers are restarted automatically with the `unless-stopped` restart policy.
+
+### Status Dashboard
+
+For a comprehensive view of all service connections, visit the **Status Dashboard** at `/status` in the web UI (requires login). This page shows:
+
+- **MySQL** — database connectivity and latency
+- **Wazuh Manager** — API reachability, version, and cluster info
+- **Wazuh Indexer** — OpenSearch connectivity and cluster health
+- **Auth mode** — whether local auth or Manus OAuth is active
+- **Feature availability** — which features are enabled based on current configuration
+
+The raw JSON is also available at `/api/status`:
+
+```bash
+curl http://localhost:3000/api/status
+```
+
+---
+
+## Environment Validation
+
+On startup, the server validates all environment variables and prints a diagnostic summary to the console. If critical variables (`DATABASE_URL`, `JWT_SECRET`) are missing, the server exits immediately with a clear error message. Optional variables (Wazuh, Indexer, OAuth) produce warnings but allow the server to start in degraded mode.
+
+Example startup output:
+
+```
+╔══════════════════════════════════════════════════╗
+║          Dang! SIEM — Environment Check          ║
+╚══════════════════════════════════════════════════╝
+
+  ┌─ Core (Required)
+  │  ✅ DATABASE_URL = mysql://dang:****@db:3306/dang
+  │  ✅ JWT_SECRET = a1b2****
+  └─
+  ┌─ Wazuh Manager API
+  │  ✅ WAZUH_HOST = 192.168.50.213
+  │  ✅ WAZUH_USER = wazu****
+  │  ✅ WAZUH_PASS = MyS3****
+  └─
+
+  🔐 Auth mode: LOCAL (JWT + bcrypt)
+  ✅ All environment checks passed
+```
 
 ---
 

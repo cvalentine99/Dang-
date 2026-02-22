@@ -3,7 +3,7 @@
 # Target: Linux x86_64 (Ubuntu 22.04+)
 #
 # Usage:
-#   cp .env.example .env   # Edit with your credentials
+#   cp env.docker.template .env   # Edit with your credentials
 #   docker compose up -d   # Start all services
 #   docker compose logs -f # Follow logs
 # ============================================================================
@@ -56,13 +56,18 @@ services:
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
 
       # Auth — generate with: openssl rand -hex 32
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required — generate with openssl rand -hex 32}
 
-      # Wazuh Manager API
-      WAZUH_HOST: ${WAZUH_HOST:?WAZUH_HOST is required}
+      # Local auth (used when OAUTH_SERVER_URL is empty/unset)
+      # First registered user becomes admin if these are not set
+      LOCAL_ADMIN_USER: ${LOCAL_ADMIN_USER:-}
+      LOCAL_ADMIN_PASS: ${LOCAL_ADMIN_PASS:-}
+
+      # Wazuh Manager API (optional — leave blank to start without Wazuh)
+      WAZUH_HOST: ${WAZUH_HOST:-}
       WAZUH_PORT: ${WAZUH_PORT:-55000}
-      WAZUH_USER: ${WAZUH_USER:?WAZUH_USER is required}
-      WAZUH_PASS: ${WAZUH_PASS:?WAZUH_PASS is required}
+      WAZUH_USER: ${WAZUH_USER:-}
+      WAZUH_PASS: ${WAZUH_PASS:-}
 
       # Wazuh Indexer (OpenSearch)
       WAZUH_INDEXER_HOST: ${WAZUH_INDEXER_HOST:-}

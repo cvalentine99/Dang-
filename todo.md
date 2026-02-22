@@ -618,3 +618,16 @@
 - [x] Write vitest tests for local auth, env validation, and status endpoint
 - [x] Fix /api/status timeout (parallel checks with 5s timeout instead of 45s sequential)
 - [x] Save checkpoint
+
+## Phase 45: Docker Compose Self-Hosted Deployment
+
+### Docker Configuration
+- [x] Review and update multi-stage Dockerfile (correct build output paths, add package.json for runtime)
+- [x] Update .dockerignore to exclude dev files
+- [x] Update docker-compose.yml — add LOCAL_ADMIN_USER/PASS, make Wazuh vars optional (not :?required)
+- [x] Update env.docker.template with local auth vars and descriptions
+- [x] Verify docker-entrypoint.sh handles DB wait, migrations, and server start
+- [x] Update DOCKER.md — add local auth section, status dashboard docs, env validation docs
+- [x] Update deploy.sh — make Wazuh vars optional with warnings instead of hard errors
+- [x] Verify TypeScript compiles clean (0 errors) and all 127 tests pass
+- [x] Save checkpoint
