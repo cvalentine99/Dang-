@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import {
   FolderSearch, Plus, Search, Clock, Tag, ChevronRight, FileText,
   Archive, CheckCircle2, Loader2, Trash2, X, AlertTriangle, StickyNote,
+  Download, FileCode, FileType,
 } from "lucide-react";
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -117,6 +118,66 @@ function CreateDialog({ onClose }: { onClose: () => void }): React.JSX.Element {
   );
 }
 
+// ── Export Button ──────────────────────────────────────────────────────────
+
+function ExportButton({ sessionId, format }: { sessionId: number; format: "markdown" | "html" }): React.JSX.Element {
+  const [loading, setLoading] = useState(false);
+
+  const mdQuery = trpc.graph.exportInvestigationMarkdown.useQuery(
+    { sessionId },
+    { enabled: false }
+  );
+  const htmlQuery = trpc.graph.exportInvestigationHtml.useQuery(
+    { sessionId },
+    { enabled: false }
+  );
+
+  const handleExport = async () => {
+    setLoading(true);
+    try {
+      if (format === "markdown") {
+        const result = await mdQuery.refetch();
+        if (result.data) {
+          const blob = new Blob([result.data.markdown], { type: "text/markdown" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `${result.data.title.replace(/[^a-zA-Z0-9-_ ]/g, "").slice(0, 50)}_report.md`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+      } else {
+        const result = await htmlQuery.refetch();
+        if (result.data) {
+          const blob = new Blob([result.data.html], { type: "text/html" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `${result.data.title.replace(/[^a-zA-Z0-9-_ ]/g, "").slice(0, 50)}_report.html`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const Icon = format === "markdown" ? FileCode : FileType;
+  const label = format === "markdown" ? "Export MD" : "Export HTML";
+
+  return (
+    <button
+      onClick={handleExport}
+      disabled={loading}
+      className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-purple-500/20 text-purple-300 hover:bg-purple-500/10 disabled:opacity-50 transition-colors"
+    >
+      {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Icon className="w-3 h-3" />}
+      {label}
+    </button>
+  );
+}
+
 // ── Investigation Detail View ───────────────────────────────────────────────
 
 function InvestigationDetail({ id, onBack }: { id: number; onBack: () => void }): React.JSX.Element {
@@ -181,8 +242,12 @@ function InvestigationDetail({ id, onBack }: { id: number; onBack: () => void })
           </div>
         </div>
 
-        {/* Status controls */}
+        {/* Status controls + Export */}
         <div className="flex gap-2">
+          {/* Export buttons */}
+          <ExportButton sessionId={id} format="markdown" />
+          <ExportButton sessionId={id} format="html" />
+
           {data.status === "active" && (
             <button
               onClick={() => updateMutation.mutate({ id, status: "closed" })}

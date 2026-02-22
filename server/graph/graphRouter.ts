@@ -21,6 +21,8 @@ import {
   getVulnerabilitySeverityDistribution,
 } from "./graphQueryService";
 import { runAnalystPipeline, type AnalystMessage } from "./agenticPipeline";
+import { getInvestigationReportData, generateMarkdownReport, generateHtmlReport } from "./reportService";
+import { detectAttackPaths, getAttackPathGraphData } from "./attackPathService";
 import { getDb } from "../db";
 import {
   investigationSessions,
@@ -254,6 +256,52 @@ export const graphRouter = router({
       });
 
       return { id: Number(result[0].insertId) };
+    }),
+
+  /** Export investigation as Markdown report. */
+  exportInvestigationMarkdown: protectedProcedure
+    .input(z.object({ sessionId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const data = await getInvestigationReportData(input.sessionId, ctx.user.id);
+      if (!data) throw new Error("Investigation not found");
+      return { markdown: generateMarkdownReport(data), title: data.title };
+    }),
+
+  /** Export investigation as HTML report. */
+  exportInvestigationHtml: protectedProcedure
+    .input(z.object({ sessionId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const data = await getInvestigationReportData(input.sessionId, ctx.user.id);
+      if (!data) throw new Error("Investigation not found");
+      return { html: generateHtmlReport(data), title: data.title };
+    }),
+
+  // ── Attack Path Detection ──────────────────────────────────────────────
+
+  /** Detect attack paths through the Knowledge Graph. */
+  detectAttackPaths: protectedProcedure
+    .input(z.object({
+      minCvss: z.number().min(0).max(10).default(5.0),
+      limit: z.number().min(1).max(50).default(20),
+    }).optional())
+    .query(async ({ input }) => {
+      return detectAttackPaths({
+        minCvss: input?.minCvss ?? 5.0,
+        limit: input?.limit ?? 20,
+      });
+    }),
+
+  /** Get attack path data formatted for D3 graph visualization. */
+  attackPathGraph: protectedProcedure
+    .input(z.object({
+      minCvss: z.number().min(0).max(10).default(5.0),
+      limit: z.number().min(1).max(50).default(10),
+    }).optional())
+    .query(async ({ input }) => {
+      return getAttackPathGraphData({
+        minCvss: input?.minCvss ?? 5.0,
+        limit: input?.limit ?? 10,
+      });
     }),
 
   /** Delete an investigation note. */
