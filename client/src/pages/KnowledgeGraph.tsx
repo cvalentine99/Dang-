@@ -2,9 +2,9 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { trpc } from "@/lib/trpc";
 import * as d3 from "d3";
 import {
-  Network, Search, Filter, ZoomIn, ZoomOut, Maximize2, RefreshCw,
+  Network, Search, ZoomIn, ZoomOut, Maximize2, RefreshCw,
   Server, Cpu, Globe, Package, UserCheck, ShieldAlert, AlertTriangle,
-  X, ChevronRight, Loader2, Database, Info,
+  X, ChevronRight, Loader2, Database, Info, Route, Eye, EyeOff,
 } from "lucide-react";
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -14,7 +14,6 @@ interface GraphNode {
   type: "endpoint" | "process" | "network_port" | "software_package" | "identity" | "vulnerability" | "security_event";
   label: string;
   properties: Record<string, unknown>;
-  // D3 simulation fields
   x?: number;
   y?: number;
   fx?: number | null;
@@ -27,6 +26,23 @@ interface GraphEdge {
   relationship: string;
 }
 
+interface AttackPathHop {
+  nodeId: string;
+  nodeType: string;
+  label: string;
+  stage: string;
+  severity: "critical" | "high" | "medium" | "low";
+  properties: Record<string, unknown>;
+}
+
+interface AttackPath {
+  id: string;
+  name: string;
+  riskScore: number;
+  hops: AttackPathHop[];
+  description: string;
+}
+
 // ── Node Config ─────────────────────────────────────────────────────────────
 
 const NODE_CONFIG: Record<string, { color: string; icon: typeof Server; size: number }> = {
@@ -37,6 +53,13 @@ const NODE_CONFIG: Record<string, { color: string; icon: typeof Server; size: nu
   identity: { color: "#f472b6", icon: UserCheck, size: 16 },
   vulnerability: { color: "#ef4444", icon: ShieldAlert, size: 18 },
   security_event: { color: "#f97316", icon: AlertTriangle, size: 16 },
+};
+
+const SEVERITY_COLORS: Record<string, string> = {
+  critical: "#ef4444",
+  high: "#f97316",
+  medium: "#fbbf24",
+  low: "#34d399",
 };
 
 // ── Detail Panel ────────────────────────────────────────────────────────────
@@ -57,7 +80,6 @@ function NodeDetailPanel({
 
   return (
     <div className="absolute top-4 right-4 w-80 glass-panel rounded-xl border border-white/10 shadow-2xl z-20 overflow-hidden">
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${config.color}20`, border: `1px solid ${config.color}40` }}>
@@ -72,8 +94,6 @@ function NodeDetailPanel({
           <X className="w-4 h-4" />
         </button>
       </div>
-
-      {/* Properties */}
       <div className="px-4 py-3 max-h-80 overflow-y-auto space-y-1.5">
         {properties.map(([key, value]) => (
           <div key={key} className="flex items-start gap-2">
@@ -87,8 +107,6 @@ function NodeDetailPanel({
           <p className="text-xs text-muted-foreground italic">No properties available</p>
         )}
       </div>
-
-      {/* Raw JSON toggle */}
       <details className="border-t border-white/5">
         <summary className="px-4 py-2 text-[11px] text-muted-foreground cursor-pointer hover:text-foreground transition-colors flex items-center gap-1.5">
           <ChevronRight className="w-3 h-3" />
@@ -131,6 +149,107 @@ function GraphLegend({ activeFilters, onToggle }: { activeFilters: Set<string>; 
   );
 }
 
+// ── Attack Path Panel ───────────────────────────────────────────────────────
+
+function AttackPathPanel({
+  paths,
+  selectedPathId,
+  onSelectPath,
+  isLoading,
+  onClose,
+}: {
+  paths: AttackPath[];
+  selectedPathId: string | null;
+  onSelectPath: (id: string | null) => void;
+  isLoading: boolean;
+  onClose: () => void;
+}): React.JSX.Element {
+  return (
+    <div className="absolute top-4 left-14 w-80 glass-panel rounded-xl border border-white/10 shadow-2xl z-20 overflow-hidden max-h-[calc(100%-2rem)]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+        <div className="flex items-center gap-2">
+          <Route className="w-4 h-4 text-red-400" />
+          <h3 className="text-sm font-medium text-foreground">Attack Paths</h3>
+        </div>
+        <button onClick={onClose} className="p-1 rounded hover:bg-white/10 text-muted-foreground">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="px-4 py-8 flex items-center justify-center">
+          <Loader2 className="w-5 h-5 text-purple-400 animate-spin" />
+        </div>
+      ) : paths.length === 0 ? (
+        <div className="px-4 py-6 text-center">
+          <ShieldAlert className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+          <p className="text-xs text-muted-foreground">No attack paths detected.</p>
+          <p className="text-[10px] text-muted-foreground mt-1">Run the ETL pipeline to populate graph data.</p>
+        </div>
+      ) : (
+        <div className="overflow-y-auto max-h-[calc(100vh-12rem)]">
+          {paths.map((path) => {
+            const isSelected = selectedPathId === path.id;
+            const riskColor = path.riskScore >= 8 ? SEVERITY_COLORS.critical
+              : path.riskScore >= 6 ? SEVERITY_COLORS.high
+              : path.riskScore >= 4 ? SEVERITY_COLORS.medium
+              : SEVERITY_COLORS.low;
+
+            return (
+              <button
+                key={path.id}
+                onClick={() => onSelectPath(isSelected ? null : path.id)}
+                className={`w-full text-left px-4 py-3 border-b border-white/5 transition-all hover:bg-white/[0.03] ${
+                  isSelected ? "bg-purple-500/10 border-l-2 border-l-purple-500" : ""
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-foreground truncate">{path.name}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{path.description}</p>
+                  </div>
+                  <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                    <span
+                      className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded"
+                      style={{ color: riskColor, backgroundColor: `${riskColor}15`, border: `1px solid ${riskColor}30` }}
+                    >
+                      {path.riskScore.toFixed(1)}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">{path.hops.length} hops</span>
+                  </div>
+                </div>
+
+                {/* Kill chain stages */}
+                {isSelected && (
+                  <div className="mt-2 space-y-1">
+                    {path.hops.map((hop, i) => {
+                      const hopColor = SEVERITY_COLORS[hop.severity] || SEVERITY_COLORS.low;
+                      return (
+                        <div key={`${hop.nodeId}-${i}`} className="flex items-center gap-2">
+                          <div className="w-4 flex flex-col items-center">
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: hopColor }} />
+                            {i < path.hops.length - 1 && (
+                              <div className="w-px h-3 mt-0.5" style={{ backgroundColor: `${hopColor}40` }} />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] text-foreground truncate">{hop.label}</p>
+                            <p className="text-[9px] text-muted-foreground font-mono">{hop.stage} &middot; {hop.nodeType}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Knowledge Graph Page ───────────────────────────────────────────────
 
 export default function KnowledgeGraph(): React.JSX.Element {
@@ -143,6 +262,8 @@ export default function KnowledgeGraph(): React.JSX.Element {
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set(Object.keys(NODE_CONFIG)));
   const [viewMode, setViewMode] = useState<"overview" | "endpoint">("overview");
   const [selectedAgent, setSelectedAgent] = useState<string>("");
+  const [showAttackPaths, setShowAttackPaths] = useState(false);
+  const [selectedPathId, setSelectedPathId] = useState<string | null>(null);
 
   // Fetch graph data
   const overviewQuery = trpc.graph.overviewGraph.useQuery(
@@ -161,8 +282,33 @@ export default function KnowledgeGraph(): React.JSX.Element {
     { enabled: searchQuery.length >= 2 }
   );
 
+  // Attack path data
+  const attackPathQuery = trpc.graph.detectAttackPaths.useQuery(
+    { minCvss: 5.0, limit: 20 },
+    { enabled: showAttackPaths }
+  );
+
+  // Extract paths array from the result
+  const attackPaths: AttackPath[] = useMemo(() => {
+    if (!attackPathQuery.data) return [];
+    const result = attackPathQuery.data as unknown as { paths: AttackPath[]; totalPaths: number; maxScore: number; criticalPaths: number };
+    return result.paths ?? [];
+  }, [attackPathQuery.data]);
+
   const graphData = viewMode === "overview" ? overviewQuery.data : endpointQuery.data;
   const isLoading = viewMode === "overview" ? overviewQuery.isLoading : endpointQuery.isLoading;
+
+  // Get the selected attack path
+  const selectedPath = useMemo(() => {
+    if (!selectedPathId) return null;
+    return attackPaths.find((p: AttackPath) => p.id === selectedPathId) ?? null;
+  }, [selectedPathId, attackPaths]);
+
+  // Set of node IDs that are on the selected attack path
+  const attackPathNodeIds = useMemo(() => {
+    if (!selectedPath) return new Set<string>();
+    return new Set(selectedPath.hops.map((h: AttackPathHop) => h.nodeId));
+  }, [selectedPath]);
 
   // Filter nodes based on active filters
   const filteredData = useMemo(() => {
@@ -188,7 +334,6 @@ export default function KnowledgeGraph(): React.JSX.Element {
 
     svg.selectAll("*").remove();
 
-    // Create zoom behavior
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 4])
       .on("zoom", (event) => {
@@ -199,7 +344,24 @@ export default function KnowledgeGraph(): React.JSX.Element {
 
     const g = svg.append("g");
 
-    // Create simulation
+    // Defs for attack path glow
+    const defs = svg.append("defs");
+    const glowFilter = defs.append("filter").attr("id", "attack-path-glow");
+    glowFilter.append("feGaussianBlur").attr("stdDeviation", "4").attr("result", "coloredBlur");
+    const feMerge = glowFilter.append("feMerge");
+    feMerge.append("feMergeNode").attr("in", "coloredBlur");
+    feMerge.append("feMergeNode").attr("in", "SourceGraphic");
+
+    // Animated dash pattern for attack paths
+    defs.append("style").text(`
+      @keyframes dash-flow {
+        to { stroke-dashoffset: -20; }
+      }
+      .attack-path-edge {
+        animation: dash-flow 1s linear infinite;
+      }
+    `);
+
     const nodes = filteredData.nodes.map(n => ({ ...n })) as GraphNode[];
     const edges = filteredData.edges.map(e => ({ ...e })) as GraphEdge[];
 
@@ -229,6 +391,9 @@ export default function KnowledgeGraph(): React.JSX.Element {
       .attr("fill", "rgba(255,255,255,0.2)")
       .attr("font-family", "'JetBrains Mono', monospace")
       .attr("text-anchor", "middle");
+
+    // Attack path overlay edges (drawn on top)
+    const attackEdgeGroup = g.append("g").attr("class", "attack-edges");
 
     // Draw nodes
     const node = g.append("g")
@@ -260,13 +425,22 @@ export default function KnowledgeGraph(): React.JSX.Element {
       .attr("stroke", d => `${NODE_CONFIG[d.type]?.color ?? "#888"}60`)
       .attr("stroke-width", 1.5);
 
+    // Attack path glow ring (hidden by default)
+    node.append("circle")
+      .attr("class", "attack-glow")
+      .attr("r", d => (NODE_CONFIG[d.type]?.size ?? 16) / 2 + 8)
+      .attr("fill", "none")
+      .attr("stroke", "transparent")
+      .attr("stroke-width", 0)
+      .attr("filter", "url(#attack-path-glow)");
+
     // Node labels
     node.append("text")
       .text(d => d.label.length > 18 ? d.label.slice(0, 16) + "..." : d.label)
       .attr("dy", d => (NODE_CONFIG[d.type]?.size ?? 16) / 2 + 14)
       .attr("text-anchor", "middle")
       .attr("font-size", "9px")
-      .attr("fill", "rgba(255,255,255,0.6)")
+      .attr("fill", "rgba(255,255,255,0.5)")
       .attr("font-family", "'Inter', sans-serif");
 
     // Node click handler
@@ -284,14 +458,14 @@ export default function KnowledgeGraph(): React.JSX.Element {
 
     // Hover effects
     node.on("mouseenter", function (_event, d) {
-      d3.select(this).select("circle")
+      d3.select(this).select("circle:first-child")
         .transition().duration(200)
         .attr("stroke-width", 3)
         .attr("fill", `${NODE_CONFIG[d.type]?.color ?? "#888"}30`);
     });
 
     node.on("mouseleave", function (_event, d) {
-      d3.select(this).select("circle")
+      d3.select(this).select("circle:first-child")
         .transition().duration(200)
         .attr("stroke-width", 1.5)
         .attr("fill", `${NODE_CONFIG[d.type]?.color ?? "#888"}15`);
@@ -306,10 +480,25 @@ export default function KnowledgeGraph(): React.JSX.Element {
         .attr("y2", d => (d.target as GraphNode).y ?? 0);
 
       linkLabel
-        .attr("x", d => ((d.source as GraphNode).x ?? 0 + ((d.target as GraphNode).x ?? 0)) / 2)
-        .attr("y", d => ((d.source as GraphNode).y ?? 0 + ((d.target as GraphNode).y ?? 0)) / 2);
+        .attr("x", d => (((d.source as GraphNode).x ?? 0) + ((d.target as GraphNode).x ?? 0)) / 2)
+        .attr("y", d => (((d.source as GraphNode).y ?? 0) + ((d.target as GraphNode).y ?? 0)) / 2);
 
       node.attr("transform", d => `translate(${d.x ?? 0},${d.y ?? 0})`);
+
+      // Update attack path overlay edges
+      attackEdgeGroup.selectAll("line").each(function () {
+        const el = d3.select(this);
+        const sourceId = el.attr("data-source");
+        const targetId = el.attr("data-target");
+        const sourceNode = nodes.find(n => n.id === sourceId);
+        const targetNode = nodes.find(n => n.id === targetId);
+        if (sourceNode && targetNode) {
+          el.attr("x1", sourceNode.x ?? 0)
+            .attr("y1", sourceNode.y ?? 0)
+            .attr("x2", targetNode.x ?? 0)
+            .attr("y2", targetNode.y ?? 0);
+        }
+      });
     });
 
     // Initial zoom to fit
@@ -333,6 +522,74 @@ export default function KnowledgeGraph(): React.JSX.Element {
       simulation.stop();
     };
   }, [filteredData]);
+
+  // Attack path highlighting overlay
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const svg = d3.select(svgRef.current);
+    const attackEdgeGroup = svg.select(".attack-edges");
+
+    // Clear previous attack path highlights
+    attackEdgeGroup.selectAll("*").remove();
+    svg.selectAll(".attack-glow")
+      .attr("stroke", "transparent")
+      .attr("stroke-width", 0);
+
+    // Dim non-path nodes when a path is selected
+    if (selectedPath && attackPathNodeIds.size > 0) {
+      // Dim all nodes not on the path
+      svg.selectAll("g > g > g").each(function () {
+        const el = d3.select(this);
+        const datum = el.datum() as GraphNode | undefined;
+        if (datum && datum.id) {
+          if (attackPathNodeIds.has(datum.id)) {
+            el.attr("opacity", 1);
+            // Highlight the glow ring
+            const severity = selectedPath.hops.find((h: AttackPathHop) => h.nodeId === datum.id)?.severity ?? "medium";
+            const glowColor = SEVERITY_COLORS[severity] || SEVERITY_COLORS.medium;
+            el.select(".attack-glow")
+              .transition().duration(400)
+              .attr("stroke", glowColor)
+              .attr("stroke-width", 3);
+          } else {
+            el.transition().duration(400).attr("opacity", 0.15);
+          }
+        }
+      });
+
+      // Dim all edges
+      svg.selectAll("g > g:first-child line")
+        .transition().duration(400)
+        .attr("stroke", "rgba(255,255,255,0.03)");
+
+      // Draw attack path edges between consecutive hops
+      const hopIds = selectedPath.hops.map((h: AttackPathHop) => h.nodeId);
+      for (let i = 0; i < hopIds.length - 1; i++) {
+        const severity = selectedPath.hops[i + 1]?.severity ?? "medium";
+        const edgeColor = SEVERITY_COLORS[severity] || SEVERITY_COLORS.medium;
+        attackEdgeGroup.append("line")
+          .attr("data-source", hopIds[i])
+          .attr("data-target", hopIds[i + 1])
+          .attr("stroke", edgeColor)
+          .attr("stroke-width", 2.5)
+          .attr("stroke-dasharray", "6 4")
+          .attr("class", "attack-path-edge")
+          .attr("opacity", 0)
+          .transition().duration(400)
+          .attr("opacity", 0.9);
+      }
+    } else {
+      // Reset all nodes to full opacity
+      svg.selectAll("g > g > g")
+        .transition().duration(300)
+        .attr("opacity", 1);
+
+      // Reset edge colors
+      svg.selectAll("g > g:first-child line")
+        .transition().duration(300)
+        .attr("stroke", "rgba(255,255,255,0.08)");
+    }
+  }, [selectedPath, attackPathNodeIds]);
 
   const toggleFilter = useCallback((type: string) => {
     setActiveFilters(prev => {
@@ -408,6 +665,29 @@ export default function KnowledgeGraph(): React.JSX.Element {
               )}
             </div>
 
+            {/* Attack Path toggle */}
+            <button
+              onClick={() => {
+                setShowAttackPaths(!showAttackPaths);
+                if (showAttackPaths) {
+                  setSelectedPathId(null);
+                }
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                showAttackPaths
+                  ? "border-red-500/30 bg-red-500/15 text-red-300"
+                  : "border-white/10 text-muted-foreground hover:bg-white/5 hover:text-foreground"
+              }`}
+            >
+              <Route className="w-3.5 h-3.5" />
+              Attack Paths
+              {attackPaths.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-mono bg-red-500/20 text-red-300">
+                  {attackPaths.length}
+                </span>
+              )}
+            </button>
+
             {/* View mode toggle */}
             {viewMode === "endpoint" && (
               <button
@@ -482,7 +762,7 @@ export default function KnowledgeGraph(): React.JSX.Element {
         </div>
 
         {/* Stats overlay */}
-        {statsQuery.data && (
+        {statsQuery.data && !showAttackPaths && (
           <div className="absolute top-4 right-4 glass-panel rounded-xl border border-white/10 px-3 py-2 z-10">
             <p className="text-[10px] text-muted-foreground mb-1 font-medium">Graph Stats</p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
@@ -496,11 +776,45 @@ export default function KnowledgeGraph(): React.JSX.Element {
           </div>
         )}
 
+        {/* Attack Path Panel */}
+        {showAttackPaths && (
+          <AttackPathPanel
+            paths={attackPaths}
+            selectedPathId={selectedPathId}
+            onSelectPath={setSelectedPathId}
+            isLoading={attackPathQuery.isLoading}
+            onClose={() => { setShowAttackPaths(false); setSelectedPathId(null); }}
+          />
+        )}
+
+        {/* Attack path active indicator */}
+        {selectedPath && (
+          <div className="absolute bottom-4 right-4 glass-panel rounded-xl border border-red-500/20 px-4 py-3 z-10 max-w-xs">
+            <div className="flex items-center gap-2 mb-1">
+              <Route className="w-3.5 h-3.5 text-red-400" />
+              <p className="text-xs font-medium text-foreground">Active Kill Chain</p>
+              <button
+                onClick={() => setSelectedPathId(null)}
+                className="ml-auto p-0.5 rounded hover:bg-white/10 text-muted-foreground"
+              >
+                <EyeOff className="w-3 h-3" />
+              </button>
+            </div>
+            <p className="text-[10px] text-muted-foreground">{selectedPath.name}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[10px] font-mono" style={{ color: SEVERITY_COLORS[selectedPath.riskScore >= 8 ? "critical" : selectedPath.riskScore >= 6 ? "high" : "medium"] }}>
+                Risk: {selectedPath.riskScore.toFixed(1)}/10
+              </span>
+              <span className="text-[10px] text-muted-foreground">{selectedPath.hops.length} hops</span>
+            </div>
+          </div>
+        )}
+
         {/* Legend */}
         <GraphLegend activeFilters={activeFilters} onToggle={toggleFilter} />
 
         {/* Node detail panel */}
-        {selectedNode && (
+        {selectedNode && !showAttackPaths && (
           <NodeDetailPanel node={selectedNode} onClose={() => setSelectedNode(null)} />
         )}
       </div>

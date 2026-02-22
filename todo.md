@@ -744,3 +744,36 @@
 - [x] Visual verification of all 4 pages in browser
 - [x] All 161 tests passing
 - [x] Save checkpoint
+
+## Phase 49: GitHub Push + Docker Rebuild + Report Export + Attack Paths
+
+### GitHub Push & Docker Rebuild
+- [x] Sync all latest files to cvalentine99/Dang- (commit f929929, 27 files, 7639 insertions)
+- [x] Rebuild Docker image (dang-siem:latest, 1.52GB) — fixed corepack→npm for network compat
+- [x] Test full lifecycle: MySQL healthy, migrations ran (17 tables), health check OK, tRPC login OK, admin seeded
+
+### Investigation Report Export
+- [x] Backend: reportService.ts generates investigation report data (timeline, notes, metadata)
+- [x] Backend: Generate Markdown report string from investigation data
+- [x] Backend: Generate styled HTML report with Amethyst Nexus theme
+- [x] Frontend: Add "Export MD" and "Export HTML" buttons to investigation detail view
+- [x] Frontend: Download triggers browser download of generated files
+- [x] Include investigation metadata (title, status, tags, created/updated dates)
+- [x] Include all analyst notes with timestamps
+- [x] Include evidence summary and timeline entries
+
+### Attack Path Highlighting (Knowledge Graph)
+- [x] Backend: attackPathService.ts with multi-hop traversal algorithm
+- [x] Backend: Find paths from vulnerability → software_package → endpoint → identity → security_event
+- [x] Backend: Score paths by severity (CVSS + alert level composite scoring)
+- [x] Frontend: "Attack Paths" toggle button with count badge in Knowledge Graph header
+- [x] Frontend: SVG glow filter, animated dashed edges, severity-colored rings on path nodes
+- [x] Frontend: Expandable AttackPathPanel with hop-by-hop breakdown and risk scores
+- [x] Frontend: Non-path nodes dimmed to 15% opacity when path selected
+- [x] Frontend: Kill chain stage labels and severity indicators per hop
+
+### Testing
+- [x] Verify TypeScript compiles clean (0 errors)
+- [x] All 161 tests passing
+- [x] Visual verification: Knowledge Graph with Attack Paths button, Investigations with Export MD/HTML buttons
+- [x] Save checkpoint
