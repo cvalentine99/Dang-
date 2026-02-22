@@ -1,4 +1,5 @@
 import {
+  index,
   int,
   mysqlEnum,
   mysqlTable,
@@ -148,7 +149,12 @@ export const analystNotesV2 = mysqlTable("analyst_notes_v2", {
   resolved: int("resolved").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => ([
+  index("notes_v2_userId_idx").on(table.userId),
+  index("notes_v2_entityType_idx").on(table.entityType),
+  index("notes_v2_entityId_idx").on(table.entityId),
+  index("notes_v2_entity_lookup_idx").on(table.entityType, table.entityId),
+]));
 
 export type AnalystNoteV2 = typeof analystNotesV2.$inferSelect;
 export type InsertAnalystNoteV2 = typeof analystNotesV2.$inferInsert;

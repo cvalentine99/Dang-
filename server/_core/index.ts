@@ -33,6 +33,25 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  // Health check endpoint for Docker / load balancers
+  app.get("/api/health", async (_req, res) => {
+    try {
+      const { getDb } = await import("../db");
+      const db = await getDb();
+      const dbOk = !!db;
+      res.status(dbOk ? 200 : 503).json({
+        status: dbOk ? "healthy" : "degraded",
+        timestamp: new Date().toISOString(),
+        database: dbOk ? "connected" : "unavailable",
+      });
+    } catch {
+      res.status(503).json({
+        status: "unhealthy",
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
+
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
   // tRPC API

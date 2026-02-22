@@ -43,6 +43,13 @@
       "when": 1771769836593,
       "tag": "0005_flowery_rawhide_kid",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1771772122795,
+      "tag": "0006_slim_spectrum",
+      "breakpoints": true
     }
   ]
 }

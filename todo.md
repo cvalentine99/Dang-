@@ -513,3 +513,19 @@
 - [x] Write vitest tests for export utility functions (17 tests passing)
 - [x] Write vitest tests for analyst notes CRUD (7 tests passing)
 - [x] Save checkpoint
+
+## Phase 37: Docker Deployment for Linux x86_64
+
+- [x] Create multi-stage Dockerfile (build + production)
+- [x] Create docker-compose.yml with app + MySQL services
+- [x] Create .dockerignore for efficient builds
+- [x] Create env.docker.template with all required environment variables documented
+- [x] Create docker-entrypoint.sh with migration support and health checks
+- [x] Create deploy.sh convenience script for build + run
+- [x] Graceful degradation for self-hosted (Manus OAuth optional, JWT-only works)
+- [x] Add /api/health endpoint for Docker health checks
+- [x] Create comprehensive DOCKER.md deployment guide
+- [x] Multi-agent code review pass (security, performance, Docker, frontend, backend)
+- [x] Apply fixes from code review findings
+- [x] Run vitest suite (101 tests passing) and verify Docker build (Vite + esbuild compile clean)
+- [x] Save checkpoint

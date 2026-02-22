@@ -48,20 +48,33 @@ export async function setupVite(app: Express, server: Server) {
 }
 
 export function serveStatic(app: Express) {
-  const distPath =
-    process.env.NODE_ENV === "development"
-      ? path.resolve(import.meta.dirname, "../..", "dist", "public")
-      : path.resolve(import.meta.dirname, "public");
-  if (!fs.existsSync(distPath)) {
+  // In production esbuild outputs to dist/index.js, so import.meta.dirname = dist/
+  // Static files are at dist/public/ (Vite build output)
+  const distPath = path.resolve(import.meta.dirname, "public");
+
+  // Fallback: check alternative paths for different deployment layouts
+  const altPath = path.resolve(import.meta.dirname, "..", "..", "dist", "public");
+  const resolvedPath = fs.existsSync(distPath) ? distPath : fs.existsSync(altPath) ? altPath : distPath;
+
+  if (!fs.existsSync(resolvedPath)) {
     console.error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`
+      `Could not find the build directory: ${resolvedPath}, make sure to build the client first`
     );
+  } else {
+    console.log(`[Static] Serving from: ${resolvedPath}`);
   }
 
-  app.use(express.static(distPath));
+  // Serve static assets with aggressive caching (Vite adds content hashes)
+  app.use(
+    express.static(resolvedPath, {
+      maxAge: "1y",
+      immutable: true,
+    })
+  );
 
-  // fall through to index.html if the file doesn't exist
+  // fall through to index.html if the file doesn't exist (SPA routing)
   app.use("*", (_req, res) => {
-    res.sendFile(path.resolve(distPath, "index.html"));
+    res.set("Cache-Control", "no-cache");
+    res.sendFile(path.resolve(resolvedPath, "index.html"));
   });
 }
