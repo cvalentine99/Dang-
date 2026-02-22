@@ -150,7 +150,14 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
+// In Docker / self-hosted builds, exclude Manus-specific plugins (runtime overlay,
+// analytics, debug collector, jsx-loc) that depend on the Manus hosting platform.
+const isSelfHostedBuild = !!process.env.DOCKER_BUILD || !!process.env.SELF_HOSTED;
+const plugins = [
+  react(),
+  tailwindcss(),
+  ...(!isSelfHostedBuild ? [jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()] : []),
+];
 
 export default defineConfig({
   plugins,
