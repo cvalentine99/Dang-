@@ -579,3 +579,8 @@
 - [x] Frontend: Alerts Timeline accepts country/srcip filter from URL search params with active filter badges
 - [x] Backend: alertsSearch now supports srcip and geoCountry filter params
 - [x] Save checkpoint
+
+## Phase 42: Dockerfile Fix — --prod strips Vite runtime dependency
+
+- [x] Fix Dockerfile line 49: copy full node_modules from deps stage instead of reinstalling with --prod
+- [x] Save checkpoint

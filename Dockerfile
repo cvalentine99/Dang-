@@ -42,11 +42,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy dependency manifests and install production-only deps
-COPY package.json pnpm-lock.yaml ./
-COPY patches/ ./patches/
-
-RUN pnpm install --frozen-lockfile --prod
+# Copy full node_modules from deps stage (--prod would strip vite which
+# the built server still imports at runtime for static file serving)
+COPY --from=deps /app/node_modules ./node_modules
 
 # Copy built artifacts from builder
 COPY --from=builder /app/dist ./dist
