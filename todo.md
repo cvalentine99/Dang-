@@ -293,3 +293,21 @@
 - [x] Backend endpoints: agentBrowserExtensions, agentServices, agentUsers, agentGroups2
 - [x] Write vitest tests (4 new tests, 48 total passing)
 - [x] Save checkpoint
+
+## Phase 29: Multi-Agent Comparison View (Configuration Drift)
+
+- [x] Multi-agent selector (pick 2-5 agents to compare) with checkbox grid
+- [x] Comparison mode toggle in IT Hygiene page header ("Compare Agents" / "Exit Comparison")
+- [x] Package drift detection: highlight packages present on some agents but not others
+- [x] Package version drift: highlight version mismatches across agents
+- [x] Service drift detection: highlight services running on some agents but not others
+- [x] Service state drift: highlight state mismatches (running vs stopped)
+- [x] User/group drift: highlight users/groups present on some agents but not others
+- [x] Drift summary KPI cards (total drifts, package drifts, service drifts, user drifts)
+- [x] Color-coded drift indicators (present=green, absent=red, version/state mismatch=yellow)
+- [x] "Show drift only" filter checkbox
+- [x] Drift legend at bottom of comparison table
+- [x] Per-agent mock data variants for packages, services, and users (4 agents)
+- [x] Lazy-loaded DriftComparison component for performance
+- [x] All 48 tests passing, TypeScript clean
+- [x] Save checkpoint

@@ -901,3 +901,175 @@ export const MOCK_GROUPS = {
     failed_items: [],
   },
 };
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// PER-AGENT MOCK DATA VARIANTS (for multi-agent comparison / drift)
+// ═══════════════════════════════════════════════════════════════════════
+
+export const MOCK_AGENT_PACKAGES: Record<string, typeof MOCK_PACKAGES> = {
+  "001": MOCK_PACKAGES,
+  "002": {
+    data: {
+      affected_items: [
+        { name: "openssh-server", version: "1:8.9p1-3ubuntu0.6", architecture: "amd64", vendor: "Ubuntu Developers", format: "deb", description: "secure shell (SSH) server" },
+        { name: "nginx", version: "1.22.1-1~jammy", architecture: "amd64", vendor: "Nginx, Inc.", format: "deb", description: "high performance web server" },
+        { name: "curl", version: "7.88.1-10+deb12u5", architecture: "amd64", vendor: "Debian cURL Maintainers", format: "deb", description: "command line tool for transferring data with URL syntax" },
+        { name: "openssl", version: "3.0.13-0ubuntu3.1", architecture: "amd64", vendor: "Ubuntu Developers", format: "deb", description: "Secure Sockets Layer toolkit" },
+        { name: "python3", version: "3.10.12-1", architecture: "amd64", vendor: "Debian Python Team", format: "deb", description: "interactive high-level object-oriented language" },
+        { name: "fail2ban", version: "1.0.2-2", architecture: "all", vendor: "Debian Security Tools", format: "deb", description: "ban hosts that cause multiple authentication errors" },
+        { name: "auditd", version: "1:3.0.9-1", architecture: "amd64", vendor: "Debian Audit Team", format: "deb", description: "User space tools for Linux kernel auditing" },
+        { name: "clamav", version: "1.0.3+dfsg-1~deb12u1", architecture: "amd64", vendor: "ClamAV Team", format: "deb", description: "anti-virus utility for Unix" },
+        { name: "rsyslog", version: "8.2302.0-1ubuntu2", architecture: "amd64", vendor: "Ubuntu Developers", format: "deb", description: "reliable system and kernel logging daemon" },
+        { name: "iptables", version: "1.8.9-2", architecture: "amd64", vendor: "Debian Netfilter Team", format: "deb", description: "administration tools for packet filtering and NAT" },
+        { name: "httpd", version: "2.4.57-2", architecture: "x86_64", vendor: "Apache Software Foundation", format: "rpm", description: "Apache HTTP Server" },
+      ],
+      total_affected_items: 11,
+      total_failed_items: 0,
+      failed_items: [],
+    },
+  },
+  "003": {
+    data: {
+      affected_items: [
+        { name: "openssh-server", version: "1:8.7p1-34.el9", architecture: "x86_64", vendor: "Red Hat", format: "rpm", description: "secure shell (SSH) server" },
+        { name: "curl", version: "7.76.1-26.el9", architecture: "x86_64", vendor: "Red Hat", format: "rpm", description: "command line tool for transferring data with URL syntax" },
+        { name: "openssl", version: "3.0.7-25.el9", architecture: "x86_64", vendor: "Red Hat", format: "rpm", description: "Secure Sockets Layer toolkit" },
+        { name: "python3", version: "3.9.18-1.el9", architecture: "x86_64", vendor: "Red Hat", format: "rpm", description: "interactive high-level object-oriented language" },
+        { name: "postgresql-15", version: "15.5-1PGDG.rhel9", architecture: "x86_64", vendor: "PostgreSQL Global Development Group", format: "rpm", description: "PostgreSQL database server" },
+        { name: "auditd", version: "3.0.7-104.el9", architecture: "x86_64", vendor: "Red Hat", format: "rpm", description: "User space tools for Linux kernel auditing" },
+        { name: "rsyslog", version: "8.2204.0-3.el9", architecture: "x86_64", vendor: "Red Hat", format: "rpm", description: "reliable system and kernel logging daemon" },
+        { name: "firewalld", version: "1.2.5-2.el9", architecture: "noarch", vendor: "Red Hat", format: "rpm", description: "dynamic firewall daemon" },
+      ],
+      total_affected_items: 8,
+      total_failed_items: 0,
+      failed_items: [],
+    },
+  },
+  "005": {
+    data: {
+      affected_items: [
+        { name: "openssh-server", version: "1:8.9p1-3ubuntu0.6", architecture: "amd64", vendor: "Ubuntu Developers", format: "deb", description: "secure shell (SSH) server" },
+        { name: "curl", version: "7.88.1-10+deb12u5", architecture: "amd64", vendor: "Debian cURL Maintainers", format: "deb", description: "command line tool for transferring data with URL syntax" },
+        { name: "openssl", version: "3.0.13-0ubuntu3.1", architecture: "amd64", vendor: "Ubuntu Developers", format: "deb", description: "Secure Sockets Layer toolkit" },
+        { name: "docker-ce", version: "5:24.0.7-1~ubuntu.22.04~jammy", architecture: "amd64", vendor: "Docker, Inc.", format: "deb", description: "Docker application container engine" },
+        { name: "python3", version: "3.11.0-1+b1", architecture: "amd64", vendor: "Debian Python Team", format: "deb", description: "interactive high-level object-oriented language" },
+        { name: "containerd.io", version: "1.6.28-1", architecture: "amd64", vendor: "Docker, Inc.", format: "deb", description: "An industry-standard container runtime" },
+        { name: "kubectl", version: "1.28.2-00", architecture: "amd64", vendor: "Kubernetes", format: "deb", description: "Kubernetes command line tool" },
+        { name: "kubelet", version: "1.28.2-00", architecture: "amd64", vendor: "Kubernetes", format: "deb", description: "Kubernetes node agent" },
+        { name: "auditd", version: "1:3.0.9-1", architecture: "amd64", vendor: "Debian Audit Team", format: "deb", description: "User space tools for Linux kernel auditing" },
+        { name: "rsyslog", version: "8.2302.0-1ubuntu2", architecture: "amd64", vendor: "Ubuntu Developers", format: "deb", description: "reliable system and kernel logging daemon" },
+      ],
+      total_affected_items: 10,
+      total_failed_items: 0,
+      failed_items: [],
+    },
+  },
+};
+
+export const MOCK_AGENT_SERVICES: Record<string, typeof MOCK_SERVICES> = {
+  "001": MOCK_SERVICES,
+  "002": {
+    data: {
+      affected_items: [
+        { name: "sshd", display_name: "OpenSSH Daemon", state: "running", start_type: "auto", description: "OpenSSH server daemon", pid: 1234 },
+        { name: "wazuh-agent", display_name: "Wazuh Agent", state: "running", start_type: "auto", description: "Wazuh HIDS agent", pid: 2345 },
+        { name: "auditd", display_name: "Linux Audit Daemon", state: "running", start_type: "auto", description: "Security auditing service", pid: 567 },
+        { name: "rsyslog", display_name: "System Logging Service", state: "running", start_type: "auto", description: "Rocket-fast system for log processing", pid: 890 },
+        { name: "cron", display_name: "Cron Daemon", state: "running", start_type: "auto", description: "Regular background program processing daemon", pid: 678 },
+        { name: "nginx", display_name: "NGINX HTTP Server", state: "running", start_type: "auto", description: "A high performance web server", pid: 3456 },
+        { name: "httpd", display_name: "Apache HTTP Server", state: "running", start_type: "auto", description: "Apache HTTP Server", pid: 7890 },
+        { name: "fail2ban", display_name: "Fail2Ban Service", state: "stopped", start_type: "auto", description: "Daemon to ban hosts", pid: null },
+        { name: "ntp", display_name: "Network Time Protocol", state: "running", start_type: "auto", description: "NTP daemon", pid: 789 },
+        { name: "ufw", display_name: "Uncomplicated Firewall", state: "running", start_type: "auto", description: "Uncomplicated firewall", pid: 456 },
+      ],
+      total_affected_items: 10,
+      total_failed_items: 0,
+      failed_items: [],
+    },
+  },
+  "003": {
+    data: {
+      affected_items: [
+        { name: "sshd", display_name: "OpenSSH Daemon", state: "running", start_type: "auto", description: "OpenSSH server daemon", pid: 1234 },
+        { name: "wazuh-agent", display_name: "Wazuh Agent", state: "running", start_type: "auto", description: "Wazuh HIDS agent", pid: 2345 },
+        { name: "auditd", display_name: "Linux Audit Daemon", state: "running", start_type: "auto", description: "Security auditing service", pid: 567 },
+        { name: "rsyslog", display_name: "System Logging Service", state: "running", start_type: "auto", description: "Rocket-fast system for log processing", pid: 890 },
+        { name: "cron", display_name: "Cron Daemon", state: "running", start_type: "auto", description: "Regular background program processing daemon", pid: 678 },
+        { name: "postgresql-15", display_name: "PostgreSQL 15 Database", state: "running", start_type: "auto", description: "PostgreSQL RDBMS", pid: 4567 },
+        { name: "firewalld", display_name: "Dynamic Firewall", state: "running", start_type: "auto", description: "Dynamic firewall daemon", pid: 345 },
+        { name: "ntp", display_name: "Network Time Protocol", state: "stopped", start_type: "manual", description: "NTP daemon", pid: null },
+      ],
+      total_affected_items: 8,
+      total_failed_items: 0,
+      failed_items: [],
+    },
+  },
+  "005": {
+    data: {
+      affected_items: [
+        { name: "sshd", display_name: "OpenSSH Daemon", state: "running", start_type: "auto", description: "OpenSSH server daemon", pid: 1234 },
+        { name: "wazuh-agent", display_name: "Wazuh Agent", state: "running", start_type: "auto", description: "Wazuh HIDS agent", pid: 2345 },
+        { name: "auditd", display_name: "Linux Audit Daemon", state: "stopped", start_type: "manual", description: "Security auditing service", pid: null },
+        { name: "rsyslog", display_name: "System Logging Service", state: "running", start_type: "auto", description: "Rocket-fast system for log processing", pid: 890 },
+        { name: "docker", display_name: "Docker Engine", state: "running", start_type: "auto", description: "Docker Application Container Engine", pid: 4567 },
+        { name: "containerd", display_name: "Container Runtime", state: "running", start_type: "auto", description: "An industry-standard container runtime", pid: 5678 },
+        { name: "kubelet", display_name: "Kubernetes Node Agent", state: "running", start_type: "auto", description: "Kubernetes node agent", pid: 6789 },
+        { name: "ntp", display_name: "Network Time Protocol", state: "running", start_type: "auto", description: "NTP daemon", pid: 789 },
+      ],
+      total_affected_items: 8,
+      total_failed_items: 0,
+      failed_items: [],
+    },
+  },
+};
+
+export const MOCK_AGENT_USERS: Record<string, typeof MOCK_USERS> = {
+  "001": MOCK_USERS,
+  "002": {
+    data: {
+      affected_items: [
+        { name: "root", uid: "0", gid: "0", home: "/root", shell: "/bin/bash", login: "2025-02-20T08:15:00Z", last_login: "2025-02-21T14:30:00Z" },
+        { name: "admin", uid: "1000", gid: "1000", home: "/home/admin", shell: "/bin/bash", login: "2025-02-21T09:00:00Z", last_login: "2025-02-21T16:45:00Z" },
+        { name: "www-data", uid: "33", gid: "33", home: "/var/www", shell: "/usr/sbin/nologin", login: null, last_login: null },
+        { name: "sshd", uid: "74", gid: "74", home: "/run/sshd", shell: "/usr/sbin/nologin", login: null, last_login: null },
+        { name: "nobody", uid: "65534", gid: "65534", home: "/nonexistent", shell: "/usr/sbin/nologin", login: null, last_login: null },
+        { name: "deploy", uid: "1002", gid: "1002", home: "/home/deploy", shell: "/bin/bash", login: "2025-02-18T14:00:00Z", last_login: "2025-02-21T11:30:00Z" },
+        { name: "webadmin", uid: "1003", gid: "1003", home: "/home/webadmin", shell: "/bin/bash", login: "2025-02-19T10:00:00Z", last_login: "2025-02-20T18:00:00Z" },
+      ],
+      total_affected_items: 7,
+      total_failed_items: 0,
+      failed_items: [],
+    },
+  },
+  "003": {
+    data: {
+      affected_items: [
+        { name: "root", uid: "0", gid: "0", home: "/root", shell: "/bin/bash", login: "2025-02-20T08:15:00Z", last_login: "2025-02-21T14:30:00Z" },
+        { name: "admin", uid: "1000", gid: "1000", home: "/home/admin", shell: "/bin/bash", login: "2025-02-21T09:00:00Z", last_login: "2025-02-21T16:45:00Z" },
+        { name: "postgres", uid: "26", gid: "26", home: "/var/lib/postgresql", shell: "/bin/bash", login: "2025-02-19T10:00:00Z", last_login: "2025-02-20T12:00:00Z" },
+        { name: "sshd", uid: "74", gid: "74", home: "/run/sshd", shell: "/usr/sbin/nologin", login: null, last_login: null },
+        { name: "nobody", uid: "65534", gid: "65534", home: "/nonexistent", shell: "/usr/sbin/nologin", login: null, last_login: null },
+        { name: "dba", uid: "1003", gid: "1003", home: "/home/dba", shell: "/bin/bash", login: "2025-02-20T07:00:00Z", last_login: "2025-02-21T15:00:00Z" },
+      ],
+      total_affected_items: 6,
+      total_failed_items: 0,
+      failed_items: [],
+    },
+  },
+  "005": {
+    data: {
+      affected_items: [
+        { name: "root", uid: "0", gid: "0", home: "/root", shell: "/bin/bash", login: "2025-02-20T08:15:00Z", last_login: "2025-02-21T14:30:00Z" },
+        { name: "admin", uid: "1000", gid: "1000", home: "/home/admin", shell: "/bin/bash", login: "2025-02-21T09:00:00Z", last_login: "2025-02-21T16:45:00Z" },
+        { name: "sshd", uid: "74", gid: "74", home: "/run/sshd", shell: "/usr/sbin/nologin", login: null, last_login: null },
+        { name: "nobody", uid: "65534", gid: "65534", home: "/nonexistent", shell: "/usr/sbin/nologin", login: null, last_login: null },
+        { name: "deploy", uid: "1002", gid: "1002", home: "/home/deploy", shell: "/bin/bash", login: "2025-02-18T14:00:00Z", last_login: "2025-02-21T11:30:00Z" },
+        { name: "k8sadmin", uid: "1004", gid: "1004", home: "/home/k8sadmin", shell: "/bin/bash", login: "2025-02-21T06:00:00Z", last_login: "2025-02-21T17:00:00Z" },
+      ],
+      total_affected_items: 6,
+      total_failed_items: 0,
+      failed_items: [],
+    },
+  },
+};

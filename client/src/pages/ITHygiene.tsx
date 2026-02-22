@@ -50,8 +50,11 @@ import {
   Activity,
   ChevronDown,
   ChevronUp,
+  GitCompare,
 } from "lucide-react";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, lazy, Suspense } from "react";
+
+const DriftComparison = lazy(() => import("@/components/DriftComparison"));
 
 // ── Column layout type ─────────────────────────────────────────────────────────
 type ColumnView = "software" | "services" | "identity";
@@ -121,6 +124,7 @@ export default function ITHygiene() {
   const [tab, setTab] = useState<TabKey>("packages");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [comparisonMode, setComparisonMode] = useState(false);
   const pageSize = 50;
 
   // ── Wazuh connection status ──────────────────────────────────────────────
@@ -412,11 +416,34 @@ export default function ITHygiene() {
       <div className="space-y-5">
         <PageHeader
           title="IT Hygiene Ecosystem"
-          subtitle="Comprehensive syscollector inventory — software, services, and identity across your fleet"
+          subtitle={comparisonMode ? "Multi-agent configuration drift analysis" : "Comprehensive syscollector inventory — software, services, and identity across your fleet"}
           onRefresh={handleRefresh}
           isLoading={isLoading}
-        />
+        >
+          <Button
+            variant={comparisonMode ? "default" : "outline"}
+            size="sm"
+            onClick={() => setComparisonMode(!comparisonMode)}
+            className={`h-8 gap-2 text-xs ${
+              comparisonMode
+                ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                : "bg-transparent border-border hover:bg-secondary/50"
+            }`}
+          >
+            <GitCompare className="h-3.5 w-3.5" />
+            {comparisonMode ? "Exit Comparison" : "Compare Agents"}
+          </Button>
+        </PageHeader>
 
+        {/* ── Comparison Mode ──────────────────────────────────────── */}
+        {comparisonMode && (
+          <Suspense fallback={<div className="glass-panel p-8 text-center text-muted-foreground text-sm">Loading comparison view…</div>}>
+            <DriftComparison isConnected={isConnected} />
+          </Suspense>
+        )}
+
+        {/* ── Single-Agent View ────────────────────────────────────────── */}
+        {!comparisonMode && (<>
         {/* ── KPI Row ──────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3">
           <StatCard
@@ -1504,6 +1531,7 @@ export default function ITHygiene() {
             </GlassPanel>
           </TabsContent>
         </Tabs>
+        </>)}
       </div>
     </WazuhGuard>
   );
