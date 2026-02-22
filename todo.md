@@ -569,3 +569,13 @@
 - [x] Country hover tooltips showing threat count, avg severity, and threat level
 - [x] Amethyst Nexus themed map (dark tiles, purple/violet heat colors, severity legend)
 - [x] Save checkpoint
+
+## Phase 41: Threat Map Enhancements (GeoIP, Click-to-Filter, Pulse Animation)
+
+- [x] Backend: GeoIP enrichment endpoint (IP-to-country lookup using geoip-lite/MaxMind GeoLite2)
+- [x] Backend: Aggregate alert source IPs to country-level threat data with real coordinat- [x] Frontend: Replace static country centroids with GeoIP-resolved attack origin points
+- [x] Frontend: Animated pulse effect on highest-severity threat circles (critical/high)
+- [x] Frontend: Click-to-filter — clicking a country circle navigates to Alerts Timeline filtered by that country
+- [x] Frontend: Alerts Timeline accepts country/srcip filter from URL search params with active filter badges
+- [x] Backend: alertsSearch now supports srcip and geoCountry filter params
+- [x] Save checkpoint

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { MapView } from "@/components/Map";
+import { useLocation } from "wouter";
 
-/** Country centroid coordinates for geo-threat mapping */
+/** Country centroid coordinates fallback for mock data */
 const COUNTRY_COORDS: Record<string, { lat: number; lng: number }> = {
   "United States": { lat: 39.8283, lng: -98.5795 },
   "China": { lat: 35.8617, lng: 104.1954 },
@@ -45,15 +46,6 @@ const COUNTRY_COORDS: Record<string, { lat: number; lng: number }> = {
   "Taiwan": { lat: 23.6978, lng: 120.9605 },
 };
 
-/** Threat level to OKLCH color mapping (matches Amethyst Nexus) */
-function getThreatColor(avgLevel: number): string {
-  if (avgLevel >= 10) return "oklch(0.637 0.237 15.0)";   // critical red
-  if (avgLevel >= 8)  return "oklch(0.705 0.213 41.0)";   // high orange
-  if (avgLevel >= 6)  return "oklch(0.795 0.184 86.0)";   // medium yellow
-  if (avgLevel >= 4)  return "oklch(0.541 0.281 293.009)"; // low purple
-  return "oklch(0.789 0.154 211.53)";                      // info cyan
-}
-
 function getThreatColorHex(avgLevel: number): string {
   if (avgLevel >= 10) return "#ef4444";
   if (avgLevel >= 8)  return "#f97316";
@@ -86,32 +78,53 @@ const DARK_MAP_STYLES: google.maps.MapTypeStyle[] = [
   { featureType: "poi", stylers: [{ visibility: "off" }] },
 ];
 
-interface ThreatGeoData {
+export interface ThreatGeoData {
   country: string;
   count: number;
   avgLevel: number;
+  /** GeoIP-resolved latitude (if available) */
+  lat?: number;
+  /** GeoIP-resolved longitude (if available) */
+  lng?: number;
+  /** Cities seen in alerts from this country */
+  cities?: string[];
+  /** Top source IPs from this country */
+  topIps?: string[];
+  /** Data source: wazuh-geo, geoip-lite, or mock */
+  source?: string;
 }
 
 interface ThreatMapProps {
   data: ThreatGeoData[];
   className?: string;
+  /** Enable click-to-filter navigation to Alerts Timeline */
+  enableClickFilter?: boolean;
 }
 
-export function ThreatMap({ data, className }: ThreatMapProps) {
+export function ThreatMap({ data, className, enableClickFilter = true }: ThreatMapProps) {
   const mapRef = useRef<google.maps.Map | null>(null);
   const circlesRef = useRef<google.maps.Circle[]>([]);
+  const pulseCirclesRef = useRef<google.maps.Circle[]>([]);
+  const pulseAnimFrameRef = useRef<number | null>(null);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [, navigate] = useLocation();
 
   const clearOverlays = useCallback(() => {
     circlesRef.current.forEach(c => c.setMap(null));
     circlesRef.current = [];
+    pulseCirclesRef.current.forEach(c => c.setMap(null));
+    pulseCirclesRef.current = [];
+    if (pulseAnimFrameRef.current) {
+      cancelAnimationFrame(pulseAnimFrameRef.current);
+      pulseAnimFrameRef.current = null;
+    }
     if (infoWindowRef.current) {
       infoWindowRef.current.close();
     }
   }, []);
 
-  /** Draw threat circles when data or map changes */
+  /** Draw threat circles with pulse animation */
   useEffect(() => {
     if (!mapReady || !mapRef.current || data.length === 0) return;
 
@@ -126,16 +139,27 @@ export function ThreatMap({ data, className }: ThreatMapProps) {
     }
     const infoWindow = infoWindowRef.current;
 
+    // Track pulse circles for animation
+    const pulsers: Array<{
+      circle: google.maps.Circle;
+      baseRadius: number;
+      color: string;
+      opacity: number;
+    }> = [];
+
     data.forEach(d => {
-      const coords = COUNTRY_COORDS[d.country];
+      // Use GeoIP-resolved coordinates if available, fall back to country centroids
+      const coords = (d.lat && d.lng && (d.lat !== 0 || d.lng !== 0))
+        ? { lat: d.lat, lng: d.lng }
+        : COUNTRY_COORDS[d.country];
       if (!coords) return;
 
-      // Scale radius: 150km min to 800km max based on count
       const ratio = d.count / maxCount;
       const radius = 150000 + ratio * 650000;
-
       const colorHex = getThreatColorHex(d.avgLevel);
+      const isCritical = d.avgLevel >= 8;
 
+      // Main circle
       const circle = new google.maps.Circle({
         map,
         center: coords,
@@ -146,12 +170,54 @@ export function ThreatMap({ data, className }: ThreatMapProps) {
         strokeOpacity: 0.7,
         strokeWeight: 1.5,
         clickable: true,
-        zIndex: Math.round(d.avgLevel * 10),
+        zIndex: Math.round(d.avgLevel * 10) + 10,
       });
 
+      // Pulse ring for critical/high severity
+      if (isCritical) {
+        const pulseCircle = new google.maps.Circle({
+          map,
+          center: coords,
+          radius,
+          fillColor: colorHex,
+          fillOpacity: 0,
+          strokeColor: colorHex,
+          strokeOpacity: 0.6,
+          strokeWeight: 2,
+          clickable: false,
+          zIndex: Math.round(d.avgLevel * 10),
+        });
+        pulseCirclesRef.current.push(pulseCircle);
+        pulsers.push({
+          circle: pulseCircle,
+          baseRadius: radius,
+          color: colorHex,
+          opacity: 0.6,
+        });
+      }
+
       // Hover tooltip
-      circle.addListener("mouseover", () => {
+      const showTooltip = () => {
         const threatLabel = getThreatLabel(d.avgLevel);
+        const sourceTag = d.source
+          ? `<div style="margin-top: 4px; font-size: 9px; color: #6b5b8a;">Source: ${d.source}</div>`
+          : "";
+        const citiesTag = d.cities && d.cities.length > 0
+          ? `<div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+              <span style="font-size: 11px; color: #9b8bb8;">Cities</span>
+              <span style="font-size: 10px; font-family: 'JetBrains Mono', monospace; color: #c4b5d8;">${d.cities.slice(0, 3).join(", ")}</span>
+            </div>`
+          : "";
+        const ipsTag = d.topIps && d.topIps.length > 0
+          ? `<div style="margin-top: 4px; border-top: 1px solid ${colorHex}20; padding-top: 4px;">
+              <span style="font-size: 9px; color: #6b5b8a;">Top IPs:</span>
+              <div style="font-size: 9px; font-family: 'JetBrains Mono', monospace; color: #c4b5d8; margin-top: 2px;">${d.topIps.slice(0, 3).join(", ")}</div>
+            </div>`
+          : "";
+        const clickHint = enableClickFilter
+          ? `<div style="margin-top: 6px; font-size: 9px; color: #a855f7; text-align: center;">Click to filter alerts by this country</div>`
+          : "";
+
         const content = `
           <div style="
             background: rgba(15, 10, 26, 0.95);
@@ -160,7 +226,8 @@ export function ThreatMap({ data, className }: ThreatMapProps) {
             padding: 10px 14px;
             font-family: 'Inter', sans-serif;
             color: #e2daf0;
-            min-width: 180px;
+            min-width: 200px;
+            max-width: 280px;
             backdrop-filter: blur(12px);
           ">
             <div style="font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #f0eaf8;">
@@ -174,7 +241,7 @@ export function ThreatMap({ data, className }: ThreatMapProps) {
               <span style="font-size: 11px; color: #9b8bb8;">Avg Severity</span>
               <span style="font-size: 11px; font-family: 'JetBrains Mono', monospace; color: ${colorHex};">${d.avgLevel.toFixed(1)}</span>
             </div>
-            <div style="display: flex; justify-content: space-between;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
               <span style="font-size: 11px; color: #9b8bb8;">Threat Level</span>
               <span style="
                 font-size: 10px;
@@ -186,27 +253,70 @@ export function ThreatMap({ data, className }: ThreatMapProps) {
                 border: 1px solid ${colorHex}40;
               ">${threatLabel}</span>
             </div>
+            ${citiesTag}
+            ${ipsTag}
+            ${sourceTag}
+            ${clickHint}
           </div>
         `;
         infoWindow.setContent(content);
         infoWindow.setPosition(coords);
         infoWindow.open(map);
-      });
+      };
 
-      circle.addListener("mouseout", () => {
-        infoWindow.close();
-      });
+      circle.addListener("mouseover", showTooltip);
+      circle.addListener("mouseout", () => infoWindow.close());
+
+      // Click-to-filter: navigate to Alerts Timeline with country filter
+      if (enableClickFilter) {
+        circle.addListener("click", () => {
+          const params = new URLSearchParams();
+          params.set("country", d.country);
+          if (d.topIps && d.topIps.length > 0) {
+            params.set("srcip", d.topIps[0]);
+          }
+          navigate(`/alerts?${params.toString()}`);
+        });
+      }
 
       circlesRef.current.push(circle);
     });
 
+    // Animate pulse rings for critical/high severity circles
+    if (pulsers.length > 0) {
+      let startTime: number | null = null;
+      const PULSE_DURATION = 2000; // 2s cycle
+      const PULSE_SCALE = 1.5; // expand to 150% of base radius
+
+      const animate = (timestamp: number) => {
+        if (!startTime) startTime = timestamp;
+        const elapsed = timestamp - startTime;
+        const progress = (elapsed % PULSE_DURATION) / PULSE_DURATION;
+
+        // Ease-out sine curve for smooth expansion
+        const scale = 1 + (PULSE_SCALE - 1) * Math.sin(progress * Math.PI);
+        const opacity = 0.6 * (1 - Math.sin(progress * Math.PI));
+
+        for (const p of pulsers) {
+          p.circle.setRadius(p.baseRadius * scale);
+          p.circle.setOptions({
+            strokeOpacity: Math.max(0, opacity),
+            fillOpacity: Math.max(0, opacity * 0.1),
+          });
+        }
+
+        pulseAnimFrameRef.current = requestAnimationFrame(animate);
+      };
+
+      pulseAnimFrameRef.current = requestAnimationFrame(animate);
+    }
+
     return () => clearOverlays();
-  }, [data, mapReady, clearOverlays]);
+  }, [data, mapReady, clearOverlays, enableClickFilter, navigate]);
 
   const handleMapReady = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
 
-    // Apply dark theme styling
     map.setOptions({
       styles: DARK_MAP_STYLES,
       backgroundColor: "#0f0a1a",

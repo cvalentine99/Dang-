@@ -244,6 +244,10 @@ export default function Home() {
     { ...indexerTimeRange, topN: 10 },
     { retry: false, staleTime: 60_000, enabled: isIndexerConnected }
   );
+  const alertsGeoEnrichedQ = trpc.indexer.alertsGeoEnriched.useQuery(
+    { ...indexerTimeRange, topN: 20 },
+    { retry: false, staleTime: 60_000, enabled: isIndexerConnected }
+  );
   const alertsAggByRuleQ = trpc.indexer.alertsAggByRule.useQuery(
     { ...indexerTimeRange, topN: 10 },
     { retry: false, staleTime: 30_000, enabled: isIndexerConnected }
@@ -398,8 +402,28 @@ export default function Home() {
 
   const topTalkersSource: "indexer" | "mock" = isIndexerConnected && alertsAggByAgentQ.data?.data ? "indexer" : "mock";
 
-  /** Geographic distribution */
+  /** Geographic distribution — prefer GeoIP-enriched endpoint, fallback to basic agg, then mock */
   const geoData = useMemo(() => {
+    // Try enriched GeoIP data first (includes coordinates, cities, IPs)
+    if (isIndexerConnected && alertsGeoEnrichedQ.data?.data) {
+      const enriched = alertsGeoEnrichedQ.data.data as Array<{
+        country: string; count: number; avgLevel: number;
+        lat: number; lng: number; cities: string[]; topIps: string[]; source: string;
+      }>;
+      if (enriched.length > 0) {
+        return enriched.map(e => ({
+          country: e.country,
+          count: e.count,
+          avgLevel: e.avgLevel,
+          lat: e.lat,
+          lng: e.lng,
+          cities: e.cities,
+          topIps: e.topIps,
+          source: e.source,
+        }));
+      }
+    }
+    // Fallback to basic geo agg
     if (isIndexerConnected && alertsGeoAggQ.data?.data) {
       const aggs = (alertsGeoAggQ.data.data as unknown as Record<string, unknown>)?.aggregations as Record<string, unknown> | undefined;
       const countries = aggs?.countries as { buckets?: Array<{ key: string; doc_count: number; avg_level: { value: number } }> } | undefined;
@@ -412,9 +436,9 @@ export default function Home() {
       }
     }
     return MOCK_GEO_DATA;
-  }, [alertsGeoAggQ.data, isIndexerConnected]);
+  }, [alertsGeoEnrichedQ.data, alertsGeoAggQ.data, isIndexerConnected]);
 
-  const geoSource: "indexer" | "mock" = isIndexerConnected && alertsGeoAggQ.data?.data ? "indexer" : "mock";
+  const geoSource: "indexer" | "mock" = isIndexerConnected && (alertsGeoEnrichedQ.data?.data || alertsGeoAggQ.data?.data) ? "indexer" : "mock";
 
   /** Top Firing Rules from Indexer */
   const topFiringRules = useMemo(() => {
