@@ -75,3 +75,25 @@ export const ragSessions = mysqlTable("rag_sessions", {
 
 export type RagSession = typeof ragSessions.$inferSelect;
 export type InsertRagSession = typeof ragSessions.$inferInsert;
+
+/**
+ * Saved search queries — persists SIEM and Threat Hunting search filters.
+ */
+export const savedSearches = mysqlTable("saved_searches", {
+  id: int("id").autoincrement().primaryKey(),
+  /** User who saved this search */
+  userId: int("userId").notNull(),
+  /** Human-readable name for the saved search */
+  name: varchar("name", { length: 256 }).notNull(),
+  /** Type of search: 'siem' or 'hunting' */
+  searchType: mysqlEnum("searchType", ["siem", "hunting"]).notNull(),
+  /** Serialized filter state (JSON) */
+  filters: json("filters").$type<Record<string, unknown>>().notNull(),
+  /** Optional description */
+  description: text("description"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SavedSearch = typeof savedSearches.$inferSelect;
+export type InsertSavedSearch = typeof savedSearches.$inferInsert;

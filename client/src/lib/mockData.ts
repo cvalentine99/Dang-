@@ -709,3 +709,100 @@ export const MOCK_LOG_SOURCES = [
   { name: "docker", count: 1, category: "Container" },
   { name: "json", count: 1, category: "Generic" },
 ];
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// DECODERS (Wazuh decoder definitions)
+// ═══════════════════════════════════════════════════════════════════════
+export const MOCK_DECODERS = {
+  data: {
+    affected_items: [
+      { name: "sshd", position: 0, status: "enabled", file: "0310-ssh_decoders.xml", path: "ruleset/decoders", details: { parent: "sshd", regex: "^\\S+ \\S+ sshd[\\d+]: (.+)$", order: "extra_data", prematch: "^sshd" }, relative_dirname: "ruleset/decoders" },
+      { name: "sshd-success", position: 1, status: "enabled", file: "0310-ssh_decoders.xml", path: "ruleset/decoders", details: { parent: "sshd", regex: "^Accepted (\\S+) for (\\S+) from (\\S+) port (\\d+)", order: "extra_data,user,srcip,srcport" }, relative_dirname: "ruleset/decoders" },
+      { name: "sshd-failed", position: 2, status: "enabled", file: "0310-ssh_decoders.xml", path: "ruleset/decoders", details: { parent: "sshd", regex: "^Failed (\\S+) for (\\S*) from (\\S+) port (\\d+)", order: "extra_data,user,srcip,srcport" }, relative_dirname: "ruleset/decoders" },
+      { name: "pam", position: 0, status: "enabled", file: "0005-pam_decoders.xml", path: "ruleset/decoders", details: { prematch: "^pam_unix\\(", regex: "^pam_unix\\((\\S+):(\\S+)\\):", order: "extra_data,extra_data" }, relative_dirname: "ruleset/decoders" },
+      { name: "windows_eventchannel", position: 0, status: "enabled", file: "0330-windows_decoders.xml", path: "ruleset/decoders", details: { prematch: "^WinEvtLog:", regex: "^WinEvtLog: (\\S+): (\\S+)\\((\\d+)\\)", order: "extra_data,status,id" }, relative_dirname: "ruleset/decoders" },
+      { name: "json", position: 0, status: "enabled", file: "0350-json_decoders.xml", path: "ruleset/decoders", details: { prematch: "^\\{", plugin_decoder: "JSON_Decoder" }, relative_dirname: "ruleset/decoders" },
+      { name: "syscheck_integrity_changed", position: 0, status: "enabled", file: "0015-ossec_decoders.xml", path: "ruleset/decoders", details: { parent: "ossec", prematch: "^ossec: File integrity", regex: "^ossec: File integrity checksum changed for: '(.+)'", order: "extra_data" }, relative_dirname: "ruleset/decoders" },
+      { name: "suricata", position: 0, status: "enabled", file: "0470-suricata_decoders.xml", path: "ruleset/decoders", details: { prematch: "^\\{\"timestamp\"", plugin_decoder: "JSON_Decoder", regex: "\"alert\":\\{\"action\":\"(\\S+)\",\"gid\":(\\d+),\"signature_id\":(\\d+)", order: "action,extra_data,id" }, relative_dirname: "ruleset/decoders" },
+      { name: "apache-errorlog", position: 0, status: "enabled", file: "0140-apache_decoders.xml", path: "ruleset/decoders", details: { prematch: "^\\[\\w+ \\w+ \\d+ \\d+:\\d+:\\d+", regex: "^\\[(\\S+ \\S+ \\d+ \\d+:\\d+:\\d+\\.\\d+ \\d+)\\] \\[(\\S+):(\\S+)\\]", order: "extra_data,extra_data,status" }, relative_dirname: "ruleset/decoders" },
+      { name: "nginx-errorlog", position: 0, status: "enabled", file: "0455-nginx_decoders.xml", path: "ruleset/decoders", details: { prematch: "^\\d+/\\d+/\\d+ \\d+:\\d+:\\d+", regex: "^(\\d+/\\d+/\\d+ \\d+:\\d+:\\d+) \\[(\\S+)\\]", order: "extra_data,status" }, relative_dirname: "ruleset/decoders" },
+      { name: "docker", position: 0, status: "enabled", file: "0565-docker_decoders.xml", path: "ruleset/decoders", details: { prematch: "^\\{\"Type\":", plugin_decoder: "JSON_Decoder" }, relative_dirname: "ruleset/decoders" },
+      { name: "auditd", position: 0, status: "enabled", file: "0040-auditd_decoders.xml", path: "ruleset/decoders", details: { prematch: "^type=", regex: "^type=(\\S+) msg=audit\\((\\d+\\.\\d+):(\\d+)\\)", order: "extra_data,extra_data,id" }, relative_dirname: "ruleset/decoders" },
+      { name: "firewalld", position: 0, status: "enabled", file: "0365-firewalld_decoders.xml", path: "ruleset/decoders", details: { prematch: "^\\S+ firewalld", regex: "^(\\S+) firewalld\\[(\\d+)\\]: (.+)$", order: "extra_data,extra_data,extra_data" }, relative_dirname: "ruleset/decoders" },
+      { name: "postfix", position: 0, status: "enabled", file: "0220-postfix_decoders.xml", path: "ruleset/decoders", details: { prematch: "^\\S+ postfix/", regex: "^(\\S+) postfix/(\\S+)\\[(\\d+)\\]:", order: "extra_data,extra_data,extra_data" }, relative_dirname: "ruleset/decoders" },
+      { name: "syslog", position: 0, status: "enabled", file: "0010-syslog_decoders.xml", path: "ruleset/decoders", details: { prematch: "^\\w+\\s+\\d+ \\d+:\\d+:\\d+", regex: "^(\\w+\\s+\\d+ \\d+:\\d+:\\d+) (\\S+) (\\S+):", order: "extra_data,hostname,program_name" }, relative_dirname: "ruleset/decoders" },
+    ],
+    total_affected_items: 15,
+    total_failed_items: 0,
+    failed_items: [],
+  },
+};
+
+// Extended rules with file/status info for Ruleset Explorer
+export const MOCK_RULES_EXTENDED = {
+  data: {
+    affected_items: [
+      { id: 5710, level: 14, description: "sshd: Attempt to login using a denied user.", groups: ["syslog", "sshd", "authentication_failed"], mitre: { id: ["T1110"], tactic: ["Credential Access"], technique: ["Brute Force"] }, pci_dss: ["10.2.4", "10.2.5"], gdpr: ["IV_35.7.d", "IV_32.2"], hipaa: ["164.312.b"], filename: "0095-sshd_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { if_sid: "5700", match: "denied|illegal user|invalid user" } },
+      { id: 5712, level: 10, description: "sshd: brute force trying to get access to the system.", groups: ["syslog", "sshd", "authentication_failed"], mitre: { id: ["T1110.001"], tactic: ["Credential Access"], technique: ["Password Guessing"] }, pci_dss: ["10.2.4", "10.2.5", "11.4"], gdpr: ["IV_35.7.d"], hipaa: ["164.312.b"], filename: "0095-sshd_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { if_matched_sid: "5710", frequency: "8", timeframe: "120" } },
+      { id: 60103, level: 12, description: "Integrity checksum changed.", groups: ["ossec", "syscheck", "syscheck_entry_modified"], mitre: { id: ["T1565.001"], tactic: ["Impact"], technique: ["Stored Data Manipulation"] }, pci_dss: ["11.5"], gdpr: ["II_5.1.f"], hipaa: ["164.312.c.1"], filename: "0015-ossec_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { if_sid: "550", match: "integrity checksum changed" } },
+      { id: 80791, level: 13, description: "Shellshock attack detected.", groups: ["web", "attack", "shellshock"], mitre: { id: ["T1190"], tactic: ["Initial Access"], technique: ["Exploit Public-Facing Application"] }, pci_dss: ["6.5", "6.6", "11.4"], gdpr: ["IV_35.7.d"], hipaa: [], filename: "0260-web_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { if_sid: "31100", regex: "\\(\\)\\s*\\{" } },
+      { id: 87105, level: 15, description: "Windows: Mimikatz detected on system.", groups: ["windows", "attack", "credential_theft"], mitre: { id: ["T1003"], tactic: ["Credential Access"], technique: ["OS Credential Dumping"] }, pci_dss: ["10.2.7", "10.6.1"], gdpr: ["IV_35.7.d"], hipaa: ["164.312.b"], filename: "0585-win-security_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { if_sid: "60000", match: "mimikatz|sekurlsa" } },
+      { id: 92655, level: 12, description: "Docker: Container started with privileged mode.", groups: ["docker", "container"], mitre: { id: ["T1610"], tactic: ["Execution"], technique: ["Deploy Container"] }, pci_dss: ["2.2"], gdpr: ["IV_35.7.d"], hipaa: [], filename: "0565-docker_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { if_sid: "92600", match: "privileged" } },
+      { id: 100002, level: 10, description: "Suricata: ET MALWARE Known Malicious User-Agent.", groups: ["ids", "suricata"], mitre: { id: ["T1071.001"], tactic: ["Command and Control"], technique: ["Web Protocols"] }, pci_dss: ["10.6.1", "11.4"], gdpr: ["IV_35.7.d"], hipaa: ["164.312.b"], filename: "0470-suricata_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { if_sid: "100001", match: "ET MALWARE" } },
+      { id: 550, level: 10, description: "Integrity checksum changed (2nd time).", groups: ["ossec", "syscheck"], mitre: { id: ["T1565.001"], tactic: ["Impact"], technique: ["Stored Data Manipulation"] }, pci_dss: ["11.5"], gdpr: ["II_5.1.f"], hipaa: ["164.312.c.1"], filename: "0015-ossec_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { decoded_as: "syscheck_integrity_changed" } },
+      { id: 5501, level: 5, description: "Login session opened.", groups: ["pam", "syslog", "authentication_success"], mitre: { id: ["T1078"], tactic: ["Defense Evasion", "Persistence", "Privilege Escalation", "Initial Access"], technique: ["Valid Accounts"] }, pci_dss: ["10.2.5"], gdpr: ["IV_32.2"], hipaa: ["164.312.d"], filename: "0005-pam_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { decoded_as: "pam", match: "session opened" } },
+      { id: 5502, level: 3, description: "Login session closed.", groups: ["pam", "syslog"], mitre: { id: [], tactic: [], technique: [] }, pci_dss: ["10.2.5"], gdpr: [], hipaa: [], filename: "0005-pam_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { decoded_as: "pam", match: "session closed" } },
+      { id: 18104, level: 12, description: "Windows Audit: Logon failure - Unknown user or bad password.", groups: ["windows", "authentication_failed"], mitre: { id: ["T1110"], tactic: ["Credential Access"], technique: ["Brute Force"] }, pci_dss: ["10.2.4", "10.2.5"], gdpr: ["IV_35.7.d", "IV_32.2"], hipaa: ["164.312.b"], filename: "0585-win-security_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { if_sid: "18100", id: "4625" } },
+      { id: 31104, level: 6, description: "Web server 404 error.", groups: ["web", "accesslog"], mitre: { id: ["T1595.002"], tactic: ["Reconnaissance"], technique: ["Vulnerability Scanning"] }, pci_dss: ["10.6.1"], gdpr: [], hipaa: [], filename: "0260-web_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { if_sid: "31100", match: " 404 " } },
+      { id: 31105, level: 6, description: "Web server 500 error (Internal Error).", groups: ["web", "accesslog"], mitre: { id: [], tactic: [], technique: [] }, pci_dss: ["10.6.1"], gdpr: [], hipaa: [], filename: "0260-web_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { if_sid: "31100", match: " 500 " } },
+      { id: 5706, level: 6, description: "OpenSSH: authentication success.", groups: ["syslog", "sshd", "authentication_success"], mitre: { id: ["T1078"], tactic: ["Defense Evasion", "Persistence", "Privilege Escalation", "Initial Access"], technique: ["Valid Accounts"] }, pci_dss: ["10.2.5"], gdpr: ["IV_32.2"], hipaa: ["164.312.d"], filename: "0095-sshd_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { if_sid: "5700", match: "Accepted" } },
+      { id: 5763, level: 10, description: "sshd: Possible SSH scan.", groups: ["syslog", "sshd", "recon"], mitre: { id: ["T1046"], tactic: ["Discovery"], technique: ["Network Service Discovery"] }, pci_dss: ["11.4"], gdpr: ["IV_35.7.d"], hipaa: [], filename: "0095-sshd_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { if_matched_sid: "5706", frequency: "6", timeframe: "60", same_source_ip: "" } },
+      { id: 2501, level: 3, description: "Syslog: User authentication failure.", groups: ["syslog", "authentication_failed"], mitre: { id: ["T1110"], tactic: ["Credential Access"], technique: ["Brute Force"] }, pci_dss: ["10.2.4"], gdpr: ["IV_35.7.d"], hipaa: [], filename: "0010-syslog_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { match: "authentication failure|auth.*fail" } },
+      { id: 2502, level: 10, description: "Syslog: User missed the password more than one time.", groups: ["syslog", "authentication_failed"], mitre: { id: ["T1110.001"], tactic: ["Credential Access"], technique: ["Password Guessing"] }, pci_dss: ["10.2.4", "10.2.5"], gdpr: ["IV_35.7.d"], hipaa: ["164.312.b"], filename: "0010-syslog_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { if_matched_sid: "2501", frequency: "4", timeframe: "120" } },
+      { id: 31151, level: 10, description: "SQL injection attempt.", groups: ["web", "attack", "sql_injection"], mitre: { id: ["T1190"], tactic: ["Initial Access"], technique: ["Exploit Public-Facing Application"] }, pci_dss: ["6.5.1", "11.4"], gdpr: ["IV_35.7.d"], hipaa: [], filename: "0260-web_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { if_sid: "31100", regex: "select.+from|insert.+into|update.+set|delete.+from|union.+select" } },
+      { id: 31152, level: 10, description: "XSS (Cross-site scripting) attempt.", groups: ["web", "attack", "xss"], mitre: { id: ["T1059.007"], tactic: ["Execution"], technique: ["JavaScript"] }, pci_dss: ["6.5.7", "11.4"], gdpr: ["IV_35.7.d"], hipaa: [], filename: "0260-web_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { if_sid: "31100", regex: "<script|javascript:|onerror=|onload=" } },
+      { id: 100100, level: 8, description: "ClamAV: Virus detected.", groups: ["antivirus", "clamav"], mitre: { id: ["T1204.002"], tactic: ["Execution"], technique: ["Malicious File"] }, pci_dss: ["5.1", "5.2"], gdpr: ["IV_35.7.d"], hipaa: ["164.308.a.5"], filename: "0370-clamav_rules.xml", relative_dirname: "ruleset/rules", status: "enabled", details: { decoded_as: "clamav", match: "FOUND" } },
+    ],
+    total_affected_items: 20,
+    total_failed_items: 0,
+    failed_items: [],
+  },
+};
+
+// Rule groups for filtering
+export const MOCK_RULE_GROUPS = {
+  data: {
+    affected_items: [
+      "syslog", "sshd", "authentication_failed", "authentication_success", "pam",
+      "ossec", "syscheck", "syscheck_entry_modified", "web", "attack",
+      "shellshock", "windows", "credential_theft", "docker", "container",
+      "ids", "suricata", "accesslog", "recon", "sql_injection",
+      "xss", "antivirus", "clamav",
+    ],
+    total_affected_items: 23,
+    total_failed_items: 0,
+    failed_items: [],
+  },
+};
+
+// Rule files for reference
+export const MOCK_RULE_FILES = {
+  data: {
+    affected_items: [
+      { filename: "0005-pam_rules.xml", relative_dirname: "ruleset/rules", status: "enabled" },
+      { filename: "0010-syslog_rules.xml", relative_dirname: "ruleset/rules", status: "enabled" },
+      { filename: "0015-ossec_rules.xml", relative_dirname: "ruleset/rules", status: "enabled" },
+      { filename: "0095-sshd_rules.xml", relative_dirname: "ruleset/rules", status: "enabled" },
+      { filename: "0260-web_rules.xml", relative_dirname: "ruleset/rules", status: "enabled" },
+      { filename: "0330-windows_decoders.xml", relative_dirname: "ruleset/decoders", status: "enabled" },
+      { filename: "0370-clamav_rules.xml", relative_dirname: "ruleset/rules", status: "enabled" },
+      { filename: "0470-suricata_rules.xml", relative_dirname: "ruleset/rules", status: "enabled" },
+      { filename: "0565-docker_rules.xml", relative_dirname: "ruleset/rules", status: "enabled" },
+      { filename: "0585-win-security_rules.xml", relative_dirname: "ruleset/rules", status: "enabled" },
+    ],
+    total_affected_items: 10,
+    total_failed_items: 0,
+    failed_items: [],
+  },
+};

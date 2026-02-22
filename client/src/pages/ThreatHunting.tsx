@@ -37,8 +37,13 @@ import {
   Layers,
   BarChart3,
   X,
+  Bookmark,
+  BookmarkPlus,
+  Save,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import {
   BarChart,
   Bar,
@@ -105,6 +110,32 @@ export default function ThreatHunting() {
   const [huntHistory, setHuntHistory] = useState<HuntEntry[]>([]);
   const [expandedSource, setExpandedSource] = useState<string | null>(null);
   const [selectedHunt, setSelectedHunt] = useState<string | null>(null);
+
+  // ── Saved search state ────────────────────────────────────────────────────
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [saveDescription, setSaveDescription] = useState("");
+  const [showSavedSearches, setShowSavedSearches] = useState(false);
+
+  // ── Saved search queries ──────────────────────────────────────────────────
+  const savedSearchesQ = trpc.savedSearches.list.useQuery({ searchType: "hunting" });
+  const createSearchMut = trpc.savedSearches.create.useMutation({
+    onSuccess: () => {
+      savedSearchesQ.refetch();
+      setShowSaveDialog(false);
+      setSaveName("");
+      setSaveDescription("");
+      toast.success("Hunt query saved successfully");
+    },
+    onError: (err) => toast.error(`Failed to save: ${err.message}`),
+  });
+  const deleteSearchMut = trpc.savedSearches.delete.useMutation({
+    onSuccess: () => {
+      savedSearchesQ.refetch();
+      toast.success("Saved search deleted");
+    },
+    onError: (err) => toast.error(`Failed to delete: ${err.message}`),
+  });
 
   // ── API queries (always enabled, use fallback when not connected) ──────────
   const agentsQ = trpc.wazuh.agents.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 60_000 });
@@ -321,12 +352,164 @@ export default function ThreatHunting() {
 
   return (
     <WazuhGuard>
-      <PageHeader
-        title="Threat Hunting"
-        subtitle="Cross-correlate IOCs across agents, rules, vulnerabilities, FIM, and MITRE ATT&CK"
-        onRefresh={handleRefresh}
-        isLoading={isLoading}
-      />
+      <div className="flex items-center justify-between mb-6">
+        <PageHeader
+          title="Threat Hunting"
+          subtitle="Cross-correlate IOCs across agents, rules, vulnerabilities, FIM, and MITRE ATT&CK"
+          onRefresh={handleRefresh}
+          isLoading={isLoading}
+        />
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Saved Searches Dropdown */}
+          <div className="relative">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowSavedSearches(!showSavedSearches)}
+              className="text-xs bg-transparent border-border text-muted-foreground hover:bg-secondary/50"
+            >
+              <Bookmark className="h-3.5 w-3.5 mr-1" />
+              Saved ({savedSearchesQ.data?.searches?.length ?? 0})
+            </Button>
+            {showSavedSearches && (
+              <div className="absolute right-0 top-full mt-1 w-80 bg-[oklch(0.17_0.025_286)] border border-border rounded-lg shadow-xl z-50 max-h-[400px] overflow-y-auto">
+                <div className="p-3 border-b border-border">
+                  <h4 className="text-xs font-semibold text-primary">Saved Hunt Queries</h4>
+                </div>
+                {(savedSearchesQ.data?.searches ?? []).length === 0 ? (
+                  <div className="p-4 text-center text-xs text-muted-foreground">
+                    No saved hunts yet
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border/30">
+                    {(savedSearchesQ.data?.searches ?? []).map((s) => (
+                      <div
+                        key={s.id}
+                        className="flex items-center justify-between px-3 py-2.5 hover:bg-secondary/30 cursor-pointer group"
+                      >
+                        <div
+                          className="flex-1 min-w-0"
+                          onClick={() => {
+                            const filters = s.filters as Record<string, unknown>;
+                            if (filters.iocType) setIocType(filters.iocType as IOCType);
+                            if (filters.searchValue) {
+                              setSearchValue(filters.searchValue as string);
+                              setActiveQuery(filters.searchValue as string);
+                            }
+                            if (filters.iocType) setActiveIocType(filters.iocType as IOCType);
+                            setShowSavedSearches(false);
+                            toast.success("Hunt query loaded");
+                          }}
+                        >
+                          <p className="text-xs text-foreground truncate font-medium">{s.name}</p>
+                          {s.description && (
+                            <p className="text-[10px] text-muted-foreground truncate mt-0.5">{s.description}</p>
+                          )}
+                          <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+                            {new Date(s.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteSearchMut.mutate({ id: s.id });
+                          }}
+                          className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-all"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Save Current Hunt */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowSaveDialog(true)}
+            disabled={!activeQuery}
+            className="text-xs bg-transparent border-border text-muted-foreground hover:bg-secondary/50"
+          >
+            <BookmarkPlus className="h-3.5 w-3.5 mr-1" />
+            Save Hunt
+          </Button>
+        </div>
+      </div>
+
+      {/* ── Save Hunt Dialog ──────────────────────────────────────────────── */}
+      {showSaveDialog && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center" onClick={() => setShowSaveDialog(false)}>
+          <div className="bg-[oklch(0.17_0.025_286)] border border-border rounded-xl p-6 w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-primary mb-4 flex items-center gap-2">
+              <Save className="h-4 w-4" /> Save Hunt Query
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Name *</label>
+                <input
+                  type="text"
+                  value={saveName}
+                  onChange={(e) => setSaveName(e.target.value)}
+                  placeholder="e.g., Lateral movement via SSH"
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Description (optional)</label>
+                <input
+                  type="text"
+                  value={saveDescription}
+                  onChange={(e) => setSaveDescription(e.target.value)}
+                  placeholder="Brief description of this hunt..."
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+                />
+              </div>
+              <div className="bg-secondary/30 rounded-lg p-3 text-xs text-muted-foreground space-y-1">
+                <p className="font-semibold text-foreground">Current Query:</p>
+                <p>IOC Type: <span className="text-primary">{IOC_TYPES.find((t) => t.value === iocType)?.label}</span></p>
+                <p>Query: <span className="font-mono text-primary">{activeQuery || searchValue}</span></p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowSaveDialog(false)}
+                className="bg-transparent border-border text-muted-foreground"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (!saveName.trim()) {
+                    toast.error("Please enter a name");
+                    return;
+                  }
+                  createSearchMut.mutate({
+                    name: saveName.trim(),
+                    searchType: "hunting",
+                    filters: {
+                      iocType: activeIocType || iocType,
+                      searchValue: activeQuery || searchValue,
+                    },
+                    description: saveDescription.trim() || undefined,
+                  });
+                }}
+                disabled={createSearchMut.isPending}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              >
+                {createSearchMut.isPending ? "Saving..." : "Save Hunt"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── KPI Row ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3 mb-6">

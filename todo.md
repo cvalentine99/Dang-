@@ -244,3 +244,33 @@
 - [x] Route wired in App.tsx at /siem
 - [x] All 29 vitest tests still passing
 - [x] Save checkpoint
+
+## Phase 27: Ruleset Explorer + Related Events + Saved Searches
+
+### Ruleset Explorer Page
+- [x] Rule search with text filter, level filter, group filter
+- [x] Rule detail panel with description, groups, PCI/HIPAA/GDPR mappings, MITRE references
+- [x] Decoder tab with decoder search, detail view, parent decoder chain
+- [x] Rule level distribution chart
+- [x] Rule group distribution chart
+- [x] Decoder type distribution chart
+- [x] Fallback mock data for rules and decoders
+- [x] Route /rules and sidebar entry
+
+### Related Events Correlation Panel (SIEM Events)
+- [x] "Related Events" expandable section in event detail
+- [x] Same-agent events within configurable time window
+- [x] Same-rule events across agents
+- [x] Same MITRE technique events
+- [x] Time window selector (5m, 15m, 1h, 4h, 24h)
+- [x] Correlation count badges
+
+### Saved Search Queries
+- [x] Database table: saved_searches (id, userId, name, type, filters, createdAt, updatedAt)
+- [x] Backend CRUD: create, list, update, delete saved searches
+- [x] Save search button in SIEM Events page
+- [x] Save search button in Threat Hunting page
+- [x] Load saved search dropdown in both pages
+- [x] Delete saved search functionality
+- [x] Write vitest tests for saved search CRUD (15 tests passing)
+- [x] Save checkpoint

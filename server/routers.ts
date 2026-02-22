@@ -4,6 +4,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { wazuhRouter } from "./wazuh/wazuhRouter";
 import { hybridragRouter } from "./hybridrag/hybridragRouter";
+import { savedSearchesRouter } from "./savedSearches/savedSearchesRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -21,6 +22,9 @@ export const appRouter = router({
 
   // HybridRAG agentic assistant + analyst notes
   hybridrag: hybridragRouter,
+
+  // Saved search queries (SIEM + Threat Hunting)
+  savedSearches: savedSearchesRouter,
 });
 
 export type AppRouter = typeof appRouter;

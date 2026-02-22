@@ -18,6 +18,7 @@ import ITHygiene from "./pages/ITHygiene";
 import ClusterHealth from "./pages/ClusterHealth";
 import ThreatHunting from "./pages/ThreatHunting";
 import SiemEvents from "./pages/SiemEvents";
+import RulesetExplorer from "./pages/RulesetExplorer";
 
 function Router() {
   return (
@@ -34,6 +35,7 @@ function Router() {
         <Route path="/cluster" component={ClusterHealth} />
         <Route path="/siem" component={SiemEvents} />
         <Route path="/hunting" component={ThreatHunting} />
+        <Route path="/rules" component={RulesetExplorer} />
         <Route path="/notes" component={AnalystNotes} />
         <Route path="/assistant" component={Assistant} />
         <Route path="/404" component={NotFound} />

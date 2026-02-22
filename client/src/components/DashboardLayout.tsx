@@ -38,6 +38,7 @@ import {
   Monitor,
   Crosshair,
   Layers,
+  BookOpen,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -52,6 +53,7 @@ const menuItems = [
   { icon: Bug, label: "Vulnerabilities", path: "/vulnerabilities", group: "Detection" },
   { icon: Target, label: "MITRE ATT&CK", path: "/mitre", group: "Detection" },
   { icon: Crosshair, label: "Threat Hunting", path: "/hunting", group: "Detection" },
+  { icon: BookOpen, label: "Ruleset Explorer", path: "/rules", group: "Detection" },
   { icon: ShieldCheck, label: "Compliance", path: "/compliance", group: "Posture" },
   { icon: FileSearch, label: "File Integrity", path: "/fim", group: "Posture" },
   { icon: Monitor, label: "IT Hygiene", path: "/hygiene", group: "Posture" },

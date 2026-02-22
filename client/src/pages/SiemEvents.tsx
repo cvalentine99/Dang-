@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { GlassPanel, StatCard, ThreatBadge, RawJsonViewer, RefreshControl } from "@/components/shared";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
@@ -11,7 +11,8 @@ import {
 import {
   Search, Filter, ChevronDown, ChevronRight, Clock, AlertTriangle,
   Shield, Eye, FileText, Terminal, ExternalLink, Copy, X, Layers,
-  Activity, Database, Globe, Cpu, ArrowUpDown,
+  Activity, Database, Globe, Cpu, ArrowUpDown, Link2, Save,
+  BookmarkPlus, Bookmark, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -46,6 +47,14 @@ const DECODER_ICONS: Record<string, typeof Shield> = {
   suricata: Activity,
 };
 
+const CORRELATION_WINDOWS = [
+  { label: "5 min", value: 5 },
+  { label: "15 min", value: 15 },
+  { label: "1 hour", value: 60 },
+  { label: "4 hours", value: 240 },
+  { label: "24 hours", value: 1440 },
+];
+
 export default function SiemEvents() {
   // ─── State ───────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
@@ -61,6 +70,16 @@ export default function SiemEvents() {
   const [page, setPage] = useState(0);
   const pageSize = 50;
 
+  // Correlation state
+  const [correlationWindow, setCorrelationWindow] = useState(60); // minutes
+  const [showCorrelation, setShowCorrelation] = useState<string | null>(null);
+
+  // Saved search state
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [saveDescription, setSaveDescription] = useState("");
+  const [showSavedSearches, setShowSavedSearches] = useState(false);
+
   // ─── API Queries ─────────────────────────────────────────────────────────
   const statusQ = trpc.wazuh.status.useQuery();
   const isConfigured = !!(statusQ.data as Record<string, unknown>)?.configured;
@@ -73,6 +92,26 @@ export default function SiemEvents() {
     { limit: 500, offset: 0 },
     { enabled: isConfigured }
   );
+
+  // Saved searches
+  const savedSearchesQ = trpc.savedSearches.list.useQuery({ searchType: "siem" });
+  const createSearchMut = trpc.savedSearches.create.useMutation({
+    onSuccess: () => {
+      savedSearchesQ.refetch();
+      setShowSaveDialog(false);
+      setSaveName("");
+      setSaveDescription("");
+      toast.success("Search saved successfully");
+    },
+    onError: (err) => toast.error(`Failed to save: ${err.message}`),
+  });
+  const deleteSearchMut = trpc.savedSearches.delete.useMutation({
+    onSuccess: () => {
+      savedSearchesQ.refetch();
+      toast.success("Saved search deleted");
+    },
+    onError: (err) => toast.error(`Failed to delete: ${err.message}`),
+  });
 
   // ─── Data ────────────────────────────────────────────────────────────────
   const events: SiemEvent[] = MOCK_SIEM_EVENTS;
@@ -134,6 +173,38 @@ export default function SiemEvents() {
   const pagedEvents = filteredEvents.slice(page * pageSize, (page + 1) * pageSize);
   const totalPages = Math.ceil(filteredEvents.length / pageSize);
 
+  // ─── Correlation Engine ──────────────────────────────────────────────────
+  const getRelatedEvents = useCallback(
+    (event: SiemEvent) => {
+      const eventTime = new Date(event.timestamp).getTime();
+      const windowMs = correlationWindow * 60 * 1000;
+      const minTime = eventTime - windowMs;
+      const maxTime = eventTime + windowMs;
+
+      const sameAgent: SiemEvent[] = [];
+      const sameRule: SiemEvent[] = [];
+      const sameMitre: SiemEvent[] = [];
+
+      events.forEach((e) => {
+        if (e.id === event.id) return;
+        const t = new Date(e.timestamp).getTime();
+        if (t < minTime || t > maxTime) return;
+
+        if (e.agent.id === event.agent.id) sameAgent.push(e);
+        if (e.rule.id === event.rule.id) sameRule.push(e);
+        if (
+          event.rule.mitre.id.length > 0 &&
+          (e.rule.mitre.id as string[]).some((id) => (event.rule.mitre.id as string[]).includes(id))
+        ) {
+          sameMitre.push(e);
+        }
+      });
+
+      return { sameAgent, sameRule, sameMitre };
+    },
+    [events, correlationWindow]
+  );
+
   // ─── Computed Stats ──────────────────────────────────────────────────────
   const stats = useMemo(() => {
     const severityCounts: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
@@ -183,6 +254,45 @@ export default function SiemEvents() {
     setSearchQuery("");
   };
 
+  // ─── Saved Search Helpers ────────────────────────────────────────────────
+  const getCurrentFilters = () => ({
+    searchQuery,
+    severityFilter,
+    sourceFilter,
+    agentFilter,
+    mitreFilter,
+    timeRange,
+    sortField,
+    sortDir,
+  });
+
+  const loadSavedSearch = (filters: Record<string, unknown>) => {
+    if (filters.searchQuery !== undefined) setSearchQuery(filters.searchQuery as string);
+    if (filters.severityFilter !== undefined) setSeverityFilter(filters.severityFilter as string);
+    if (filters.sourceFilter !== undefined) setSourceFilter(filters.sourceFilter as string);
+    if (filters.agentFilter !== undefined) setAgentFilter(filters.agentFilter as string);
+    if (filters.mitreFilter !== undefined) setMitreFilter(filters.mitreFilter as string);
+    if (filters.timeRange !== undefined) setTimeRange(filters.timeRange as string);
+    if (filters.sortField !== undefined) setSortField(filters.sortField as "timestamp" | "level");
+    if (filters.sortDir !== undefined) setSortDir(filters.sortDir as "asc" | "desc");
+    setPage(0);
+    setShowSavedSearches(false);
+    toast.success("Search loaded");
+  };
+
+  const handleSaveSearch = () => {
+    if (!saveName.trim()) {
+      toast.error("Please enter a name for this search");
+      return;
+    }
+    createSearchMut.mutate({
+      name: saveName.trim(),
+      searchType: "siem",
+      filters: getCurrentFilters(),
+      description: saveDescription.trim() || undefined,
+    });
+  };
+
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6 p-6 max-w-[2400px] mx-auto">
@@ -191,13 +301,143 @@ export default function SiemEvents() {
         title="SIEM Events"
         subtitle="Unified security event viewer — normalized alerts, log correlation, and forensic drill-down"
       >
-        <RefreshControl
-          onRefresh={() => {
-            rulesQ.refetch();
-            agentsQ.refetch();
-          }}
-        />
+        <div className="flex items-center gap-2">
+          {/* Saved Searches Dropdown */}
+          <div className="relative">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowSavedSearches(!showSavedSearches)}
+              className="text-xs bg-transparent border-white/10 text-slate-300 hover:bg-white/10"
+            >
+              <Bookmark className="h-3.5 w-3.5 mr-1" />
+              Saved ({savedSearchesQ.data?.searches?.length ?? 0})
+            </Button>
+            {showSavedSearches && (
+              <div className="absolute right-0 top-full mt-1 w-80 bg-[oklch(0.17_0.025_286)] border border-white/10 rounded-lg shadow-xl z-50 max-h-[400px] overflow-y-auto">
+                <div className="p-3 border-b border-white/10">
+                  <h4 className="text-xs font-semibold text-violet-300">Saved SIEM Searches</h4>
+                </div>
+                {(savedSearchesQ.data?.searches ?? []).length === 0 ? (
+                  <div className="p-4 text-center text-xs text-slate-500">
+                    No saved searches yet
+                  </div>
+                ) : (
+                  <div className="divide-y divide-white/5">
+                    {(savedSearchesQ.data?.searches ?? []).map((s) => (
+                      <div
+                        key={s.id}
+                        className="flex items-center justify-between px-3 py-2.5 hover:bg-white/5 cursor-pointer group"
+                      >
+                        <div
+                          className="flex-1 min-w-0"
+                          onClick={() => loadSavedSearch(s.filters as Record<string, unknown>)}
+                        >
+                          <p className="text-xs text-slate-200 truncate font-medium">{s.name}</p>
+                          {s.description && (
+                            <p className="text-[10px] text-slate-500 truncate mt-0.5">{s.description}</p>
+                          )}
+                          <p className="text-[10px] text-slate-600 mt-0.5">
+                            {new Date(s.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteSearchMut.mutate({ id: s.id });
+                          }}
+                          className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-all"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Save Current Search */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowSaveDialog(true)}
+            className="text-xs bg-transparent border-white/10 text-slate-300 hover:bg-white/10"
+          >
+            <BookmarkPlus className="h-3.5 w-3.5 mr-1" />
+            Save Search
+          </Button>
+
+          <RefreshControl
+            onRefresh={() => {
+              rulesQ.refetch();
+              agentsQ.refetch();
+            }}
+          />
+        </div>
       </PageHeader>
+
+      {/* ── Save Search Dialog ─────────────────────────────────────────────── */}
+      {showSaveDialog && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center" onClick={() => setShowSaveDialog(false)}>
+          <div className="bg-[oklch(0.17_0.025_286)] border border-white/10 rounded-xl p-6 w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-violet-300 mb-4 flex items-center gap-2">
+              <Save className="h-4 w-4" /> Save SIEM Search
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Name *</label>
+                <input
+                  type="text"
+                  value={saveName}
+                  onChange={(e) => setSaveName(e.target.value)}
+                  placeholder="e.g., SSH brute force on prod servers"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-violet-500/50"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Description (optional)</label>
+                <input
+                  type="text"
+                  value={saveDescription}
+                  onChange={(e) => setSaveDescription(e.target.value)}
+                  placeholder="Brief description of this search..."
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-violet-500/50"
+                />
+              </div>
+              <div className="bg-white/5 rounded-lg p-3 text-xs text-slate-400 space-y-1">
+                <p className="font-semibold text-slate-300">Current Filters:</p>
+                {searchQuery && <p>Search: <span className="font-mono text-violet-300">{searchQuery}</span></p>}
+                {severityFilter !== "all" && <p>Severity: <span className="text-violet-300">{severityFilter}</span></p>}
+                {sourceFilter !== "all" && <p>Source: <span className="text-violet-300">{sourceFilter}</span></p>}
+                {agentFilter !== "all" && <p>Agent: <span className="text-violet-300">{agentFilter}</span></p>}
+                {mitreFilter !== "all" && <p>MITRE: <span className="text-violet-300">{mitreFilter}</span></p>}
+                <p>Time Range: <span className="text-violet-300">{timeRange}</span></p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowSaveDialog(false)}
+                className="bg-transparent border-white/10 text-slate-300"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSaveSearch}
+                disabled={createSearchMut.isPending}
+                className="bg-violet-600 hover:bg-violet-500 text-white"
+              >
+                {createSearchMut.isPending ? "Saving..." : "Save Search"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── KPI Row ───────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -485,6 +725,19 @@ export default function SiemEvents() {
             const srcip = (event.data as Record<string, unknown>)?.srcip as string | undefined;
             const dstuser = (event.data as Record<string, unknown>)?.dstuser as string | undefined;
 
+            // Compute correlation counts for the badge
+            const correlationCounts = isExpanded
+              ? (() => {
+                  const rel = getRelatedEvents(event);
+                  return {
+                    agent: rel.sameAgent.length,
+                    rule: rel.sameRule.length,
+                    mitre: rel.sameMitre.length,
+                    total: rel.sameAgent.length + rel.sameRule.length + rel.sameMitre.length,
+                  };
+                })()
+              : null;
+
             return (
               <div key={event.id}>
                 {/* Main Row */}
@@ -660,7 +913,7 @@ export default function SiemEvents() {
                             <div>
                               <span className="text-slate-500">MITRE ATT&CK</span>
                               <div className="flex flex-wrap gap-1 mt-1">
-                                {event.rule.mitre.id.map((id, i) => (
+                                {event.rule.mitre.id.map((id) => (
                                   <a
                                     key={id}
                                     href={`https://attack.mitre.org/techniques/${id.replace(".", "/")}`}
@@ -719,6 +972,220 @@ export default function SiemEvents() {
                           )}
                         </div>
                       </div>
+                    </div>
+
+                    {/* ── Related Events Correlation Panel ─────────────────────── */}
+                    <div className="border-t border-violet-500/20 pt-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-xs font-semibold text-violet-300 flex items-center gap-2">
+                          <Link2 className="h-4 w-4" />
+                          Related Events
+                          {correlationCounts && correlationCounts.total > 0 && (
+                            <span className="bg-violet-500/30 text-violet-200 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                              {correlationCounts.total}
+                            </span>
+                          )}
+                        </h4>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-slate-500">Time Window:</span>
+                          <div className="flex gap-1">
+                            {CORRELATION_WINDOWS.map((w) => (
+                              <button
+                                key={w.value}
+                                onClick={() => setCorrelationWindow(w.value)}
+                                className={`px-2 py-0.5 rounded text-[10px] transition-colors ${
+                                  correlationWindow === w.value
+                                    ? "bg-violet-500/30 text-violet-200 border border-violet-500/50"
+                                    : "bg-white/5 text-slate-400 hover:bg-white/10"
+                                }`}
+                              >
+                                {w.label}
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            onClick={() => setShowCorrelation(showCorrelation === event.id ? null : event.id)}
+                            className={`px-2 py-1 rounded text-[10px] transition-colors ${
+                              showCorrelation === event.id
+                                ? "bg-violet-500/30 text-violet-200"
+                                : "bg-white/5 text-slate-400 hover:bg-white/10"
+                            }`}
+                          >
+                            {showCorrelation === event.id ? "Hide" : "Show"} Details
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Correlation summary badges */}
+                      {correlationCounts && (
+                        <div className="flex gap-3 mb-3">
+                          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                            <span className="text-[10px] text-blue-400">Same Agent</span>
+                            <span className="text-xs font-bold text-blue-300 font-mono">{correlationCounts.agent}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                            <span className="text-[10px] text-amber-400">Same Rule</span>
+                            <span className="text-xs font-bold text-amber-300 font-mono">{correlationCounts.rule}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-violet-500/10 border border-violet-500/20 rounded-lg">
+                            <span className="text-[10px] text-violet-400">Same MITRE</span>
+                            <span className="text-xs font-bold text-violet-300 font-mono">{correlationCounts.mitre}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Expanded correlation details */}
+                      {showCorrelation === event.id && (() => {
+                        const related = getRelatedEvents(event);
+                        return (
+                          <div className="space-y-3">
+                            {/* Same Agent */}
+                            {related.sameAgent.length > 0 && (
+                              <div>
+                                <h5 className="text-[10px] font-semibold text-blue-400 uppercase tracking-wider mb-1.5">
+                                  Same Agent ({event.agent.id} — {event.agent.name}) — {related.sameAgent.length} events
+                                </h5>
+                                <div className="bg-black/20 rounded-lg border border-white/5 overflow-hidden">
+                                  <div className="max-h-[200px] overflow-y-auto divide-y divide-white/5">
+                                    {related.sameAgent.slice(0, 10).map((re) => (
+                                      <div
+                                        key={re.id}
+                                        className="flex items-center gap-3 px-3 py-2 text-xs hover:bg-white/5 cursor-pointer"
+                                        onClick={() => {
+                                          setExpandedEvent(re.id);
+                                          setShowCorrelation(null);
+                                        }}
+                                      >
+                                        <span
+                                          className="w-6 h-5 rounded text-[9px] font-bold flex items-center justify-center"
+                                          style={{
+                                            background: `${SEVERITY_COLORS[LEVEL_TO_SEVERITY(re.rule.level)]}20`,
+                                            color: SEVERITY_COLORS[LEVEL_TO_SEVERITY(re.rule.level)],
+                                          }}
+                                        >
+                                          {re.rule.level}
+                                        </span>
+                                        <span className="text-slate-500 font-mono w-[120px] flex-shrink-0">
+                                          {new Date(re.timestamp).toLocaleTimeString()}
+                                        </span>
+                                        <span className="text-slate-300 truncate">{re.rule.description}</span>
+                                        <span className="text-slate-500 font-mono flex-shrink-0">{re.rule.id}</span>
+                                      </div>
+                                    ))}
+                                    {related.sameAgent.length > 10 && (
+                                      <div className="px-3 py-1.5 text-[10px] text-slate-500 text-center">
+                                        +{related.sameAgent.length - 10} more events
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Same Rule */}
+                            {related.sameRule.length > 0 && (
+                              <div>
+                                <h5 className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider mb-1.5">
+                                  Same Rule ({event.rule.id}) — {related.sameRule.length} events
+                                </h5>
+                                <div className="bg-black/20 rounded-lg border border-white/5 overflow-hidden">
+                                  <div className="max-h-[200px] overflow-y-auto divide-y divide-white/5">
+                                    {related.sameRule.slice(0, 10).map((re) => (
+                                      <div
+                                        key={re.id}
+                                        className="flex items-center gap-3 px-3 py-2 text-xs hover:bg-white/5 cursor-pointer"
+                                        onClick={() => {
+                                          setExpandedEvent(re.id);
+                                          setShowCorrelation(null);
+                                        }}
+                                      >
+                                        <span
+                                          className="w-6 h-5 rounded text-[9px] font-bold flex items-center justify-center"
+                                          style={{
+                                            background: `${SEVERITY_COLORS[LEVEL_TO_SEVERITY(re.rule.level)]}20`,
+                                            color: SEVERITY_COLORS[LEVEL_TO_SEVERITY(re.rule.level)],
+                                          }}
+                                        >
+                                          {re.rule.level}
+                                        </span>
+                                        <span className="text-slate-500 font-mono w-[120px] flex-shrink-0">
+                                          {new Date(re.timestamp).toLocaleTimeString()}
+                                        </span>
+                                        <span className="text-violet-300 font-mono flex-shrink-0">{re.agent.id}</span>
+                                        <span className="text-slate-300 truncate">{re.agent.name}</span>
+                                        <span className="text-slate-500 font-mono flex-shrink-0">
+                                          {(re.data as Record<string, unknown>)?.srcip as string || "—"}
+                                        </span>
+                                      </div>
+                                    ))}
+                                    {related.sameRule.length > 10 && (
+                                      <div className="px-3 py-1.5 text-[10px] text-slate-500 text-center">
+                                        +{related.sameRule.length - 10} more events
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Same MITRE Technique */}
+                            {related.sameMitre.length > 0 && (
+                              <div>
+                                <h5 className="text-[10px] font-semibold text-violet-400 uppercase tracking-wider mb-1.5">
+                                  Same MITRE Technique ({event.rule.mitre.id.join(", ")}) — {related.sameMitre.length} events
+                                </h5>
+                                <div className="bg-black/20 rounded-lg border border-white/5 overflow-hidden">
+                                  <div className="max-h-[200px] overflow-y-auto divide-y divide-white/5">
+                                    {related.sameMitre.slice(0, 10).map((re) => (
+                                      <div
+                                        key={re.id}
+                                        className="flex items-center gap-3 px-3 py-2 text-xs hover:bg-white/5 cursor-pointer"
+                                        onClick={() => {
+                                          setExpandedEvent(re.id);
+                                          setShowCorrelation(null);
+                                        }}
+                                      >
+                                        <span
+                                          className="w-6 h-5 rounded text-[9px] font-bold flex items-center justify-center"
+                                          style={{
+                                            background: `${SEVERITY_COLORS[LEVEL_TO_SEVERITY(re.rule.level)]}20`,
+                                            color: SEVERITY_COLORS[LEVEL_TO_SEVERITY(re.rule.level)],
+                                          }}
+                                        >
+                                          {re.rule.level}
+                                        </span>
+                                        <span className="text-slate-500 font-mono w-[120px] flex-shrink-0">
+                                          {new Date(re.timestamp).toLocaleTimeString()}
+                                        </span>
+                                        <span className="text-violet-300 font-mono flex-shrink-0">{re.agent.id}</span>
+                                        <span className="text-slate-300 truncate">{re.rule.description}</span>
+                                        <span className="flex gap-1 flex-shrink-0">
+                                          {re.rule.mitre.id.map((id) => (
+                                            <span key={id} className="px-1 py-0.5 bg-violet-500/20 text-violet-300 rounded text-[9px] font-mono">
+                                              {id}
+                                            </span>
+                                          ))}
+                                        </span>
+                                      </div>
+                                    ))}
+                                    {related.sameMitre.length > 10 && (
+                                      <div className="px-3 py-1.5 text-[10px] text-slate-500 text-center">
+                                        +{related.sameMitre.length - 10} more events
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {related.sameAgent.length === 0 && related.sameRule.length === 0 && related.sameMitre.length === 0 && (
+                              <div className="text-center py-4 text-xs text-slate-500">
+                                No related events found within the selected time window
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 )}
