@@ -482,3 +482,34 @@
 ### General
 - [x] All 77 tests passing, TypeScript clean
 - [x] Save checkpoint
+
+## Phase 36: CSV/JSON Export & Analyst Notes System
+
+### CSV/JSON Export Utility
+- [x] Create shared export utility (client/src/lib/exportUtils.ts) with CSV and JSON download helpers
+- [x] Add export buttons to Alerts Timeline (CSV/JSON for alert table data)
+- [x] Add export buttons to Vulnerabilities page (CSV/JSON for CVE table, top packages, top agents)
+- [x] Add export buttons to IT Hygiene page (CSV/JSON for packages, ports, processes, services, users, groups)
+- [x] Add export buttons to SIEM Events page (CSV/JSON for event table data)
+- [x] Add export buttons to SOC Console (CSV/JSON for top firing rules, top talkers)
+- [x] Styled export dropdown with Amethyst Nexus glass-morphism theme
+- [x] Include timestamp and filter context in exported filenames
+
+### Analyst Notes System (Database-Backed)
+- [x] Database table: analyst_notes_v2 (id, userId, entityType, entityId, title, content, severity, tags, createdAt, updatedAt)
+- [x] Backend CRUD: create, list, get, update, delete analyst notes (tRPC procedures)
+- [x] Backend: List notes by entity (agent, alert, CVE, rule) and by user
+- [x] Backend: Search notes by content, tags, entity
+- [x] Analyst Notes page: Full notes management with create/edit/delete
+- [x] Analyst Notes page: Filter by entity type, severity, tags, date range
+- [x] Analyst Notes page: Search across all notes
+- [x] Inline note creation from Alerts Timeline (annotate specific alerts)
+- [x] Inline note creation from Vulnerabilities page (annotate CVEs)
+- [x] Inline note creation from Agent Health (annotate agents)
+- [x] Note indicator badges on entities that have notes (NoteCountBadge)
+- [x] Note detail panel with expandable content and edit dialog
+- [x] Notes export (CSV/JSON) from Analyst Notes page
+- [x] Entity count KPI cards on Analyst Notes page
+- [x] Write vitest tests for export utility functions (17 tests passing)
+- [x] Write vitest tests for analyst notes CRUD (7 tests passing)
+- [x] Save checkpoint

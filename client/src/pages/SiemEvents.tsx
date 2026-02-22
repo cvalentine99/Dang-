@@ -4,6 +4,8 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { trpc } from "@/lib/trpc";
 import { MOCK_SIEM_EVENTS, MOCK_LOG_SOURCES, MOCK_RULES, MOCK_AGENTS, useFallback } from "@/lib/mockData";
+import { ExportButton } from "@/components/shared/ExportButton";
+import { EXPORT_COLUMNS } from "@/lib/exportUtils";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area, CartesianGrid,
@@ -710,9 +712,30 @@ export default function SiemEvents() {
           )}
         </div>
 
-        <div className="mt-2 text-xs text-slate-500">
-          Showing {pagedEvents.length} of {filteredEvents.length} events
-          {filteredEvents.length !== events.length && ` (filtered from ${events.length} total)`}
+        <div className="mt-2 flex items-center justify-between">
+          <span className="text-xs text-slate-500">
+            Showing {pagedEvents.length} of {filteredEvents.length} events
+            {filteredEvents.length !== events.length && ` (filtered from ${events.length} total)`}
+          </span>
+          <ExportButton
+            getData={() => filteredEvents.map(e => ({
+              timestamp: e.timestamp,
+              agent: e.agent.name,
+              agentId: e.agent.id,
+              ruleId: e.rule.id,
+              ruleDescription: e.rule.description,
+              level: e.rule.level,
+              decoder: e.decoder.name,
+              srcIp: String((e.data as Record<string, unknown>)?.srcip ?? ""),
+              dstIp: String((e.data as Record<string, unknown>)?.dstip ?? ""),
+              mitreTactic: e.rule.mitre?.tactic?.join(", ") ?? "",
+              mitreId: e.rule.mitre?.id?.join(", ") ?? "",
+              logSource: e.location,
+            }) as Record<string, unknown>)}
+            baseName="siem-events"
+            columns={EXPORT_COLUMNS.siemEvents}
+            label="Export"
+          />
         </div>
       </GlassPanel>
 

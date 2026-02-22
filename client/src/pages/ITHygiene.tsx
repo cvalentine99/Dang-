@@ -4,6 +4,8 @@ import { StatCard } from "@/components/shared/StatCard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
+import { ExportButton } from "@/components/shared/ExportButton";
+import { EXPORT_COLUMNS } from "@/lib/exportUtils";
 import {
   MOCK_PACKAGES,
   MOCK_PORTS,
@@ -616,12 +618,15 @@ export default function ITHygiene() {
                 <span className="text-xs text-muted-foreground">
                   {packagesData.total} packages
                 </span>
-                {packagesQ.data ? (
-                  <RawJsonViewer
-                    data={packagesQ.data as Record<string, unknown>}
-                    title="Packages JSON"
-                  />
-                ) : null}
+                <div className="flex items-center gap-2">
+                  <ExportButton getData={() => packagesData.items} baseName="packages" columns={EXPORT_COLUMNS.packages} context={`agent-${agentId}`} compact />
+                  {packagesQ.data ? (
+                    <RawJsonViewer
+                      data={packagesQ.data as Record<string, unknown>}
+                      title="Packages JSON"
+                    />
+                  ) : null}
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -691,12 +696,15 @@ export default function ITHygiene() {
                 <span className="text-xs text-muted-foreground">
                   {portsData.total} open ports
                 </span>
-                {portsQ.data ? (
-                  <RawJsonViewer
-                    data={portsQ.data as Record<string, unknown>}
-                    title="Ports JSON"
-                  />
-                ) : null}
+                <div className="flex items-center gap-2">
+                  <ExportButton getData={() => portsData.items} baseName="ports" columns={EXPORT_COLUMNS.ports} context={`agent-${agentId}`} compact />
+                  {portsQ.data ? (
+                    <RawJsonViewer
+                      data={portsQ.data as Record<string, unknown>}
+                      title="Ports JSON"
+                    />
+                  ) : null}
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -782,12 +790,15 @@ export default function ITHygiene() {
                 <span className="text-xs text-muted-foreground">
                   {processesData.total} processes
                 </span>
-                {processesQ.data ? (
-                  <RawJsonViewer
-                    data={processesQ.data as Record<string, unknown>}
-                    title="Processes JSON"
-                  />
-                ) : null}
+                <div className="flex items-center gap-2">
+                  <ExportButton getData={() => processesData.items} baseName="processes" columns={EXPORT_COLUMNS.processes} context={`agent-${agentId}`} compact />
+                  {processesQ.data ? (
+                    <RawJsonViewer
+                      data={processesQ.data as Record<string, unknown>}
+                      title="Processes JSON"
+                    />
+                  ) : null}
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -991,12 +1002,15 @@ export default function ITHygiene() {
                 <span className="text-xs text-muted-foreground">
                   {hotfixesData.total} hotfixes
                 </span>
-                {hotfixesQ.data ? (
-                  <RawJsonViewer
-                    data={hotfixesQ.data as Record<string, unknown>}
-                    title="Hotfixes JSON"
-                  />
-                ) : null}
+                <div className="flex items-center gap-2">
+                  <ExportButton getData={() => hotfixesData.items} baseName="hotfixes" context={`agent-${agentId}`} compact />
+                  {hotfixesQ.data ? (
+                    <RawJsonViewer
+                      data={hotfixesQ.data as Record<string, unknown>}
+                      title="Hotfixes JSON"
+                    />
+                  ) : null}
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -1051,6 +1065,7 @@ export default function ITHygiene() {
                 <span className="text-xs text-muted-foreground">
                   {extensionsData.total} browser extensions
                 </span>
+                <ExportButton getData={() => extensionsData.items} baseName="browser-extensions" context={`agent-${agentId}`} compact />
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -1162,6 +1177,7 @@ export default function ITHygiene() {
                     </span>
                   </div>
                 </div>
+                <ExportButton getData={() => servicesData.items} baseName="services" columns={EXPORT_COLUMNS.services} context={`agent-${agentId}`} compact />
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -1283,6 +1299,7 @@ export default function ITHygiene() {
                     {interactiveUsers} interactive
                   </span>
                 </div>
+                <ExportButton getData={() => usersData.items} baseName="users" columns={EXPORT_COLUMNS.users} context={`agent-${agentId}`} compact />
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -1413,6 +1430,7 @@ export default function ITHygiene() {
                 <span className="text-xs text-muted-foreground">
                   {groupsData.total} local groups
                 </span>
+                <ExportButton getData={() => groupsData.items} baseName="groups" columns={EXPORT_COLUMNS.groups} context={`agent-${agentId}`} compact />
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">

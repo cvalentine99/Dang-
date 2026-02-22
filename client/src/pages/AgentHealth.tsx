@@ -4,6 +4,7 @@ import { StatCard } from "@/components/shared/StatCard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
+import { AddNoteDialog } from "@/components/shared/AddNoteDialog";
 import { MOCK_AGENTS, MOCK_AGENT_SUMMARY } from "@/lib/mockData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -344,7 +345,8 @@ export default function AgentHealth() {
                     </div>
                   </div>
                 )}
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <AddNoteDialog entityType="agent" entityId={selectedAgent ?? ""} defaultTitle={`Agent ${selectedAgent}: ${String(agentDetail.name ?? "")} investigation`} triggerLabel="Annotate Agent" />
                   <RawJsonViewer data={agentDetail} title="Agent Detail JSON" />
                   {agentOsDetail ? <RawJsonViewer data={agentOsDetail} title="OS Detail JSON" /> : null}
                   {agentHwDetail ? <RawJsonViewer data={agentHwDetail} title="Hardware Detail JSON" /> : null}

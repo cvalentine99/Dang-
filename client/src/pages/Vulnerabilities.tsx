@@ -6,6 +6,9 @@ import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { MOCK_VULNERABILITIES, MOCK_AGENTS } from "@/lib/mockData";
+import { ExportButton } from "@/components/shared/ExportButton";
+import { AddNoteDialog } from "@/components/shared/AddNoteDialog";
+import { EXPORT_COLUMNS } from "@/lib/exportUtils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -511,6 +514,13 @@ export default function Vulnerabilities() {
                   <SelectItem value="low">Low</SelectItem>
                 </SelectContent>
               </Select>
+              <ExportButton
+                getData={() => activeVulns as Array<Record<string, unknown>>}
+                baseName="vulnerabilities"
+                columns={EXPORT_COLUMNS.vulnerabilities}
+                context={sevFilter !== "all" ? sevFilter : viewMode === "agent" ? `agent-${agentId}` : "fleet"}
+                label="Export"
+              />
             </div>
           </div>
 
@@ -538,11 +548,16 @@ export default function Vulnerabilities() {
                       <td className="py-2 px-3"><span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${String(v.status) === "Fixed" ? "bg-green-500/20 text-green-400" : String(v.status) === "Active" ? "bg-threat-critical/20 text-threat-critical" : "bg-primary/10 text-primary"}`}>{String(v.status ?? "—")}</span></td>
                       <td className="py-2 px-3 text-muted-foreground text-[10px]">{String(v.published ?? "—")}</td>
                       <td className="py-2 px-3">
-                        {cve.startsWith("CVE-") ? (
-                          <a href={`https://nvd.nist.gov/vuln/detail/${cve}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary/80" onClick={e => e.stopPropagation()}>
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </a>
-                        ) : null}
+                        <div className="flex items-center gap-1">
+                          {cve.startsWith("CVE-") ? (
+                            <a href={`https://nvd.nist.gov/vuln/detail/${cve}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary/80" onClick={e => e.stopPropagation()}>
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          ) : null}
+                          <span onClick={e => e.stopPropagation()}>
+                            <AddNoteDialog entityType="cve" entityId={cve} defaultTitle={`CVE: ${cve} — ${String(v.title ?? v.name ?? "")}`} defaultSeverity={String(v.severity ?? "").toLowerCase() === "critical" ? "critical" : String(v.severity ?? "").toLowerCase() === "high" ? "high" : String(v.severity ?? "").toLowerCase() === "medium" ? "medium" : "low"} compact />
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   );

@@ -120,3 +120,35 @@ export const configBaselines = mysqlTable("config_baselines", {
 
 export type ConfigBaseline = typeof configBaselines.$inferSelect;
 export type InsertConfigBaseline = typeof configBaselines.$inferInsert;
+
+/**
+ * Analyst Notes v2 — Enhanced note-taking system with entity linking.
+ * Supports annotating alerts, agents, CVEs, rules, and free-form notes.
+ * Local-only: never written back to Wazuh.
+ */
+export const analystNotesV2 = mysqlTable("analyst_notes_v2", {
+  id: int("id").autoincrement().primaryKey(),
+  /** User who created this note */
+  userId: int("userId").notNull(),
+  /** Entity type this note is attached to */
+  entityType: mysqlEnum("entityType", ["alert", "agent", "cve", "rule", "general"]).notNull(),
+  /** Entity identifier (alert ID, agent ID, CVE ID, rule ID, or empty for general) */
+  entityId: varchar("entityId", { length: 128 }).default("").notNull(),
+  /** Title / headline of the note */
+  title: varchar("title", { length: 512 }).notNull(),
+  /** Markdown body */
+  content: text("content").notNull(),
+  /** Severity classification chosen by analyst */
+  severity: mysqlEnum("severity", ["critical", "high", "medium", "low", "info"])
+    .default("info")
+    .notNull(),
+  /** Comma-separated tags for flexible categorization */
+  tags: json("tags").$type<string[]>(),
+  /** Whether the note has been resolved/closed */
+  resolved: int("resolved").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AnalystNoteV2 = typeof analystNotesV2.$inferSelect;
+export type InsertAnalystNoteV2 = typeof analystNotesV2.$inferInsert;

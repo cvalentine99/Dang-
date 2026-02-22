@@ -8,6 +8,7 @@ import { savedSearchesRouter } from "./savedSearches/savedSearchesRouter";
 import { baselinesRouter } from "./baselines/baselinesRouter";
 import { indexerRouter } from "./indexer/indexerRouter";
 import { otxRouter } from "./otx/otxRouter";
+import { notesRouter } from "./notes/notesRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -37,6 +38,9 @@ export const appRouter = router({
 
   // AlienVault OTX Threat Intelligence — read-only
   otx: otxRouter,
+
+  // Analyst Notes v2 — local-only entity-linked notes
+  notes: notesRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -5,6 +5,8 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge, threatLevelFromNumber } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
+import { ExportButton } from "@/components/shared/ExportButton";
+import { EXPORT_COLUMNS } from "@/lib/exportUtils";
 import {
   MOCK_AGENT_SUMMARY, MOCK_MANAGER_STATS, MOCK_MANAGER_STATUS,
   MOCK_RULES, MOCK_AGENTS, MOCK_MITRE_TACTICS, MOCK_DAEMON_STATS,
@@ -534,7 +536,10 @@ export default function Home() {
           <GlassPanel className="lg:col-span-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Flame className="h-4 w-4 text-threat-high" /> Top Talkers</h3>
-              <SourceBadge source={topTalkersSource} />
+              <div className="flex items-center gap-2">
+                <ExportButton getData={() => topTalkersData.map(t => ({ agent_id: t.agentId, agent_name: t.agentName, count: t.count }) as Record<string, unknown>)} baseName="top-talkers" columns={EXPORT_COLUMNS.topTalkers} compact />
+                <SourceBadge source={topTalkersSource} />
+              </div>
             </div>
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
@@ -595,7 +600,10 @@ export default function Home() {
           <GlassPanel className="lg:col-span-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Hash className="h-4 w-4 text-primary" /> Top Firing Rules</h3>
-              <SourceBadge source={topFiringSource} />
+              <div className="flex items-center gap-2">
+                <ExportButton getData={() => topFiringRules.map(r => ({ id: r.ruleId, description: r.description, level: r.level, count: r.count }) as Record<string, unknown>)} baseName="top-rules" columns={EXPORT_COLUMNS.topRules} compact />
+                <SourceBadge source={topFiringSource} />
+              </div>
             </div>
             <div className="space-y-1.5 max-h-[340px] overflow-y-auto">
               {topFiringRules.map((r) => (

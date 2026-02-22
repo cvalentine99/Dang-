@@ -6,6 +6,9 @@ import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge, threatLevelFromNumber } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { MOCK_RULES, MOCK_STATS_HOURLY, MOCK_MANAGER_LOGS } from "@/lib/mockData";
+import { ExportButton } from "@/components/shared/ExportButton";
+import { AddNoteDialog } from "@/components/shared/AddNoteDialog";
+import { EXPORT_COLUMNS } from "@/lib/exportUtils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -489,6 +492,13 @@ export default function AlertsTimeline() {
                   {agentOptions.map(a => <SelectItem key={a.id} value={a.id}>Agent {a.id} ({a.count})</SelectItem>)}
                 </SelectContent>
               </Select>
+              <ExportButton
+                getData={() => alerts as Array<Record<string, unknown>>}
+                baseName="alerts"
+                columns={EXPORT_COLUMNS.alerts}
+                context={levelFilter !== "all" ? `level-${levelFilter}` : agentFilter !== "all" ? `agent-${agentFilter}` : timeRange}
+                label="Export"
+              />
             </div>
           </div>
 
@@ -660,7 +670,16 @@ export default function AlertsTimeline() {
                     </div>
                   ) : null}
 
-                  <RawJsonViewer data={selectedAlert} title="Full Alert JSON" />
+                  <div className="flex items-center gap-2">
+                    <AddNoteDialog
+                      entityType="alert"
+                      entityId={String(rule.id ?? "")}
+                      defaultTitle={`Alert: ${String(rule.description ?? rule.id ?? "Unknown")}`}
+                      defaultSeverity={level >= 14 ? "critical" : level >= 10 ? "high" : level >= 7 ? "medium" : level >= 4 ? "low" : "info"}
+                      triggerLabel="Annotate Alert"
+                    />
+                    <RawJsonViewer data={selectedAlert} title="Full Alert JSON" />
+                  </div>
                 </div>
               );
             })() : null}

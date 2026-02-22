@@ -36,6 +36,13 @@
       "when": 1771756319318,
       "tag": "0004_strong_dark_beast",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1771769836593,
+      "tag": "0005_flowery_rawhide_kid",
+      "breakpoints": true
     }
   ]
 }
