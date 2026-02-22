@@ -590,3 +590,31 @@
 - [x] Diagnose runtime error: TypeError Invalid URL from getLoginUrl() when VITE_OAUTH_PORTAL_URL not set in Docker
 - [x] Fix: Add guard in const.ts getLoginUrl() — returns "/" fallback when OAuth vars missing, try/catch on URL construction
 - [x] Save checkpoint
+
+## Phase 44: Local Auth, Env Validation, Status Dashboard
+
+### Local JWT Auth for Docker
+- [x] Add passwordHash column to users table (nullable for OAuth users)
+- [x] Create local auth service (bcrypt password hashing, JWT token generation/verification)
+- [x] Create local auth tRPC endpoints (register, login) that work alongside existing OAuth
+- [x] Auto-detect auth mode: if OAUTH_SERVER_URL is set use Manus OAuth, otherwise use local auth
+- [x] Seed default admin user via env vars (LOCAL_ADMIN_USER, LOCAL_ADMIN_PASS)
+- [x] Build login page UI with Amethyst Nexus styling
+- [x] Build register page UI (first user becomes admin, star badge)
+- [x] Update DashboardLayout sign-in button to auto-detect auth mode and route to /login or OAuth
+- [x] Add /login and /register routes outside DashboardLayout in App.tsx
+
+### Environment Variable Validation
+- [x] Add boot-time validation for required env vars (DATABASE_URL, JWT_SECRET)
+- [x] Add boot-time validation for Wazuh env vars (WAZUH_HOST, WAZUH_USER, WAZUH_PASS)
+- [x] Print clear error messages with missing variable names and descriptions
+- [x] Categorize as required vs optional with graceful degradation
+
+### Status Dashboard
+- [x] Create /api/status endpoint with Wazuh Manager, Wazuh Indexer, and MySQL connectivity checks
+- [x] Build /status frontend page with connection status cards and latency indicators
+- [x] Show environment configuration summary (which auth mode, which features enabled)
+- [x] Auto-refresh status checks with manual retry button
+- [x] Write vitest tests for local auth, env validation, and status endpoint
+- [x] Fix /api/status timeout (parallel checks with 5s timeout instead of 45s sequential)
+- [x] Save checkpoint

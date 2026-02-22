@@ -1,0 +1,508 @@
+import React, { useCallback, useEffect, useState } from "react";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { GlassPanel } from "@/components/shared/GlassPanel";
+import {
+  Database,
+  Shield,
+  Search,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Settings2,
+  Clock,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  Server,
+  Lock,
+  Users,
+  Activity,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+interface ServiceCheck {
+  status: "connected" | "disconnected" | "not_configured" | "error";
+  latencyMs?: number;
+  details?: Record<string, string | number | boolean | null | Record<string, string>>;
+  error?: string;
+}
+
+interface StatusResponse {
+  status: "healthy" | "degraded" | "unhealthy";
+  timestamp: string;
+  totalLatencyMs: number;
+  authMode: "local" | "oauth";
+  version: string;
+  nodeEnv: string;
+  checks: {
+    database?: ServiceCheck;
+    wazuhManager?: ServiceCheck;
+    wazuhIndexer?: ServiceCheck;
+  };
+}
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const STATUS_COLORS = {
+  connected: { bg: "oklch(0.765 0.177 163.223 / 15%)", border: "oklch(0.765 0.177 163.223 / 30%)", text: "oklch(0.765 0.177 163.223)", label: "Connected" },
+  disconnected: { bg: "oklch(0.637 0.237 25.331 / 15%)", border: "oklch(0.637 0.237 25.331 / 30%)", text: "oklch(0.637 0.237 25.331)", label: "Disconnected" },
+  not_configured: { bg: "oklch(0.795 0.184 86.047 / 15%)", border: "oklch(0.795 0.184 86.047 / 30%)", text: "oklch(0.795 0.184 86.047)", label: "Not Configured" },
+  error: { bg: "oklch(0.637 0.237 25.331 / 15%)", border: "oklch(0.637 0.237 25.331 / 30%)", text: "oklch(0.637 0.237 25.331)", label: "Error" },
+} as const;
+
+const OVERALL_COLORS = {
+  healthy: { bg: "oklch(0.765 0.177 163.223 / 12%)", border: "oklch(0.765 0.177 163.223 / 25%)", text: "oklch(0.765 0.177 163.223)", icon: CheckCircle2 },
+  degraded: { bg: "oklch(0.795 0.184 86.047 / 12%)", border: "oklch(0.795 0.184 86.047 / 25%)", text: "oklch(0.795 0.184 86.047)", icon: AlertTriangle },
+  unhealthy: { bg: "oklch(0.637 0.237 25.331 / 12%)", border: "oklch(0.637 0.237 25.331 / 25%)", text: "oklch(0.637 0.237 25.331)", icon: XCircle },
+} as const;
+
+// ── Status Icon Component ────────────────────────────────────────────────────
+
+function StatusIcon({ status }: { status: ServiceCheck["status"] }): React.JSX.Element {
+  const colors = STATUS_COLORS[status];
+  const Icon = status === "connected" ? Wifi : status === "not_configured" ? Settings2 : WifiOff;
+
+  return (
+    <div
+      className="relative w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+      style={{ background: colors.bg, border: `1px solid ${colors.border}` }}
+    >
+      <Icon className="w-5 h-5" style={{ color: colors.text }} />
+      {status === "connected" && (
+        <span
+          className="absolute -top-1 -right-1 w-3 h-3 rounded-full animate-pulse"
+          style={{ background: colors.text, boxShadow: `0 0 8px ${colors.text}` }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Latency Bar ──────────────────────────────────────────────────────────────
+
+function LatencyBar({ ms }: { ms?: number }): React.JSX.Element | null {
+  if (ms === undefined) return null;
+  const maxMs = 2000;
+  const pct = Math.min((ms / maxMs) * 100, 100);
+  const color = ms < 200 ? "oklch(0.765 0.177 163.223)" : ms < 500 ? "oklch(0.795 0.184 86.047)" : "oklch(0.637 0.237 25.331)";
+
+  return (
+    <div className="flex items-center gap-2 mt-2">
+      <Clock className="w-3 h-3 text-muted-foreground shrink-0" />
+      <div className="flex-1 h-1.5 rounded-full bg-[oklch(0.2_0.02_286)]">
+        <div
+          className="h-full rounded-full transition-all duration-700"
+          style={{ width: `${pct}%`, background: color }}
+        />
+      </div>
+      <span className="text-xs font-mono shrink-0" style={{ color }}>{ms}ms</span>
+    </div>
+  );
+}
+
+// ── Service Card ─────────────────────────────────────────────────────────────
+
+function ServiceCard({
+  title,
+  description,
+  icon: ServiceIcon,
+  check,
+}: {
+  title: string;
+  description: string;
+  icon: LucideIcon;
+  check?: ServiceCheck;
+}): React.JSX.Element {
+  const status = check?.status ?? "not_configured";
+  const colors = STATUS_COLORS[status];
+
+  return (
+    <GlassPanel className="p-0 overflow-hidden">
+      {/* Header with status indicator */}
+      <div
+        className="px-5 py-4 flex items-start gap-4"
+        style={{ borderBottom: `1px solid oklch(0.3 0.04 286 / 20%)` }}
+      >
+        <StatusIcon status={status} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <ServiceIcon className="w-4 h-4 text-[oklch(0.7_0.15_286)]" />
+            <h3 className="text-sm font-semibold text-foreground font-[Space_Grotesk]">{title}</h3>
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+          <div className="flex items-center gap-2 mt-2">
+            <span
+              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider"
+              style={{ background: colors.bg, border: `1px solid ${colors.border}`, color: colors.text }}
+            >
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: colors.text }} />
+              {colors.label}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Details section */}
+      <div className="px-5 py-3 space-y-2">
+        <LatencyBar ms={check?.latencyMs} />
+
+        {check?.error && (
+          <div className="mt-2 px-3 py-2 rounded-lg bg-[oklch(0.637_0.237_25.331/8%)] border border-[oklch(0.637_0.237_25.331/15%)]">
+            <p className="text-xs font-mono text-[oklch(0.637_0.237_25.331)] break-all leading-relaxed">
+              {check.error}
+            </p>
+          </div>
+        )}
+
+        {check?.details && Object.keys(check.details).length > 0 && (
+          <div className="mt-2 space-y-1">
+            {Object.entries(check.details)
+              .filter(([, value]) => typeof value !== "object" || value === null)
+              .map(([key, value]) => (
+                <div key={key} className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground capitalize">{key.replace(/([A-Z])/g, " $1").trim()}</span>
+                  <span className="font-mono text-foreground">{String(value as string | number | boolean)}</span>
+                </div>
+              ))}
+          </div>
+        )}
+
+        {status === "not_configured" && (
+          <p className="text-xs text-[oklch(0.795_0.184_86.047/80%)] italic">
+            Set the required environment variables to enable this service.
+          </p>
+        )}
+      </div>
+    </GlassPanel>
+  );
+}
+
+// ── Main Status Page ─────────────────────────────────────────────────────────
+
+export default function Status() {
+  const [data, setData] = useState<StatusResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
+
+  const fetchStatus = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const resp = await fetch("/api/status");
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const json: StatusResponse = await resp.json();
+      setData(json);
+      setLastChecked(new Date());
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStatus();
+  }, [fetchStatus]);
+
+  const overallStyle = data ? OVERALL_COLORS[data.status] : OVERALL_COLORS.unhealthy;
+  const OverallIcon = overallStyle.icon;
+
+  const connectedCount = data
+    ? (Object.values(data.checks) as Array<ServiceCheck | undefined>).filter((c) => c?.status === "connected").length
+    : 0;
+  const totalChecks = data ? Object.keys(data.checks).length : 0;
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="System Status"
+        subtitle="Connection health, latency, and configuration overview"
+        onRefresh={fetchStatus}
+        isLoading={isLoading}
+      />
+
+      {/* Overall Status Banner */}
+      <div
+        className="rounded-xl p-5 flex items-center gap-5 transition-all"
+        style={{
+          background: overallStyle.bg,
+          border: `1px solid ${overallStyle.border}`,
+        }}
+      >
+        <div
+          className="w-14 h-14 rounded-xl flex items-center justify-center shrink-0"
+          style={{ background: `${overallStyle.text}20`, border: `1px solid ${overallStyle.text}30` }}
+        >
+          <OverallIcon className="w-7 h-7" style={{ color: overallStyle.text }} />
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center gap-3">
+            <h2
+              className="text-xl font-bold font-[Space_Grotesk] uppercase tracking-wider"
+              style={{ color: overallStyle.text }}
+            >
+              {data?.status ?? "Checking..."}
+            </h2>
+            {data && (
+              <span className="text-xs text-muted-foreground font-mono">
+                ({connectedCount}/{totalChecks} services connected)
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            {data?.status === "healthy"
+              ? "All configured services are reachable and responding normally."
+              : data?.status === "degraded"
+                ? "Some services are unreachable or returning errors. Check individual cards below."
+                : data
+                  ? "Critical services are down. Immediate attention required."
+                  : "Running connectivity checks..."}
+          </p>
+          {lastChecked && (
+            <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
+              <Clock className="w-3 h-3" />
+              Last checked: {lastChecked.toLocaleTimeString()} ({data?.totalLatencyMs}ms total)
+            </p>
+          )}
+        </div>
+        <button
+          onClick={fetchStatus}
+          disabled={isLoading}
+          className="shrink-0 p-2.5 rounded-lg bg-[oklch(0.2_0.03_286/50%)] border border-[oklch(0.3_0.04_286/30%)] hover:bg-[oklch(0.25_0.04_286/60%)] transition-all disabled:opacity-50"
+        >
+          <RefreshCw className={`w-4 h-4 text-muted-foreground ${isLoading ? "animate-spin" : ""}`} />
+        </button>
+      </div>
+
+      {error && !data && (
+        <GlassPanel className="border-[oklch(0.637_0.237_25.331/30%)]">
+          <div className="flex items-center gap-3">
+            <XCircle className="w-5 h-5 text-[oklch(0.637_0.237_25.331)]" />
+            <div>
+              <p className="text-sm font-medium text-[oklch(0.637_0.237_25.331)]">
+                Failed to reach status endpoint
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5 font-mono">{error}</p>
+            </div>
+          </div>
+        </GlassPanel>
+      )}
+
+      {/* Service Cards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <ServiceCard
+          title="MySQL Database"
+          description="Primary data store for users, notes, baselines, and saved searches"
+          icon={Database}
+          check={data?.checks.database}
+        />
+        <ServiceCard
+          title="Wazuh Manager API"
+          description="REST API for agents, alerts, vulnerabilities, compliance, and FIM data"
+          icon={Shield}
+          check={data?.checks.wazuhManager}
+        />
+        <ServiceCard
+          title="Wazuh Indexer"
+          description="OpenSearch/Elasticsearch for SIEM events, search, and aggregations"
+          icon={Search}
+          check={data?.checks.wazuhIndexer}
+        />
+      </div>
+
+      {/* Configuration Summary */}
+      {data && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Environment Info */}
+          <GlassPanel>
+            <h3 className="text-sm font-semibold text-foreground font-[Space_Grotesk] mb-4 flex items-center gap-2">
+              <Server className="w-4 h-4 text-[oklch(0.7_0.15_286)]" />
+              Environment
+            </h3>
+            <div className="space-y-3">
+              <ConfigRow label="Auth Mode" value={data.authMode === "local" ? "Local (JWT + bcrypt)" : "Manus OAuth"} icon={Lock} />
+              <ConfigRow label="Environment" value={data.nodeEnv} icon={Settings2} />
+              <ConfigRow label="Version" value={data.version} icon={Activity} />
+              <ConfigRow
+                label="Total Check Time"
+                value={`${data.totalLatencyMs}ms`}
+                icon={Zap}
+              />
+            </div>
+          </GlassPanel>
+
+          {/* Feature Availability */}
+          <GlassPanel>
+            <h3 className="text-sm font-semibold text-foreground font-[Space_Grotesk] mb-4 flex items-center gap-2">
+              <Activity className="w-4 h-4 text-[oklch(0.7_0.15_286)]" />
+              Feature Availability
+            </h3>
+            <div className="space-y-2">
+              <FeatureRow
+                label="Agent Health & Fleet Command"
+                available={data.checks.wazuhManager?.status === "connected"}
+                source="Wazuh Manager"
+              />
+              <FeatureRow
+                label="Alerts Timeline & SIEM Events"
+                available={data.checks.wazuhManager?.status === "connected" || data.checks.wazuhIndexer?.status === "connected"}
+                source="Manager + Indexer"
+              />
+              <FeatureRow
+                label="Vulnerability Management"
+                available={data.checks.wazuhManager?.status === "connected"}
+                source="Wazuh Manager"
+              />
+              <FeatureRow
+                label="MITRE ATT&CK Coverage"
+                available={data.checks.wazuhManager?.status === "connected"}
+                source="Wazuh Manager"
+              />
+              <FeatureRow
+                label="Compliance Posture"
+                available={data.checks.wazuhManager?.status === "connected"}
+                source="Wazuh Manager"
+              />
+              <FeatureRow
+                label="Analyst Notes & Saved Searches"
+                available={data.checks.database?.status === "connected"}
+                source="Database"
+              />
+              <FeatureRow
+                label="User Authentication"
+                available={data.checks.database?.status === "connected"}
+                source="Database"
+              />
+            </div>
+          </GlassPanel>
+        </div>
+      )}
+
+      {/* Wazuh Manager Daemon Details */}
+      {data?.checks.wazuhManager?.status === "connected" &&
+        data.checks.wazuhManager.details?.daemons && (
+          <GlassPanel>
+            <h3 className="text-sm font-semibold text-foreground font-[Space_Grotesk] mb-4 flex items-center gap-2">
+              <Users className="w-4 h-4 text-[oklch(0.7_0.15_286)]" />
+              Wazuh Manager Daemons
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {Object.entries(
+                data.checks.wazuhManager.details.daemons as Record<string, string>
+              ).map(([daemon, state]) => (
+                <DaemonCard key={daemon} name={daemon} state={state} />
+              ))}
+            </div>
+          </GlassPanel>
+        )}
+
+      {/* Wazuh Indexer Cluster Details */}
+      {data?.checks.wazuhIndexer?.status === "connected" &&
+        data.checks.wazuhIndexer.details && (
+          <GlassPanel>
+            <h3 className="text-sm font-semibold text-foreground font-[Space_Grotesk] mb-4 flex items-center gap-2">
+              <Search className="w-4 h-4 text-[oklch(0.7_0.15_286)]" />
+              Indexer Cluster Details
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {data.checks.wazuhIndexer.details.clusterName != null ? (
+                <DetailCard label="Cluster Name" value={String(data.checks.wazuhIndexer.details.clusterName)} />
+              ) : null}
+              {data.checks.wazuhIndexer.details.clusterStatus != null ? (
+                <DetailCard
+                  label="Cluster Status"
+                  value={String(data.checks.wazuhIndexer.details.clusterStatus)}
+                  color={
+                    String(data.checks.wazuhIndexer.details.clusterStatus) === "green"
+                      ? "oklch(0.765 0.177 163.223)"
+                      : String(data.checks.wazuhIndexer.details.clusterStatus) === "yellow"
+                        ? "oklch(0.795 0.184 86.047)"
+                        : "oklch(0.637 0.237 25.331)"
+                  }
+                />
+              ) : null}
+              {data.checks.wazuhIndexer.details.numberOfNodes !== undefined ? (
+                <DetailCard label="Nodes" value={String(data.checks.wazuhIndexer.details.numberOfNodes)} />
+              ) : null}
+              {data.checks.wazuhIndexer.details.activeShards !== undefined ? (
+                <DetailCard label="Active Shards" value={String(data.checks.wazuhIndexer.details.activeShards)} />
+              ) : null}
+            </div>
+          </GlassPanel>
+        )}
+    </div>
+  );
+}
+
+// ── Helper Components ────────────────────────────────────────────────────────
+
+function ConfigRow({ label, value, icon: Icon }: { label: string; value: string; icon: LucideIcon }) {
+  return (
+    <div className="flex items-center justify-between py-1.5 border-b border-[oklch(0.3_0.04_286/15%)] last:border-0">
+      <span className="text-xs text-muted-foreground flex items-center gap-2">
+        <Icon className="w-3.5 h-3.5" />
+        {label}
+      </span>
+      <span className="text-xs font-mono text-foreground capitalize">{value}</span>
+    </div>
+  );
+}
+
+function FeatureRow({ label, available, source }: { label: string; available: boolean; source: string }) {
+  return (
+    <div className="flex items-center justify-between py-1.5 border-b border-[oklch(0.3_0.04_286/15%)] last:border-0">
+      <div className="flex items-center gap-2">
+        {available ? (
+          <CheckCircle2 className="w-3.5 h-3.5 text-[oklch(0.765_0.177_163.223)]" />
+        ) : (
+          <XCircle className="w-3.5 h-3.5 text-[oklch(0.5_0.02_286)]" />
+        )}
+        <span className={`text-xs ${available ? "text-foreground" : "text-muted-foreground"}`}>
+          {label}
+        </span>
+      </div>
+      <span className="text-[10px] text-muted-foreground font-mono">{source}</span>
+    </div>
+  );
+}
+
+function DaemonCard({ name, state }: { name: string; state: string }) {
+  const isRunning = state === "running";
+  return (
+    <div
+      className="rounded-lg px-3 py-2 text-center"
+      style={{
+        background: isRunning ? "oklch(0.765 0.177 163.223 / 8%)" : "oklch(0.637 0.237 25.331 / 8%)",
+        border: `1px solid ${isRunning ? "oklch(0.765 0.177 163.223 / 20%)" : "oklch(0.637 0.237 25.331 / 20%)"}`,
+      }}
+    >
+      <p className="text-[10px] font-mono text-muted-foreground truncate" title={name}>
+        {name.replace("wazuh-", "")}
+      </p>
+      <p
+        className="text-xs font-medium mt-0.5 capitalize"
+        style={{ color: isRunning ? "oklch(0.765 0.177 163.223)" : "oklch(0.637 0.237 25.331)" }}
+      >
+        {state}
+      </p>
+    </div>
+  );
+}
+
+function DetailCard({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div className="rounded-lg px-3 py-2 bg-[oklch(0.15_0.02_286)] border border-[oklch(0.3_0.04_286/20%)]">
+      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</p>
+      <p
+        className="text-sm font-mono font-medium mt-0.5 capitalize"
+        style={{ color: color || "oklch(0.93 0.005 286)" }}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}

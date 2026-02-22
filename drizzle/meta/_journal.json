@@ -50,6 +50,13 @@
       "when": 1771772122795,
       "tag": "0006_slim_spectrum",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1771784419124,
+      "tag": "0007_bored_cargill",
+      "breakpoints": true
     }
   ]
 }

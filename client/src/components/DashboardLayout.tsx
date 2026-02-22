@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
+import { trpc } from "@/lib/trpc";
 import {
   Activity,
   AlertTriangle,
@@ -40,6 +41,7 @@ import {
   Layers,
   BookOpen,
   Radar,
+  HeartPulse,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -60,6 +62,7 @@ const menuItems = [
   { icon: FileSearch, label: "File Integrity", path: "/fim", group: "Posture" },
   { icon: Monitor, label: "IT Hygiene", path: "/hygiene", group: "Posture" },
   { icon: Server, label: "Cluster Health", path: "/cluster", group: "System" },
+  { icon: HeartPulse, label: "System Status", path: "/status", group: "System" },
   { icon: StickyNote, label: "Analyst Notes", path: "/notes", group: "Tools" },
   { icon: Bot, label: "AI Assistant", path: "/assistant", group: "Tools" },
 ];
@@ -68,6 +71,60 @@ const SIDEBAR_WIDTH_KEY = "sidebar-width";
 const DEFAULT_WIDTH = 260;
 const MIN_WIDTH = 200;
 const MAX_WIDTH = 400;
+
+/**
+ * Unauthenticated landing — detects local vs OAuth mode and routes accordingly.
+ */
+function UnauthenticatedView() {
+  const [, navigate] = useLocation();
+  const authMode = trpc.localAuth.authMode.useQuery(undefined, {
+    retry: false,
+  });
+
+  const isLocal = authMode.data?.mode === "local";
+
+  const handleSignIn = () => {
+    if (isLocal) {
+      navigate("/login");
+    } else {
+      window.location.href = getLoginUrl();
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="glass-panel p-8 max-w-md w-full flex flex-col items-center gap-6">
+        <div className="h-16 w-16 rounded-xl bg-primary/20 flex items-center justify-center amethyst-glow">
+          <Shield className="h-8 w-8 text-primary" />
+        </div>
+        <h1 className="text-2xl font-display font-semibold tracking-tight text-center text-foreground">
+          Dang! Security Platform
+        </h1>
+        <p className="text-sm text-muted-foreground text-center">
+          Sign in to access the Wazuh security monitoring dashboard.
+        </p>
+        <Button
+          onClick={handleSignIn}
+          size="lg"
+          className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg"
+        >
+          Sign in
+        </Button>
+        {isLocal && authMode.data?.isFirstUser && (
+          <p className="text-xs text-muted-foreground text-center">
+            No accounts yet?{" "}
+            <button
+              onClick={() => navigate("/register")}
+              className="text-primary hover:underline"
+            >
+              Create the first admin account
+            </button>
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function DashboardLayout({
   children,
@@ -89,30 +146,7 @@ export default function DashboardLayout({
   }
 
   if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="glass-panel p-8 max-w-md w-full flex flex-col items-center gap-6">
-          <div className="h-16 w-16 rounded-xl bg-primary/20 flex items-center justify-center amethyst-glow">
-            <Shield className="h-8 w-8 text-primary" />
-          </div>
-          <h1 className="text-2xl font-display font-semibold tracking-tight text-center text-foreground">
-            Dang! Security Platform
-          </h1>
-          <p className="text-sm text-muted-foreground text-center">
-            Sign in to access the Wazuh security monitoring dashboard.
-          </p>
-          <Button
-            onClick={() => {
-              window.location.href = getLoginUrl();
-            }}
-            size="lg"
-            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg"
-          >
-            Sign in
-          </Button>
-        </div>
-      </div>
-    );
+    return <UnauthenticatedView />;
   }
 
   return (

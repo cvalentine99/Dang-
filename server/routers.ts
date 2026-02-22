@@ -9,6 +9,7 @@ import { baselinesRouter } from "./baselines/baselinesRouter";
 import { indexerRouter } from "./indexer/indexerRouter";
 import { otxRouter } from "./otx/otxRouter";
 import { notesRouter } from "./notes/notesRouter";
+import { localAuthRouter } from "./localAuth/localAuthRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -41,6 +42,9 @@ export const appRouter = router({
 
   // Analyst Notes v2 — local-only entity-linked notes
   notes: notesRouter,
+
+  // Local auth for Docker self-hosted mode
+  localAuth: localAuthRouter,
 });
 
 export type AppRouter = typeof appRouter;
