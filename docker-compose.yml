@@ -21,7 +21,7 @@ services:
       MYSQL_USER: ${MYSQL_USER:-dang}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-dang_db_secret}
     ports:
-      - "${DB_EXTERNAL_PORT:-3306}:3306"
+      - "${DB_EXTERNAL_PORT:-3307}:3306"
     volumes:
       - dang-db-data:/var/lib/mysql
     healthcheck:

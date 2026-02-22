@@ -28,6 +28,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Build frontend (Vite → dist/public/) and backend (esbuild → dist/index.js)
+# DOCKER_BUILD flag tells vite.config.ts to exclude Manus-specific plugins
+# (runtime overlay, analytics, debug collector) that only work on Manus hosting.
+ENV DOCKER_BUILD=1
 RUN pnpm run build
 
 # ── Stage 3: Production ─────────────────────────────────────────────────────
