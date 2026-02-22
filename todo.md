@@ -584,3 +584,9 @@
 
 - [x] Fix Dockerfile line 49: copy full node_modules from deps stage instead of reinstalling with --prod
 - [x] Save checkpoint
+
+## Phase 43: Fix production runtime error
+
+- [x] Diagnose runtime error: TypeError Invalid URL from getLoginUrl() when VITE_OAUTH_PORTAL_URL not set in Docker
+- [x] Fix: Add guard in const.ts getLoginUrl() — returns "/" fallback when OAuth vars missing, try/catch on URL construction
+- [x] Save checkpoint
