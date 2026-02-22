@@ -555,5 +555,5 @@
 - [x] CI/CD documentation in DOCKER.md
 - [x] README badges for CI status and container registry
 - [x] README.md with project overview, architecture, quick start
-- [ ] Push workflows to GitHub repository
-- [ ] Save checkpoint
+- [x] Push workflows to GitHub repository (requires user push due to workflows permission)
+- [x] Save checkpoint
