@@ -221,3 +221,26 @@
 - [x] Add route (/hunting) and sidebar navigation entry under Detection group
 - [x] All 29 existing vitest tests still passing
 - [x] Save checkpoint
+
+## Phase 26: SIEM Events Core Page
+
+- [x] Backend: Uses existing wazuh endpoints (manager logs, rules, agents) for unified event view
+- [x] Backend: Log sources computed from mock data and live event metadata
+- [x] Backend: Event correlation done client-side from normalized event data
+- [x] SIEM Events page: Unified event stream table with timestamp, agent, rule, level, description
+- [x] SIEM Events page: Log source filter sidebar with event counts per source
+- [x] SIEM Events page: Severity and agent filter controls
+- [x] SIEM Events page: Severity level filter pills (Critical, High, Medium, Low, Info)
+- [x] SIEM Events page: Full-text search across all event fields
+- [x] SIEM Events page: Event detail expansion with raw JSON, MITRE mapping, agent info, data fields
+- [x] SIEM Events page: MITRE technique filter for correlation
+- [x] SIEM Events page: Log source distribution chart (events by source)
+- [x] SIEM Events page: Event volume timeline bar chart (hourly distribution)
+- [x] SIEM Events page: Top rules bar chart with hit counts
+- [x] SIEM Events page: Agent filter and event counts per agent
+- [x] SIEM Events page: KPI row (Total Events, Critical, High, Medium, Low, Log Sources)
+- [x] Fallback data: MOCK_SIEM_EVENTS and MOCK_LOG_SOURCES with realistic data
+- [x] Sidebar: Added SIEM Events under Detection group
+- [x] Route wired in App.tsx at /siem
+- [x] All 29 vitest tests still passing
+- [x] Save checkpoint
