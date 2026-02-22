@@ -649,3 +649,24 @@
 - [x] Test local auth login flow — admin login ✅, wrong password rejected ✅, new user registration ✅
 - [x] Fix: missing geoipService.ts in GitHub repo
 - [x] Fix: Dockerfile corepack→npm for better network compatibility
+
+## Phase 47: Admin User Management & Status Auto-Refresh
+
+### Admin User Management Panel (/admin/users)
+- [x] Add admin-only tRPC procedures: list, updateRole, resetPassword, toggleDisabled
+- [x] Add isDisabled column to users table (migration 0008)
+- [x] Build /admin/users page with user table, role badges, status badges, search, pagination
+- [x] Implement role promote/demote (admin ↔ user) with confirmation dialog
+- [x] Implement password reset (admin sets new password) with dialog — local auth only
+- [x] Implement disable/enable user toggle with confirmation dialog
+- [x] Add /admin/users route and Admin sidebar group with User Management entry
+- [x] Prevent admin from demoting/disabling themselves (self-protection)
+- [x] Block disabled users from logging in (localAuthService check)
+- [x] Write 16 vitest tests (access control, self-protection, input validation, list query)
+
+### Status Dashboard Auto-Refresh
+- [x] Add operator-controlled auto-refresh interval selector (Off, 15s, 30s, 60s, 5m)
+- [x] Show countdown timer when auto-refresh is active
+- [x] Auto-refresh cleans up on unmount and interval change
+- [x] Styled with Amethyst Nexus glass-morphism theme
+- [x] All 143 tests passing, TypeScript clean

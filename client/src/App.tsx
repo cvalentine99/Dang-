@@ -23,6 +23,7 @@ import ThreatIntel from "./pages/ThreatIntel";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Status from "./pages/Status";
+import AdminUsers from "./pages/AdminUsers";
 
 function Router() {
   return (
@@ -51,6 +52,7 @@ function Router() {
             <Route path="/notes" component={AnalystNotes} />
             <Route path="/assistant" component={Assistant} />
             <Route path="/status" component={Status} />
+            <Route path="/admin/users" component={AdminUsers} />
             <Route path="/404" component={NotFound} />
             <Route component={NotFound} />
           </Switch>

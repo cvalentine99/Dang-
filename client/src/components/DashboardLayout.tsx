@@ -42,6 +42,7 @@ import {
   BookOpen,
   Radar,
   HeartPulse,
+  UserCog,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -63,6 +64,7 @@ const menuItems = [
   { icon: Monitor, label: "IT Hygiene", path: "/hygiene", group: "Posture" },
   { icon: Server, label: "Cluster Health", path: "/cluster", group: "System" },
   { icon: HeartPulse, label: "System Status", path: "/status", group: "System" },
+  { icon: UserCog, label: "User Management", path: "/admin/users", group: "Admin" },
   { icon: StickyNote, label: "Analyst Notes", path: "/notes", group: "Tools" },
   { icon: Bot, label: "AI Assistant", path: "/assistant", group: "Tools" },
 ];
