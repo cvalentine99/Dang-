@@ -541,3 +541,19 @@
 - [x] Update env.docker.template with domain/email variables
 - [x] Update DOCKER.md with comprehensive HTTPS setup instructions
 - [x] Save checkpoint
+
+## Phase 39: GitHub Actions CI/CD Pipeline
+
+- [x] CI workflow: lint, typecheck, vitest on PRs and pushes to main
+- [x] CD workflow: Docker build, tag, push to GHCR on main merge
+- [x] Multi-platform Docker builds (linux/amd64, linux/arm64)
+- [x] Docker layer caching for fast builds (GHA cache)
+- [x] Semantic versioning with git tags (v*.*.* triggers)
+- [x] GHCR image tagging (latest, sha-xxxxx, semver)
+- [x] GitHub Dependabot configuration for dependency updates
+- [x] Release workflow with auto-generated changelog
+- [x] CI/CD documentation in DOCKER.md
+- [x] README badges for CI status and container registry
+- [x] README.md with project overview, architecture, quick start
+- [ ] Push workflows to GitHub repository
+- [ ] Save checkpoint

@@ -1,0 +1,129 @@
+# ============================================================================
+# Dang! SIEM — Continuous Integration
+#
+# Runs on every push and pull request to main.
+# Steps: install → typecheck → test → build verification
+# ============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "10.4.1"
+
+jobs:
+  # ── Typecheck ─────────────────────────────────────────────────────────────
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run TypeScript check
+        run: pnpm check
+
+  # ── Test ──────────────────────────────────────────────────────────────────
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    env:
+      # Minimal env vars required for vitest to load server modules
+      DATABASE_URL: "mysql://test:test@localhost:3306/test"
+      JWT_SECRET: "ci-test-secret-not-for-production"
+      WAZUH_HOST: "127.0.0.1"
+      WAZUH_PORT: "55000"
+      WAZUH_USER: "test"
+      WAZUH_PASS: "test"
+      WAZUH_INDEXER_HOST: "127.0.0.1"
+      WAZUH_INDEXER_PORT: "9200"
+      WAZUH_INDEXER_USER: "test"
+      WAZUH_INDEXER_PASS: "test"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm test
+
+  # ── Build Verification ───────────────────────────────────────────────────
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [typecheck, test]
+    env:
+      DATABASE_URL: "mysql://test:test@localhost:3306/test"
+      JWT_SECRET: "ci-test-secret-not-for-production"
+      WAZUH_HOST: "127.0.0.1"
+      WAZUH_PORT: "55000"
+      WAZUH_USER: "test"
+      WAZUH_PASS: "test"
+      WAZUH_INDEXER_HOST: "127.0.0.1"
+      WAZUH_INDEXER_PORT: "9200"
+      WAZUH_INDEXER_USER: "test"
+      WAZUH_INDEXER_PASS: "test"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build application
+        run: pnpm build
+
+      - name: Verify build artifacts
+        run: |
+          echo "Checking build output..."
+          test -d dist/public && echo "✓ Frontend build (dist/public)" || (echo "✗ Missing dist/public" && exit 1)
+          test -f dist/index.js && echo "✓ Backend build (dist/index.js)" || (echo "✗ Missing dist/index.js" && exit 1)
+          echo "Build verification passed."

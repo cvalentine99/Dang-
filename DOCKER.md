@@ -569,3 +569,113 @@ For production deployments, also consider:
 - Using Docker secrets instead of environment variables for sensitive values
 - Enabling Docker content trust for image verification
 - Generating DH parameters for Nginx: `openssl dhparam -out proxy/nginx/ssl/dhparam.pem 2048`
+
+---
+
+## CI/CD Pipeline
+
+The project includes three GitHub Actions workflows that automate testing, building, and releasing. No additional secrets need to be configured in GitHub — the workflows use the built-in `GITHUB_TOKEN` for GHCR authentication and release creation.
+
+### Workflows Overview
+
+| Workflow | File | Trigger | Purpose |
+|---|---|---|---|
+| **CI** | `.github/workflows/ci.yml` | Push to `main`, PRs | Typecheck, test, build verification |
+| **Docker Build** | `.github/workflows/docker.yml` | Push to `main`, version tags | Build multi-platform image, push to GHCR |
+| **Release** | `.github/workflows/release.yml` | Version tags (`v*.*.*`) | Create GitHub Release with changelog |
+
+### Continuous Integration (CI)
+
+Every push to `main` and every pull request triggers three parallel jobs:
+
+1. **Typecheck** — Runs `pnpm check` (TypeScript `--noEmit`) to catch type errors before merge.
+2. **Test** — Runs `pnpm test` (Vitest) with minimal stub environment variables so server modules can load without real Wazuh credentials.
+3. **Build** — Runs `pnpm build` (Vite + esbuild) and verifies that `dist/public/` and `dist/index.js` exist. This job depends on typecheck and test passing first.
+
+Pull requests are blocked from merging until all three jobs pass (configure this under **Settings → Branches → Branch protection rules** in your GitHub repository).
+
+### Docker Build & Push
+
+When code is pushed to `main` or a version tag is created, the Docker workflow builds a multi-platform image (`linux/amd64` + `linux/arm64`) and pushes it to GitHub Container Registry.
+
+**Image tagging strategy:**
+
+| Event | Tags Applied |
+|---|---|
+| Push to `main` | `latest`, `sha-abc1234` |
+| Tag `v1.2.3` | `1.2.3`, `1.2`, `1`, `latest`, `sha-abc1234` |
+
+**Pull the image:**
+
+```bash
+# Latest from main
+docker pull ghcr.io/cvalentine99/dang-:latest
+
+# Specific version
+docker pull ghcr.io/cvalentine99/dang-:1.2.3
+
+# Specific commit
+docker pull ghcr.io/cvalentine99/dang-:sha-abc1234
+```
+
+**Using the GHCR image instead of building locally:**
+
+Replace the `build` section in `docker-compose.yml` with an `image` reference:
+
+```yaml
+services:
+  app:
+    image: ghcr.io/cvalentine99/dang-:latest
+    # Remove the 'build' block
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+```
+
+The workflow also generates SLSA build provenance attestations and an SBOM (Software Bill of Materials) for supply chain security.
+
+### Creating a Release
+
+To create a new versioned release:
+
+```bash
+# Tag the current commit with a semantic version
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+This triggers both the Docker workflow (builds and tags the image as `1.0.0`) and the Release workflow (creates a GitHub Release with an auto-generated changelog of all commits since the previous tag).
+
+### Dependabot
+
+Dependabot is configured to check for updates weekly (Mondays at 9:00 AM CST) across three ecosystems:
+
+| Ecosystem | What it updates | Grouping |
+|---|---|---|
+| **npm** | Node.js dependencies | Radix UI, TanStack, tRPC grouped; dev tools grouped |
+| **github-actions** | Workflow action versions | Individual PRs |
+| **docker** | Base image tags in Dockerfile | Individual PRs |
+
+Each Dependabot PR triggers the CI workflow, so you can verify compatibility before merging. Major version bumps on React are excluded from automatic PRs to avoid breaking changes.
+
+### Manual Docker Build
+
+You can also trigger a Docker build manually from the Actions tab in GitHub. The workflow dispatch allows you to specify target platforms:
+
+```
+# Default: linux/amd64,linux/arm64
+# For faster builds during development, you can specify just one:
+# linux/amd64
+```
+
+### Recommended Branch Protection
+
+After pushing the workflows to GitHub, configure branch protection for `main`:
+
+1. Go to **Settings → Branches → Add rule**
+2. Branch name pattern: `main`
+3. Enable:
+   - **Require status checks to pass before merging**
+   - Select: `Typecheck`, `Test`, `Build`
+   - **Require branches to be up to date before merging**
+   - **Require pull request reviews before merging** (optional but recommended)
