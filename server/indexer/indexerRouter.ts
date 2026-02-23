@@ -106,6 +106,7 @@ export const indexerRouter = router({
         ruleId: z.string().optional(),
         srcip: z.string().optional(),
         geoCountry: z.string().optional(),
+        decoderName: z.string().optional(),
         sortField: z.enum(["timestamp", "rule.level", "agent.id"]).default("timestamp"),
         sortOrder: z.enum(["asc", "desc"]).default("desc"),
       })
@@ -123,6 +124,7 @@ export const indexerRouter = router({
       if (input.ruleId) filters.push({ term: { "rule.id": input.ruleId } });
       if (input.srcip) filters.push({ term: { "data.srcip": input.srcip } });
       if (input.geoCountry) filters.push({ term: { "GeoLocation.country_name": input.geoCountry } });
+      if (input.decoderName) filters.push({ term: { "decoder.name": input.decoderName } });
 
       const must: Array<Record<string, unknown>> = [];
       if (input.query) {
@@ -256,6 +258,28 @@ export const indexerRouter = router({
           size: 0,
           aggs: {
             timeline: dateHistogramAgg("timestamp", input.interval),
+          },
+        },
+        "alerts"
+      );
+    }),
+
+  /** Top decoders (log source distribution) */
+  alertsAggByDecoder: publicProcedure
+    .input(timeRangeSchema.extend({ topN: z.number().int().min(1).max(50).default(20) }))
+    .query(async ({ input }) => {
+      return safeSearch(
+        INDEX_PATTERNS.ALERTS,
+        {
+          query: boolQuery({ filter: [timeRangeFilter(input.from, input.to)] }),
+          size: 0,
+          aggs: {
+            top_decoders: {
+              ...termsAgg("decoder.name", input.topN),
+              aggs: {
+                parent_decoder: termsAgg("decoder.parent", 1),
+              },
+            },
           },
         },
         "alerts"

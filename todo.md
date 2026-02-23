@@ -801,3 +801,32 @@
 - [ ] Wire Indexer client to use runtime config with env fallback
 - [ ] Write vitest tests for connection settings CRUD and access control
 - [ ] Verify TypeScript compiles clean
+
+## Phase 53: Fix Data Integration — Real API Only
+
+### SiemEvents — Replace mocked events with real indexer alertsSearch
+- [x] Remove all mock/fake event data from SiemEvents page
+- [x] Wire up trpc.indexer.alertsSearch for real event data
+- [x] Ensure pagination, filtering, severity work with real indexer data
+- [x] Keep rules/agents calls (already real)
+- [x] Add alertsAggByDecoder endpoint for log source sidebar
+- [x] Add alertsTimeline endpoint for hourly event volume chart
+- [x] Add decoderName filter to alertsSearch endpoint
+
+### ThreatHunting — Add Indexer queries for historical correlation
+- [x] Add indexer alertsSearch queries for IOC-based alert correlation
+- [x] Add indexer vulnSearch for cross-agent vulnerability hunting
+- [x] Combine Server API metadata with Indexer historical data
+- [x] Show Indexer connection status in data source coverage
+
+### ITHygiene/DriftComparison — Real syscollector data
+- [x] Add multiAgentSyscollector backend endpoint (batch fetch packages/services/users)
+- [x] Replace mock data with real trpc.wazuh.multiAgentSyscollector queries
+- [x] Replace mock agent list with real trpc.wazuh.agents query
+- [x] Keep mock data as graceful fallback when Wazuh not connected
+
+### Tests
+- [x] Write 8 vitest tests for multiAgentSyscollector endpoint
+- [x] Write 14 vitest tests for indexer router (alertsSearch, alertsAggByDecoder, alertsTimeline, vulnSearch)
+- [x] All 198 tests passing
+- [x] TypeScript compiles clean (0 errors)

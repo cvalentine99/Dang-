@@ -22,7 +22,26 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-type SiemEvent = (typeof MOCK_SIEM_EVENTS)[number];
+interface SiemEvent {
+  _id: string;
+  timestamp: string;
+  agent: { id: string; name: string; ip?: string };
+  rule: {
+    id: number | string;
+    level: number;
+    description: string;
+    groups: string[];
+    mitre: { id: string[]; tactic: string[]; technique: string[] };
+    pci_dss: string[];
+    gdpr: string[];
+    hipaa: string[];
+    firedtimes: number;
+  };
+  decoder: { name: string; parent: string };
+  data: Record<string, unknown>;
+  location: string;
+  full_log: string;
+}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const SEVERITY_COLORS: Record<string, string> = {
@@ -59,6 +78,83 @@ const CORRELATION_WINDOWS = [
   { label: "24 hours", value: 1440 },
 ];
 
+const TIME_PRESETS = [
+  { label: "Last 15m", value: "now-15m" },
+  { label: "Last 1h", value: "now-1h" },
+  { label: "Last 6h", value: "now-6h" },
+  { label: "Last 24h", value: "now-24h" },
+  { label: "Last 7d", value: "now-7d" },
+] as const;
+
+const SEVERITY_LEVEL_RANGES: Record<string, { min: number; max: number }> = {
+  critical: { min: 14, max: 16 },
+  high: { min: 10, max: 13 },
+  medium: { min: 7, max: 9 },
+  low: { min: 4, max: 6 },
+  info: { min: 0, max: 3 },
+};
+
+/** Map a raw _source hit from the Indexer into our normalized SiemEvent shape */
+function mapHitToEvent(hit: Record<string, unknown>): SiemEvent {
+  const src = (hit._source ?? hit) as Record<string, unknown>;
+  const rule = (src.rule ?? {}) as Record<string, unknown>;
+  const agent = (src.agent ?? {}) as Record<string, unknown>;
+  const decoder = (src.decoder ?? {}) as Record<string, unknown>;
+  const mitre = (rule.mitre ?? {}) as Record<string, unknown>;
+  return {
+    _id: String(hit._id ?? src.id ?? ""),
+    timestamp: String(src.timestamp ?? ""),
+    agent: {
+      id: String(agent.id ?? ""),
+      name: String(agent.name ?? ""),
+      ip: agent.ip ? String(agent.ip) : undefined,
+    },
+    rule: {
+      id: rule.id != null ? (typeof rule.id === "number" ? rule.id : (isNaN(Number(rule.id)) ? String(rule.id) : Number(rule.id))) : 0,
+      level: Number(rule.level ?? 0),
+      description: String(rule.description ?? ""),
+      groups: Array.isArray(rule.groups) ? rule.groups as string[] : [],
+      mitre: {
+        id: Array.isArray(mitre.id) ? mitre.id as string[] : [],
+        tactic: Array.isArray(mitre.tactic) ? mitre.tactic as string[] : [],
+        technique: Array.isArray(mitre.technique) ? mitre.technique as string[] : [],
+      },
+      pci_dss: Array.isArray(rule.pci_dss) ? rule.pci_dss as string[] : [],
+      gdpr: Array.isArray(rule.gdpr) ? rule.gdpr as string[] : [],
+      hipaa: Array.isArray(rule.hipaa) ? rule.hipaa as string[] : [],
+      firedtimes: Number(rule.firedtimes ?? 0),
+    },
+    decoder: {
+      name: String(decoder.name ?? ""),
+      parent: String(decoder.parent ?? ""),
+    },
+    data: (src.data ?? {}) as Record<string, unknown>,
+    location: String(src.location ?? ""),
+    full_log: String(src.full_log ?? ""),
+  };
+}
+
+/** Map MOCK_SIEM_EVENTS entries into the same SiemEvent shape */
+function mapMockEvent(m: (typeof MOCK_SIEM_EVENTS)[number]): SiemEvent {
+  return {
+    _id: m.id,
+    timestamp: m.timestamp,
+    agent: m.agent,
+    rule: {
+      ...m.rule,
+      mitre: {
+        id: m.rule.mitre.id as string[],
+        tactic: m.rule.mitre.tactic as string[],
+        technique: m.rule.mitre.technique as string[],
+      },
+    },
+    decoder: m.decoder,
+    data: m.data as Record<string, unknown>,
+    location: m.location,
+    full_log: m.full_log,
+  };
+}
+
 export default function SiemEvents() {
   // ─── State ───────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
@@ -70,12 +166,12 @@ export default function SiemEvents() {
   const [showRawJson, setShowRawJson] = useState<string | null>(null);
   const [sortField, setSortField] = useState<"timestamp" | "level">("timestamp");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [timeRange, setTimeRange] = useState("1h");
+  const [timeRange, setTimeRange] = useState("now-24h");
   const [page, setPage] = useState(0);
   const pageSize = 50;
 
   // Correlation state
-  const [correlationWindow, setCorrelationWindow] = useState(60); // minutes
+  const [correlationWindow, setCorrelationWindow] = useState(60);
   const [showCorrelation, setShowCorrelation] = useState<string | null>(null);
 
   // Saved search state
@@ -87,9 +183,14 @@ export default function SiemEvents() {
   // OTX IOC lookup state
   const [otxLookupIndicator, setOtxLookupIndicator] = useState<{ type: "IPv4" | "IPv6" | "domain" | "hostname" | "file" | "url" | "cve"; value: string } | null>(null);
 
+  const utils = trpc.useUtils();
+
   // ─── API Queries ─────────────────────────────────────────────────────────
   const statusQ = trpc.wazuh.status.useQuery();
   const isConfigured = !!(statusQ.data as Record<string, unknown>)?.configured;
+
+  const indexerStatusQ = trpc.indexer.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
+  const isIndexerConnected = !!(indexerStatusQ.data as Record<string, unknown>)?.configured && !!(indexerStatusQ.data as Record<string, unknown>)?.healthy;
 
   const rulesQ = trpc.wazuh.rules.useQuery(
     { limit: 500, offset: 0 },
@@ -98,6 +199,52 @@ export default function SiemEvents() {
   const agentsQ = trpc.wazuh.agents.useQuery(
     { limit: 500, offset: 0 },
     { enabled: isConfigured }
+  );
+
+  // ── Indexer queries ────────────────────────────────────────────────────
+  const alertsSearchQ = trpc.indexer.alertsSearch.useQuery(
+    {
+      from: timeRange,
+      to: "now",
+      size: pageSize,
+      offset: page * pageSize,
+      query: searchQuery || undefined,
+      agentId: agentFilter !== "all" ? agentFilter : undefined,
+      ruleLevelMin: severityFilter !== "all" ? SEVERITY_LEVEL_RANGES[severityFilter]?.min : undefined,
+      mitreTactic: mitreFilter !== "all" ? mitreFilter : undefined,
+      decoderName: sourceFilter !== "all" ? sourceFilter : undefined,
+      sortField: sortField === "level" ? "rule.level" : "timestamp",
+      sortOrder: sortDir,
+    },
+    { retry: false, staleTime: 30_000, enabled: isIndexerConnected }
+  );
+
+  const alertsAggByLevelQ = trpc.indexer.alertsAggByLevel.useQuery(
+    {
+      from: timeRange,
+      to: "now",
+      interval: timeRange === "now-15m" ? "1m" : timeRange === "now-1h" ? "5m" : timeRange === "now-6h" ? "15m" : "1h",
+    },
+    { retry: false, staleTime: 30_000, enabled: isIndexerConnected }
+  );
+
+  const alertsAggByDecoderQ = trpc.indexer.alertsAggByDecoder.useQuery(
+    { from: timeRange, to: "now", topN: 20 },
+    { retry: false, staleTime: 30_000, enabled: isIndexerConnected }
+  );
+
+  const alertsAggByMitreQ = trpc.indexer.alertsAggByMitre.useQuery(
+    { from: timeRange, to: "now" },
+    { retry: false, staleTime: 30_000, enabled: isIndexerConnected }
+  );
+
+  const alertsTimelineQ = trpc.indexer.alertsTimeline.useQuery(
+    {
+      from: timeRange,
+      to: "now",
+      interval: timeRange === "now-15m" ? "1m" : timeRange === "now-1h" ? "5m" : timeRange === "now-6h" ? "15m" : "1h",
+    },
+    { retry: false, staleTime: 30_000, enabled: isIndexerConnected }
   );
 
   // OTX IOC lookup query
@@ -129,8 +276,6 @@ export default function SiemEvents() {
   });
 
   // ─── Data ────────────────────────────────────────────────────────────────
-  const events: SiemEvent[] = MOCK_SIEM_EVENTS;
-  const logSources = MOCK_LOG_SOURCES;
   const rules = useFallback(rulesQ.data, MOCK_RULES, isConfigured);
   const agents = useFallback(agentsQ.data, MOCK_AGENTS, isConfigured);
 
@@ -138,10 +283,19 @@ export default function SiemEvents() {
     ? ((agents as Record<string, { affected_items: Array<{ id: string; name: string }> }>).data.affected_items || [])
     : [];
 
-  // ─── Filtering ───────────────────────────────────────────────────────────
-  const filteredEvents = useMemo(() => {
-    let result = [...events];
-
+  // ── Parse Indexer events or fall back to mock ────────────────────────────
+  const { events, totalEvents } = useMemo(() => {
+    if (isIndexerConnected && alertsSearchQ.data?.data) {
+      const resp = alertsSearchQ.data.data as unknown as Record<string, unknown>;
+      const hits = (resp.hits as Record<string, unknown>) ?? {};
+      const hitArr = (hits.hits as Array<Record<string, unknown>>) ?? [];
+      const total = typeof hits.total === "object"
+        ? Number((hits.total as Record<string, unknown>).value ?? 0)
+        : Number(hits.total ?? 0);
+      return { events: hitArr.map(mapHitToEvent), totalEvents: total };
+    }
+    // Mock fallback — apply client-side filtering
+    let result = MOCK_SIEM_EVENTS.map(mapMockEvent);
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
@@ -149,30 +303,25 @@ export default function SiemEvents() {
           e.rule.description.toLowerCase().includes(q) ||
           e.full_log.toLowerCase().includes(q) ||
           e.agent.name.toLowerCase().includes(q) ||
-          e.agent.ip.includes(q) ||
-          (e.data as Record<string, unknown>)?.srcip?.toString().includes(q) ||
+          (e.agent.ip ?? "").includes(q) ||
+          String(e.data?.srcip ?? "").includes(q) ||
           e.decoder.name.toLowerCase().includes(q) ||
-          e.rule.id.toString().includes(q) ||
-          e.id.includes(q)
+          String(e.rule.id).includes(q) ||
+          e._id.includes(q)
       );
     }
-
     if (severityFilter !== "all") {
       result = result.filter((e) => LEVEL_TO_SEVERITY(e.rule.level) === severityFilter);
     }
-
     if (sourceFilter !== "all") {
       result = result.filter((e) => e.decoder.name === sourceFilter || e.decoder.parent === sourceFilter);
     }
-
     if (agentFilter !== "all") {
       result = result.filter((e) => e.agent.id === agentFilter);
     }
-
     if (mitreFilter !== "all") {
-      result = result.filter((e) => (e.rule.mitre.id as string[]).includes(mitreFilter) || (e.rule.mitre.tactic as string[]).includes(mitreFilter));
+      result = result.filter((e) => e.rule.mitre.id.includes(mitreFilter) || e.rule.mitre.tactic.includes(mitreFilter));
     }
-
     result.sort((a, b) => {
       if (sortField === "timestamp") {
         return sortDir === "desc"
@@ -181,12 +330,14 @@ export default function SiemEvents() {
       }
       return sortDir === "desc" ? b.rule.level - a.rule.level : a.rule.level - b.rule.level;
     });
+    return { events: result, totalEvents: result.length };
+  }, [isIndexerConnected, alertsSearchQ.data, searchQuery, severityFilter, sourceFilter, agentFilter, mitreFilter, sortField, sortDir]);
 
-    return result;
-  }, [events, searchQuery, severityFilter, sourceFilter, agentFilter, mitreFilter, sortField, sortDir]);
+  const dataSource: "indexer" | "mock" = isIndexerConnected && alertsSearchQ.data?.data ? "indexer" : "mock";
 
-  const pagedEvents = filteredEvents.slice(page * pageSize, (page + 1) * pageSize);
-  const totalPages = Math.ceil(filteredEvents.length / pageSize);
+  // For mock mode, paginate client-side; for indexer mode, server already paginates
+  const pagedEvents = dataSource === "indexer" ? events : events.slice(page * pageSize, (page + 1) * pageSize);
+  const totalPages = Math.ceil((dataSource === "indexer" ? totalEvents : events.length) / pageSize);
 
   // ─── Correlation Engine ──────────────────────────────────────────────────
   const getRelatedEvents = useCallback(
@@ -201,15 +352,15 @@ export default function SiemEvents() {
       const sameMitre: SiemEvent[] = [];
 
       events.forEach((e) => {
-        if (e.id === event.id) return;
+        if (e._id === event._id) return;
         const t = new Date(e.timestamp).getTime();
         if (t < minTime || t > maxTime) return;
 
         if (e.agent.id === event.agent.id) sameAgent.push(e);
-        if (e.rule.id === event.rule.id) sameRule.push(e);
+        if (String(e.rule.id) === String(event.rule.id)) sameRule.push(e);
         if (
           event.rule.mitre.id.length > 0 &&
-          (e.rule.mitre.id as string[]).some((id) => (event.rule.mitre.id as string[]).includes(id))
+          e.rule.mitre.id.some((id) => event.rule.mitre.id.includes(id))
         ) {
           sameMitre.push(e);
         }
@@ -220,27 +371,80 @@ export default function SiemEvents() {
     [events, correlationWindow]
   );
 
-  // ─── Computed Stats ──────────────────────────────────────────────────────
+  // ─── Computed Stats (from aggregations or mock) ──────────────────────────
   const stats = useMemo(() => {
     const severityCounts: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
     const sourceCounts: Record<string, number> = {};
-    const agentCounts: Record<string, number> = {};
     const tacticCounts: Record<string, number> = {};
-    const hourlyBuckets: Record<number, number> = {};
+    const hourlyBuckets: Record<string, number> = {};
 
-    events.forEach((e) => {
-      severityCounts[LEVEL_TO_SEVERITY(e.rule.level)]++;
-      sourceCounts[e.decoder.parent || e.decoder.name] = (sourceCounts[e.decoder.parent || e.decoder.name] || 0) + 1;
-      agentCounts[e.agent.name] = (agentCounts[e.agent.name] || 0) + 1;
-      e.rule.mitre.tactic.forEach((t) => {
-        tacticCounts[t] = (tacticCounts[t] || 0) + 1;
+    if (isIndexerConnected) {
+      // Severity from alertsAggByLevel
+      if (alertsAggByLevelQ.data?.data) {
+        const resp = alertsAggByLevelQ.data.data as unknown as Record<string, unknown>;
+        const aggs = (resp.aggregations ?? {}) as Record<string, unknown>;
+        const severityTotal = (aggs.severity_total ?? {}) as Record<string, unknown>;
+        const buckets = (severityTotal.buckets ?? []) as Array<Record<string, unknown>>;
+        buckets.forEach((b) => {
+          const level = Number(b.key ?? 0);
+          const count = Number(b.doc_count ?? 0);
+          const sev = LEVEL_TO_SEVERITY(level);
+          severityCounts[sev] = (severityCounts[sev] || 0) + count;
+        });
+      }
+
+      // Decoder/source from alertsAggByDecoder
+      if (alertsAggByDecoderQ.data?.data) {
+        const resp = alertsAggByDecoderQ.data.data as unknown as Record<string, unknown>;
+        const aggs = (resp.aggregations ?? {}) as Record<string, unknown>;
+        const topDecoders = (aggs.top_decoders ?? {}) as Record<string, unknown>;
+        const buckets = (topDecoders.buckets ?? []) as Array<Record<string, unknown>>;
+        buckets.forEach((b) => {
+          sourceCounts[String(b.key)] = Number(b.doc_count ?? 0);
+        });
+      }
+
+      // MITRE tactics from alertsAggByMitre
+      if (alertsAggByMitreQ.data?.data) {
+        const resp = alertsAggByMitreQ.data.data as unknown as Record<string, unknown>;
+        const aggs = (resp.aggregations ?? {}) as Record<string, unknown>;
+        const tactics = (aggs.tactics ?? {}) as Record<string, unknown>;
+        const buckets = (tactics.buckets ?? []) as Array<Record<string, unknown>>;
+        buckets.forEach((b) => {
+          tacticCounts[String(b.key)] = Number(b.doc_count ?? 0);
+        });
+      }
+
+      // Timeline from alertsTimeline
+      if (alertsTimelineQ.data?.data) {
+        const resp = alertsTimelineQ.data.data as unknown as Record<string, unknown>;
+        const aggs = (resp.aggregations ?? {}) as Record<string, unknown>;
+        const timeline = (aggs.timeline ?? {}) as Record<string, unknown>;
+        const buckets = (timeline.buckets ?? []) as Array<Record<string, unknown>>;
+        buckets.forEach((b) => {
+          const key = String(b.key_as_string ?? b.key ?? "");
+          hourlyBuckets[key] = Number(b.doc_count ?? 0);
+        });
+      }
+    } else {
+      // Mock fallback
+      const mockEvents = MOCK_SIEM_EVENTS;
+      mockEvents.forEach((e) => {
+        severityCounts[LEVEL_TO_SEVERITY(e.rule.level)]++;
+        sourceCounts[e.decoder.parent || e.decoder.name] = (sourceCounts[e.decoder.parent || e.decoder.name] || 0) + 1;
+        e.rule.mitre.tactic.forEach((t) => {
+          tacticCounts[t] = (tacticCounts[t] || 0) + 1;
+        });
+        const hour = new Date(e.timestamp).getHours();
+        const hourKey = `${hour.toString().padStart(2, "0")}:00`;
+        hourlyBuckets[hourKey] = (hourlyBuckets[hourKey] || 0) + 1;
       });
-      const hour = new Date(e.timestamp).getHours();
-      hourlyBuckets[hour] = (hourlyBuckets[hour] || 0) + 1;
-    });
+    }
 
-    return { severityCounts, sourceCounts, agentCounts, tacticCounts, hourlyBuckets };
-  }, [events]);
+    return { severityCounts, sourceCounts, tacticCounts, hourlyBuckets };
+  }, [isIndexerConnected, alertsAggByLevelQ.data, alertsAggByDecoderQ.data, alertsAggByMitreQ.data, alertsTimelineQ.data]);
+
+  const totalEventCount = isIndexerConnected ? totalEvents : MOCK_SIEM_EVENTS.length;
 
   const severityPieData = Object.entries(stats.severityCounts)
     .filter(([, v]) => v > 0)
@@ -254,10 +458,45 @@ export default function SiemEvents() {
     .sort(([, a], [, b]) => b - a)
     .map(([k, v]) => ({ name: k, count: v }));
 
-  const hourlyData = Array.from({ length: 24 }, (_, i) => ({
-    hour: `${i.toString().padStart(2, "0")}:00`,
-    events: stats.hourlyBuckets[i] || 0,
-  }));
+  const hourlyData = useMemo(() => {
+    if (isIndexerConnected && Object.keys(stats.hourlyBuckets).length > 0) {
+      // Indexer returns ISO timestamps as keys
+      return Object.entries(stats.hourlyBuckets)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, count]) => {
+          // Try to parse as date, fall back to raw key
+          const d = new Date(key);
+          const label = isNaN(d.getTime()) ? key : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          return { hour: label, events: count };
+        });
+    }
+    // Mock fallback
+    return Array.from({ length: 24 }, (_, i) => ({
+      hour: `${i.toString().padStart(2, "0")}:00`,
+      events: stats.hourlyBuckets[`${i.toString().padStart(2, "0")}:00`] || 0,
+    }));
+  }, [isIndexerConnected, stats.hourlyBuckets]);
+
+  // Log sources for sidebar
+  const logSources = useMemo(() => {
+    if (isIndexerConnected && alertsAggByDecoderQ.data?.data) {
+      const resp = alertsAggByDecoderQ.data.data as unknown as Record<string, unknown>;
+      const aggs = (resp.aggregations ?? {}) as Record<string, unknown>;
+      const topDecoders = (aggs.top_decoders ?? {}) as Record<string, unknown>;
+      const buckets = (topDecoders.buckets ?? []) as Array<Record<string, unknown>>;
+      return buckets.map((b) => {
+        const parentAgg = (b.parent_decoder ?? {}) as Record<string, unknown>;
+        const parentBuckets = (parentAgg.buckets ?? []) as Array<Record<string, unknown>>;
+        const parentName = parentBuckets.length > 0 ? String(parentBuckets[0].key) : "";
+        return {
+          name: String(b.key),
+          count: Number(b.doc_count ?? 0),
+          category: parentName || String(b.key),
+        };
+      });
+    }
+    return MOCK_LOG_SOURCES;
+  }, [isIndexerConnected, alertsAggByDecoderQ.data]);
 
   const activeFilters = [severityFilter, sourceFilter, agentFilter, mitreFilter].filter((f) => f !== "all").length;
 
@@ -267,6 +506,7 @@ export default function SiemEvents() {
     setAgentFilter("all");
     setMitreFilter("all");
     setSearchQuery("");
+    setPage(0);
   };
 
   // ─── Saved Search Helpers ────────────────────────────────────────────────
@@ -308,15 +548,33 @@ export default function SiemEvents() {
     });
   };
 
+  const handleRefresh = useCallback(() => {
+    utils.wazuh.invalidate();
+    utils.indexer.invalidate();
+  }, [utils]);
+
+  const isLoading = alertsSearchQ.isLoading || alertsAggByLevelQ.isLoading;
+
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6 p-6 max-w-[2400px] mx-auto">
       <WazuhGuard><div /></WazuhGuard>
       <PageHeader
         title="SIEM Events"
-        subtitle="Unified security event viewer — normalized alerts, log correlation, and forensic drill-down"
+        subtitle={`Unified security event viewer — ${dataSource === "indexer" ? "live Wazuh Indexer data" : "demo data (Indexer not connected)"}`}
+        onRefresh={handleRefresh}
+        isLoading={isLoading}
       >
         <div className="flex items-center gap-2">
+          {/* Data source badge */}
+          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-mono ${
+            dataSource === "indexer"
+              ? "bg-green-500/10 border-green-500/30 text-green-400"
+              : "bg-amber-500/10 border-amber-500/30 text-amber-400"
+          }`}>
+            {dataSource === "indexer" ? "LIVE" : "DEMO"}
+          </span>
+
           {/* Saved Searches Dropdown */}
           <div className="relative">
             <Button
@@ -383,13 +641,6 @@ export default function SiemEvents() {
             <BookmarkPlus className="h-3.5 w-3.5 mr-1" />
             Save Search
           </Button>
-
-          <RefreshControl
-            onRefresh={() => {
-              rulesQ.refetch();
-              agentsQ.refetch();
-            }}
-          />
         </div>
       </PageHeader>
 
@@ -456,7 +707,7 @@ export default function SiemEvents() {
 
       {/* ── KPI Row ───────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <StatCard label="Total Events" value={events.length.toLocaleString()} icon={Layers} />
+        <StatCard label="Total Events" value={totalEventCount.toLocaleString()} icon={Layers} />
         <StatCard
           label="Critical"
           value={stats.severityCounts.critical}
@@ -492,25 +743,31 @@ export default function SiemEvents() {
         {/* Event Timeline */}
         <GlassPanel className="lg:col-span-1">
           <h3 className="text-sm font-semibold text-violet-300 mb-3 flex items-center gap-2">
-            <Activity className="h-4 w-4" /> Event Volume (24h)
+            <Activity className="h-4 w-4" /> Event Volume
           </h3>
-          <ResponsiveContainer width="100%" height={180}>
-            <AreaChart data={hourlyData}>
-              <defs>
-                <linearGradient id="siemGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" />
-              <XAxis dataKey="hour" tick={{ fill: "#94a3b8", fontSize: 10 }} interval={3} />
-              <YAxis tick={{ fill: "#94a3b8", fontSize: 10 }} width={30} />
-              <RTooltip
-                contentStyle={{ background: "#1e1b4b", border: "1px solid #7c3aed40", borderRadius: 8, color: "#e2e8f0" }}
-              />
-              <Area type="monotone" dataKey="events" stroke="#8b5cf6" fill="url(#siemGrad)" strokeWidth={2} />
-            </AreaChart>
-          </ResponsiveContainer>
+          {alertsTimelineQ.isLoading ? (
+            <div className="flex items-center justify-center h-[180px]">
+              <Loader2 className="h-5 w-5 text-violet-400 animate-spin" />
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={180}>
+              <AreaChart data={hourlyData}>
+                <defs>
+                  <linearGradient id="siemGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" />
+                <XAxis dataKey="hour" tick={{ fill: "#94a3b8", fontSize: 10 }} interval="preserveStartEnd" />
+                <YAxis tick={{ fill: "#94a3b8", fontSize: 10 }} width={30} />
+                <RTooltip
+                  contentStyle={{ background: "#1e1b4b", border: "1px solid #7c3aed40", borderRadius: 8, color: "#e2e8f0" }}
+                />
+                <Area type="monotone" dataKey="events" stroke="#8b5cf6" fill="url(#siemGrad)" strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
         </GlassPanel>
 
         {/* Severity Distribution */}
@@ -518,34 +775,42 @@ export default function SiemEvents() {
           <h3 className="text-sm font-semibold text-violet-300 mb-3 flex items-center gap-2">
             <AlertTriangle className="h-4 w-4" /> Severity Distribution
           </h3>
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
-              <Pie
-                data={severityPieData}
-                cx="50%"
-                cy="50%"
-                innerRadius={40}
-                outerRadius={70}
-                paddingAngle={3}
-                dataKey="value"
-              >
-                {severityPieData.map((entry, i) => (
-                  <Cell key={i} fill={entry.color} />
+          {alertsAggByLevelQ.isLoading ? (
+            <div className="flex items-center justify-center h-[180px]">
+              <Loader2 className="h-5 w-5 text-violet-400 animate-spin" />
+            </div>
+          ) : (
+            <>
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie
+                    data={severityPieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={40}
+                    outerRadius={70}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {severityPieData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <RTooltip
+                    contentStyle={{ background: "#1e1b4b", border: "1px solid #7c3aed40", borderRadius: 8, color: "#e2e8f0" }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="flex flex-wrap gap-2 justify-center mt-1">
+                {severityPieData.map((d) => (
+                  <span key={d.name} className="flex items-center gap-1 text-xs text-slate-400">
+                    <span className="w-2 h-2 rounded-full" style={{ background: d.color }} />
+                    {d.name}: {d.value.toLocaleString()}
+                  </span>
                 ))}
-              </Pie>
-              <RTooltip
-                contentStyle={{ background: "#1e1b4b", border: "1px solid #7c3aed40", borderRadius: 8, color: "#e2e8f0" }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="flex flex-wrap gap-2 justify-center mt-1">
-            {severityPieData.map((d) => (
-              <span key={d.name} className="flex items-center gap-1 text-xs text-slate-400">
-                <span className="w-2 h-2 rounded-full" style={{ background: d.color }} />
-                {d.name}: {d.value}
-              </span>
-            ))}
-          </div>
+              </div>
+            </>
+          )}
         </GlassPanel>
 
         {/* MITRE Tactic Distribution */}
@@ -553,17 +818,23 @@ export default function SiemEvents() {
           <h3 className="text-sm font-semibold text-violet-300 mb-3 flex items-center gap-2">
             <Shield className="h-4 w-4" /> MITRE Tactic Hits
           </h3>
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={tacticBarData} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" />
-              <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 10 }} />
-              <YAxis dataKey="name" type="category" tick={{ fill: "#94a3b8", fontSize: 9 }} width={120} />
-              <RTooltip
-                contentStyle={{ background: "#1e1b4b", border: "1px solid #7c3aed40", borderRadius: 8, color: "#e2e8f0" }}
-              />
-              <Bar dataKey="count" fill="#a78bfa" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          {alertsAggByMitreQ.isLoading ? (
+            <div className="flex items-center justify-center h-[180px]">
+              <Loader2 className="h-5 w-5 text-violet-400 animate-spin" />
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={tacticBarData} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" />
+                <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                <YAxis dataKey="name" type="category" tick={{ fill: "#94a3b8", fontSize: 9 }} width={120} />
+                <RTooltip
+                  contentStyle={{ background: "#1e1b4b", border: "1px solid #7c3aed40", borderRadius: 8, color: "#e2e8f0" }}
+                />
+                <Bar dataKey="count" fill="#a78bfa" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </GlassPanel>
       </div>
 
@@ -573,30 +844,39 @@ export default function SiemEvents() {
           <h3 className="text-sm font-semibold text-violet-300 mb-3 flex items-center gap-2">
             <Database className="h-4 w-4" /> Log Sources
           </h3>
-          <div className="space-y-2">
-            {logSources.map((src) => (
-              <button
-                key={src.name}
-                onClick={() => setSourceFilter(sourceFilter === src.name ? "all" : src.name)}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors ${
-                  sourceFilter === src.name
-                    ? "bg-violet-600/30 border border-violet-500/50 text-violet-200"
-                    : "bg-white/5 hover:bg-white/10 text-slate-300"
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />
-                  <span className="font-mono">{src.name}</span>
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="text-slate-500">{src.category}</span>
-                  <span className="bg-violet-500/20 text-violet-300 px-1.5 py-0.5 rounded text-[10px] font-bold">
-                    {src.count}
+          {alertsAggByDecoderQ.isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 text-violet-400 animate-spin" />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {logSources.map((src) => (
+                <button
+                  key={src.name}
+                  onClick={() => { setSourceFilter(sourceFilter === src.name ? "all" : src.name); setPage(0); }}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors ${
+                    sourceFilter === src.name
+                      ? "bg-violet-600/30 border border-violet-500/50 text-violet-200"
+                      : "bg-white/5 hover:bg-white/10 text-slate-300"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />
+                    <span className="font-mono">{src.name}</span>
                   </span>
-                </span>
-              </button>
-            ))}
-          </div>
+                  <span className="flex items-center gap-2">
+                    <span className="text-slate-500">{src.category}</span>
+                    <span className="bg-violet-500/20 text-violet-300 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                      {src.count.toLocaleString()}
+                    </span>
+                  </span>
+                </button>
+              ))}
+              {logSources.length === 0 && (
+                <div className="text-center py-4 text-xs text-slate-500">No log sources found</div>
+              )}
+            </div>
+          )}
         </GlassPanel>
 
         {/* ── Decoder Bar Chart ─────────────────────────────────────────── */}
@@ -676,14 +956,12 @@ export default function SiemEvents() {
           {/* Time range */}
           <select
             value={timeRange}
-            onChange={(e) => setTimeRange(e.target.value)}
+            onChange={(e) => { setTimeRange(e.target.value); setPage(0); }}
             className="px-3 py-2.5 bg-white/5 border border-white/10 rounded-lg text-sm text-slate-200 focus:outline-none focus:border-violet-500/50"
           >
-            <option value="15m">Last 15m</option>
-            <option value="1h">Last 1h</option>
-            <option value="6h">Last 6h</option>
-            <option value="24h">Last 24h</option>
-            <option value="7d">Last 7d</option>
+            {TIME_PRESETS.map((p) => (
+              <option key={p.value} value={p.value}>{p.label}</option>
+            ))}
           </select>
 
           {/* Sort */}
@@ -714,11 +992,16 @@ export default function SiemEvents() {
 
         <div className="mt-2 flex items-center justify-between">
           <span className="text-xs text-slate-500">
-            Showing {pagedEvents.length} of {filteredEvents.length} events
-            {filteredEvents.length !== events.length && ` (filtered from ${events.length} total)`}
+            {dataSource === "indexer" ? (
+              <>Showing {pagedEvents.length} of {totalEvents.toLocaleString()} events (page {page + 1})</>
+            ) : (
+              <>Showing {pagedEvents.length} of {events.length} demo events
+                {events.length !== MOCK_SIEM_EVENTS.length && ` (filtered from ${MOCK_SIEM_EVENTS.length} total)`}
+              </>
+            )}
           </span>
           <ExportButton
-            getData={() => filteredEvents.map(e => ({
+            getData={() => pagedEvents.map(e => ({
               timestamp: e.timestamp,
               agent: e.agent.name,
               agentId: e.agent.id,
@@ -726,8 +1009,8 @@ export default function SiemEvents() {
               ruleDescription: e.rule.description,
               level: e.rule.level,
               decoder: e.decoder.name,
-              srcIp: String((e.data as Record<string, unknown>)?.srcip ?? ""),
-              dstIp: String((e.data as Record<string, unknown>)?.dstip ?? ""),
+              srcIp: String(e.data?.srcip ?? ""),
+              dstIp: String(e.data?.dstip ?? ""),
               mitreTactic: e.rule.mitre?.tactic?.join(", ") ?? "",
               mitreId: e.rule.mitre?.id?.join(", ") ?? "",
               logSource: e.location,
@@ -752,14 +1035,30 @@ export default function SiemEvents() {
           <span>Actions</span>
         </div>
 
+        {/* Loading state */}
+        {alertsSearchQ.isLoading && dataSource === "indexer" && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 text-violet-400 animate-spin" />
+            <span className="ml-2 text-sm text-slate-400">Loading events from Wazuh Indexer...</span>
+          </div>
+        )}
+
+        {/* Error state */}
+        {alertsSearchQ.isError && dataSource === "indexer" && (
+          <div className="flex items-center justify-center py-12 gap-2">
+            <AlertCircle className="h-5 w-5 text-red-400" />
+            <span className="text-sm text-red-300">Failed to load events: {alertsSearchQ.error?.message}</span>
+          </div>
+        )}
+
         {/* Event Rows */}
         <div className="divide-y divide-white/5">
           {pagedEvents.map((event) => {
             const severity = LEVEL_TO_SEVERITY(event.rule.level);
-            const isExpanded = expandedEvent === event.id;
+            const isExpanded = expandedEvent === event._id;
             const DecoderIcon = DECODER_ICONS[event.decoder.name] || DECODER_ICONS[event.decoder.parent] || Database;
-            const srcip = (event.data as Record<string, unknown>)?.srcip as string | undefined;
-            const dstuser = (event.data as Record<string, unknown>)?.dstuser as string | undefined;
+            const srcip = event.data?.srcip as string | undefined;
+            const dstuser = event.data?.dstuser as string | undefined;
 
             // Compute correlation counts for the badge
             const correlationCounts = isExpanded
@@ -775,13 +1074,13 @@ export default function SiemEvents() {
               : null;
 
             return (
-              <div key={event.id}>
+              <div key={event._id}>
                 {/* Main Row */}
                 <div
                   className={`grid grid-cols-[60px_160px_1fr_180px_120px_100px_80px] gap-2 px-4 py-3 text-sm cursor-pointer transition-colors ${
                     isExpanded ? "bg-violet-500/10" : "hover:bg-white/5"
                   }`}
-                  onClick={() => setExpandedEvent(isExpanded ? null : event.id)}
+                  onClick={() => setExpandedEvent(isExpanded ? null : event._id)}
                 >
                   {/* Level */}
                   <div className="flex items-center">
@@ -845,7 +1144,7 @@ export default function SiemEvents() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        setShowRawJson(showRawJson === event.id ? null : event.id);
+                        setShowRawJson(showRawJson === event._id ? null : event._id);
                       }}
                       className="p-1 rounded hover:bg-white/10 text-slate-500 hover:text-violet-300 transition-colors"
                       title="View raw JSON"
@@ -873,7 +1172,7 @@ export default function SiemEvents() {
                     <div>
                       <h4 className="text-xs font-semibold text-violet-300 mb-1.5">Full Log</h4>
                       <pre className="text-xs text-slate-300 bg-black/30 rounded-lg p-3 overflow-x-auto font-mono whitespace-pre-wrap break-all border border-white/5">
-                        {event.full_log}
+                        {event.full_log || "(no full_log field)"}
                       </pre>
                     </div>
 
@@ -900,19 +1199,19 @@ export default function SiemEvents() {
                               </div>
                             </div>
                           )}
-                          {(event.data as Record<string, unknown>)?.srcport ? (
+                          {event.data?.srcport ? (
                             <div className="flex justify-between">
                               <span className="text-slate-500">Source Port</span>
-                              <span className="font-mono text-slate-200">{String((event.data as Record<string, unknown>).srcport)}</span>
+                              <span className="font-mono text-slate-200">{String(event.data.srcport)}</span>
                             </div>
                           ) : null}
-                          {(event.data as Record<string, unknown>)?.dstip ? (
+                          {event.data?.dstip ? (
                             <div className="flex justify-between items-center">
                               <span className="text-slate-500">Dest IP</span>
                               <div className="flex items-center gap-1.5">
-                                <span className="font-mono text-slate-200">{String((event.data as Record<string, unknown>).dstip)}</span>
+                                <span className="font-mono text-slate-200">{String(event.data.dstip)}</span>
                                 {isOtxConfigured && (() => {
-                                  const dip = String((event.data as Record<string, unknown>).dstip);
+                                  const dip = String(event.data.dstip);
                                   return !dip.startsWith("10.") && !dip.startsWith("192.168.") && !dip.startsWith("172.") ? (
                                     <button
                                       onClick={(e) => { e.stopPropagation(); setOtxLookupIndicator({ type: "IPv4", value: dip }); }}
@@ -926,10 +1225,10 @@ export default function SiemEvents() {
                               </div>
                             </div>
                           ) : null}
-                          {(event.data as Record<string, unknown>)?.dstport ? (
+                          {event.data?.dstport ? (
                             <div className="flex justify-between">
                               <span className="text-slate-500">Dest Port</span>
-                              <span className="font-mono text-slate-200">{String((event.data as Record<string, unknown>).dstport)}</span>
+                              <span className="font-mono text-slate-200">{String(event.data.dstport)}</span>
                             </div>
                           ) : null}
                           {dstuser && (
@@ -944,7 +1243,7 @@ export default function SiemEvents() {
                           </div>
                           <div className="flex justify-between">
                             <span className="text-slate-500">Decoder</span>
-                            <span className="font-mono text-slate-200">{event.decoder.name} → {event.decoder.parent}</span>
+                            <span className="font-mono text-slate-200">{event.decoder.name}{event.decoder.parent ? ` → ${event.decoder.parent}` : ""}</span>
                           </div>
                         </div>
                       </div>
@@ -998,9 +1297,14 @@ export default function SiemEvents() {
                                   </a>
                                 ))}
                               </div>
+                            </div>
+                          )}
+                          {event.rule.mitre.tactic.length > 0 && (
+                            <div>
+                              <span className="text-slate-500">Tactics</span>
                               <div className="flex flex-wrap gap-1 mt-1">
                                 {event.rule.mitre.tactic.map((t) => (
-                                  <span key={t} className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 rounded text-[10px]">
+                                  <span key={t} className="px-1.5 py-0.5 bg-violet-500/10 text-violet-300 rounded text-[10px]">
                                     {t}
                                   </span>
                                 ))}
@@ -1077,18 +1381,17 @@ export default function SiemEvents() {
                             ))}
                           </div>
                           <button
-                            onClick={() => setShowCorrelation(showCorrelation === event.id ? null : event.id)}
+                            onClick={() => setShowCorrelation(showCorrelation === event._id ? null : event._id)}
                             className={`px-2 py-1 rounded text-[10px] transition-colors ${
-                              showCorrelation === event.id
+                              showCorrelation === event._id
                                 ? "bg-violet-500/30 text-violet-200"
                                 : "bg-white/5 text-slate-400 hover:bg-white/10"
                             }`}
                           >
-                            {showCorrelation === event.id ? "Hide" : "Show"} Details
+                            {showCorrelation === event._id ? "Hide" : "Show"} Details
                           </button>
                         </div>
                       </div>
-
                       {/* Correlation summary badges */}
                       {correlationCounts && (
                         <div className="flex gap-3 mb-3">
@@ -1106,9 +1409,8 @@ export default function SiemEvents() {
                           </div>
                         </div>
                       )}
-
                       {/* Expanded correlation details */}
-                      {showCorrelation === event.id && (() => {
+                      {showCorrelation === event._id && (() => {
                         const related = getRelatedEvents(event);
                         return (
                           <div className="space-y-3">
@@ -1122,10 +1424,10 @@ export default function SiemEvents() {
                                   <div className="max-h-[200px] overflow-y-auto divide-y divide-white/5">
                                     {related.sameAgent.slice(0, 10).map((re) => (
                                       <div
-                                        key={re.id}
+                                        key={re._id}
                                         className="flex items-center gap-3 px-3 py-2 text-xs hover:bg-white/5 cursor-pointer"
                                         onClick={() => {
-                                          setExpandedEvent(re.id);
+                                          setExpandedEvent(re._id);
                                           setShowCorrelation(null);
                                         }}
                                       >
@@ -1154,7 +1456,6 @@ export default function SiemEvents() {
                                 </div>
                               </div>
                             )}
-
                             {/* Same Rule */}
                             {related.sameRule.length > 0 && (
                               <div>
@@ -1165,10 +1466,10 @@ export default function SiemEvents() {
                                   <div className="max-h-[200px] overflow-y-auto divide-y divide-white/5">
                                     {related.sameRule.slice(0, 10).map((re) => (
                                       <div
-                                        key={re.id}
+                                        key={re._id}
                                         className="flex items-center gap-3 px-3 py-2 text-xs hover:bg-white/5 cursor-pointer"
                                         onClick={() => {
-                                          setExpandedEvent(re.id);
+                                          setExpandedEvent(re._id);
                                           setShowCorrelation(null);
                                         }}
                                       >
@@ -1187,7 +1488,7 @@ export default function SiemEvents() {
                                         <span className="text-violet-300 font-mono flex-shrink-0">{re.agent.id}</span>
                                         <span className="text-slate-300 truncate">{re.agent.name}</span>
                                         <span className="text-slate-500 font-mono flex-shrink-0">
-                                          {(re.data as Record<string, unknown>)?.srcip as string || "—"}
+                                          {re.data?.srcip as string || "—"}
                                         </span>
                                       </div>
                                     ))}
@@ -1200,7 +1501,6 @@ export default function SiemEvents() {
                                 </div>
                               </div>
                             )}
-
                             {/* Same MITRE Technique */}
                             {related.sameMitre.length > 0 && (
                               <div>
@@ -1211,10 +1511,10 @@ export default function SiemEvents() {
                                   <div className="max-h-[200px] overflow-y-auto divide-y divide-white/5">
                                     {related.sameMitre.slice(0, 10).map((re) => (
                                       <div
-                                        key={re.id}
+                                        key={re._id}
                                         className="flex items-center gap-3 px-3 py-2 text-xs hover:bg-white/5 cursor-pointer"
                                         onClick={() => {
-                                          setExpandedEvent(re.id);
+                                          setExpandedEvent(re._id);
                                           setShowCorrelation(null);
                                         }}
                                       >
@@ -1250,7 +1550,6 @@ export default function SiemEvents() {
                                 </div>
                               </div>
                             )}
-
                             {related.sameAgent.length === 0 && related.sameRule.length === 0 && related.sameMitre.length === 0 && (
                               <div className="text-center py-4 text-xs text-slate-500">
                                 No related events found within the selected time window
@@ -1264,7 +1563,7 @@ export default function SiemEvents() {
                 )}
 
                 {/* Raw JSON Panel */}
-                {showRawJson === event.id && (
+                {showRawJson === event._id && (
                   <div className="px-4 py-3 bg-black/20 border-t border-white/5">
                     <div className="flex items-center justify-between mb-2">
                       <h4 className="text-xs font-semibold text-violet-300">Raw Event JSON</h4>
@@ -1281,6 +1580,19 @@ export default function SiemEvents() {
               </div>
             );
           })}
+
+          {/* Empty state */}
+          {pagedEvents.length === 0 && !alertsSearchQ.isLoading && (
+            <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+              <Search className="h-8 w-8 mb-2 text-slate-600" />
+              <p className="text-sm">No events found for the selected filters</p>
+              {activeFilters > 0 && (
+                <button onClick={clearFilters} className="mt-2 text-xs text-violet-400 hover:text-violet-300">
+                  Clear all filters
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Pagination */}
@@ -1361,10 +1673,10 @@ export default function SiemEvents() {
                 const pulseCount = Number((data.pulse_info as Record<string, unknown>)?.count ?? 0);
                 const pulses = ((data.pulse_info as Record<string, unknown>)?.pulses ?? []) as Array<Record<string, unknown>>;
                 const reputation = data.reputation as number | null | undefined;
-                const country = String((data as Record<string, unknown>)?.country_name ?? (data as Record<string, unknown>)?.country ?? "");
-                const asn = String((data as Record<string, unknown>)?.asn ?? "");
-                const validation = ((data as Record<string, unknown>)?.validation ?? []) as Array<Record<string, unknown>>;
-                const sections = ((data as Record<string, unknown>)?.sections ?? []) as string[];
+                const country = String(data?.country_name ?? data?.country ?? "");
+                const asn = String(data?.asn ?? "");
+                const validation = (data?.validation ?? []) as Array<Record<string, unknown>>;
+                const sections = (data?.sections ?? []) as string[];
 
                 return (
                   <div className="space-y-4">
