@@ -329,18 +329,180 @@ export function LiveAlertFeed({
 
 // ── Notification Bell (for DashboardLayout header) ───────────────────────────
 
-export function AlertNotificationBell() {
-  const { unreadCount, status } = useAlertStream({ severityThreshold: 10 });
+export function AlertNotificationBell({ collapsed = false }: { collapsed?: boolean }) {
+  const {
+    alerts,
+    unreadCount,
+    status,
+    acknowledgeAll,
+    dismissAlert,
+    clearAlerts,
+  } = useAlertStream({ severityThreshold: 10 });
+  const [open, setOpen] = useState(false);
   const isLive = status === "connected";
+
+  const statusConfig: Record<StreamStatus, { color: string; label: string }> = {
+    connected: { color: "bg-threat-low", label: "Live" },
+    connecting: { color: "bg-yellow-500", label: "Connecting..." },
+    disconnected: { color: "bg-muted-foreground", label: "Disconnected" },
+    error: { color: "bg-threat-high", label: "Error" },
+    indexer_unavailable: { color: "bg-threat-medium", label: "Indexer N/A" },
+  };
+  const sc = statusConfig[status];
 
   return (
     <div className="relative">
-      <Bell className={`h-4 w-4 ${isLive ? "text-primary" : "text-muted-foreground"}`} />
-      {unreadCount > 0 && (
-        <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center h-4 min-w-[16px] px-0.5 rounded-full bg-threat-critical text-white text-[8px] font-bold animate-pulse">
-          {unreadCount > 9 ? "9+" : unreadCount}
-        </span>
+      {/* Bell trigger */}
+      <button
+        onClick={() => {
+          setOpen((prev) => !prev);
+          if (!open && unreadCount > 0) acknowledgeAll();
+        }}
+        className={`relative p-2 rounded-lg transition-colors ${
+          open ? "bg-primary/15" : "hover:bg-sidebar-accent"
+        }`}
+        title={`${unreadCount} unread alerts`}
+      >
+        <Bell className={`h-4 w-4 ${isLive ? "text-primary" : "text-muted-foreground"}`} />
+        {unreadCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center h-4 min-w-[16px] px-0.5 rounded-full bg-threat-critical text-white text-[8px] font-bold animate-pulse">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {/* Dropdown popover */}
+      {open && (
+        <div
+          className={`absolute z-50 ${
+            collapsed ? "left-full ml-2 top-0" : "left-0 top-full mt-2"
+          } w-80 max-h-[480px] flex flex-col rounded-xl border border-border/40 bg-popover/95 backdrop-blur-xl shadow-2xl shadow-black/40`}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
+            <div className="flex items-center gap-2">
+              <Radio className="h-3.5 w-3.5 text-threat-critical" />
+              <span className="text-xs font-medium text-foreground">Alert Stream</span>
+              <span className="flex items-center gap-1">
+                <span className={`h-1.5 w-1.5 rounded-full ${sc.color} ${status === "connected" ? "animate-pulse" : ""}`} />
+                <span className="text-[9px] text-muted-foreground">{sc.label}</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-0.5">
+              {alerts.length > 0 && (
+                <button
+                  onClick={clearAlerts}
+                  className="p-1 rounded hover:bg-secondary/40 transition-colors"
+                  title="Clear all"
+                >
+                  <Trash2 className="h-3 w-3 text-muted-foreground" />
+                </button>
+              )}
+              <button
+                onClick={() => setOpen(false)}
+                className="p-1 rounded hover:bg-secondary/40 transition-colors"
+                title="Close"
+              >
+                <X className="h-3 w-3 text-muted-foreground" />
+              </button>
+            </div>
+          </div>
+
+          {/* Alert list */}
+          <div className="flex-1 overflow-y-auto min-h-0 max-h-[360px]">
+            {alerts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-center">
+                {isLive ? (
+                  <>
+                    <Bell className="h-6 w-6 text-primary/20 mb-2" />
+                    <p className="text-[10px] text-muted-foreground">Listening for critical alerts...</p>
+                    <p className="text-[9px] text-muted-foreground/50 mt-0.5">Level 10+ alerts appear here</p>
+                  </>
+                ) : (
+                  <>
+                    <BellOff className="h-6 w-6 text-muted-foreground/20 mb-2" />
+                    <p className="text-[10px] text-muted-foreground">{sc.label}</p>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="py-1">
+                {alerts.slice(0, 20).map((alert) => (
+                  <BellAlertRow key={alert.id} alert={alert} onDismiss={dismissAlert} />
+                ))}
+                {alerts.length > 20 && (
+                  <p className="text-center text-[9px] text-muted-foreground py-2">
+                    +{alerts.length - 20} more alerts
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="px-4 py-2.5 border-t border-border/30">
+            <a
+              href="/"
+              onClick={(e) => {
+                e.preventDefault();
+                setOpen(false);
+                window.location.href = "/";
+              }}
+              className="text-[10px] text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+            >
+              Open SOC Console
+              <span className="text-muted-foreground">→</span>
+            </a>
+          </div>
+        </div>
       )}
+
+      {/* Click-outside overlay */}
+      {open && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Compact alert row for the bell dropdown ─────────────────────────────────
+
+function BellAlertRow({ alert, onDismiss }: { alert: StreamedAlert; onDismiss: (id: string) => void }) {
+  const ts = useMemo(() => {
+    const d = new Date(alert.timestamp);
+    return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  }, [alert.timestamp]);
+
+  return (
+    <div className="group flex items-start gap-2 px-3 py-2 hover:bg-secondary/30 transition-colors">
+      <div className="shrink-0 mt-0.5">
+        <ThreatBadge level={threatLevelFromNumber(alert.rule.level)} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[11px] text-foreground leading-tight truncate">
+          {alert.rule.description}
+        </p>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <span className="text-[9px] font-mono text-primary">R:{alert.rule.id}</span>
+          <span className="text-[9px] text-muted-foreground truncate">{alert.agent.name}</span>
+          {alert.rule.mitre?.tactic?.slice(0, 1).map((t) => (
+            <span key={t} className="text-[8px] px-1 py-0 rounded bg-primary/10 text-primary border border-primary/20">{t}</span>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        <span className="text-[9px] text-muted-foreground font-mono">{ts}</span>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDismiss(alert.id); }}
+          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/20"
+          title="Dismiss"
+        >
+          <X className="h-2.5 w-2.5 text-muted-foreground" />
+        </button>
+      </div>
     </div>
   );
 }

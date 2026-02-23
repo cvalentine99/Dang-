@@ -49,6 +49,7 @@ import {
   Database,
   Settings,
 } from "lucide-react";
+import { AlertNotificationBell } from "@/components/LiveAlertFeed";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
@@ -243,7 +244,7 @@ function DashboardLayoutContent({
                 <PanelLeft className="h-4 w-4 text-muted-foreground" />
               </button>
               {!isCollapsed && (
-                <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
                   <span className="font-display font-bold text-lg tracking-tight text-primary truncate">
                     Dang!
                   </span>
@@ -252,6 +253,9 @@ function DashboardLayoutContent({
                   </span>
                 </div>
               )}
+              <div className="shrink-0">
+                <AlertNotificationBell collapsed={isCollapsed} />
+              </div>
             </div>
           </SidebarHeader>
 
