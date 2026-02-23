@@ -98,7 +98,7 @@ function createInstance(config: IndexerConfig): AxiosInstance {
   const baseURL = `${config.protocol}://${config.host}:${config.port}`;
   return axios.create({
     baseURL,
-    timeout: 30_000, // Indexer queries can be slower than Server API
+    timeout: 10_000, // Indexer queries can be slower than Server API
     httpsAgent: new https.Agent({ rejectUnauthorized: false }),
     auth: { username: config.user, password: config.pass },
     headers: { "Content-Type": "application/json" },

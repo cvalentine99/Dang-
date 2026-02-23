@@ -41,9 +41,13 @@ async function safeSearch(
   if (!isIndexerConfigured()) {
     return { configured: false, data: null };
   }
-  const config = getIndexerConfig();
-  const data = await indexerSearch(config, index, body, rateLimitGroup);
-  return { configured: true, data };
+  try {
+    const config = getIndexerConfig();
+    const data = await indexerSearch(config, index, body, rateLimitGroup);
+    return { configured: true, data };
+  } catch (err) {
+    return { configured: true, data: null, error: (err as Error).message };
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
