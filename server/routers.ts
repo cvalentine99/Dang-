@@ -12,6 +12,7 @@ import { notesRouter } from "./notes/notesRouter";
 import { localAuthRouter } from "./localAuth/localAuthRouter";
 import { adminUsersRouter } from "./admin/adminUsersRouter";
 import { graphRouter } from "./graph/graphRouter";
+import { connectionSettingsRouter } from "./admin/connectionSettingsRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -58,6 +59,8 @@ export const appRouter = router({
 
   // Knowledge Graph + HybridRAG Agentic Pipeline
   graph: graphRouter,
+  // Connection Settings (admin-only)
+  connectionSettings: connectionSettingsRouter,
 });
 
 export type AppRouter = typeof appRouter;

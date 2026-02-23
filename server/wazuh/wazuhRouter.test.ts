@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { appRouter } from "../routers";
 import type { TrpcContext } from "../_core/context";
 
-// Mock the wazuh client module
+// Mock the wazuh client module — include both sync and async config getters
 vi.mock("./wazuhClient", () => ({
   isWazuhConfigured: vi.fn(() => false),
   getWazuhConfig: vi.fn(() => ({
@@ -12,6 +12,27 @@ vi.mock("./wazuhClient", () => ({
     pass: "test-pass",
   })),
   wazuhGet: vi.fn(async () => ({ data: { affected_items: [], total_affected_items: 0 } })),
+  // Async effective config getters (DB override → env fallback)
+  getEffectiveWazuhConfig: vi.fn(async () => ({
+    host: "https://wazuh.example.com",
+    port: 55000,
+    user: "wazuh-wui",
+    pass: "test-pass",
+  })),
+  isWazuhEffectivelyConfigured: vi.fn(async () => true),
+}));
+
+// Mock the connectionSettingsService to prevent DB access in tests
+vi.mock("../admin/connectionSettingsService", () => ({
+  getEffectiveWazuhConfig: vi.fn(async () => ({
+    host: "https://wazuh.example.com",
+    port: 55000,
+    user: "wazuh-wui",
+    pass: "test-pass",
+  })),
+  getEffectiveIndexerConfig: vi.fn(async () => null),
+  isWazuhEffectivelyConfigured: vi.fn(async () => true),
+  isIndexerEffectivelyConfigured: vi.fn(async () => false),
 }));
 
 function createTestContext(): TrpcContext {
@@ -39,7 +60,7 @@ describe("wazuh router", () => {
     caller = appRouter.createCaller(createTestContext());
   });
 
-  it("status returns configured: false when Wazuh is not configured", async () => {
+  it("status returns configured: true when Wazuh is configured", async () => {
     const result = await caller.wazuh.status();
     expect(result).toHaveProperty("configured");
     expect(typeof result.configured).toBe("boolean");

@@ -15,6 +15,7 @@ import { searchGraph, getEndpointGraph, getGraphStats, getVulnerabilityAttackSur
 import {
   isIndexerConfigured,
   getIndexerConfig,
+  getEffectiveIndexerConfig,
   indexerSearch,
   INDEX_PATTERNS,
   boolQuery,
@@ -209,12 +210,11 @@ async function retrieveFromGraph(intent: IntentAnalysis): Promise<RetrievalSourc
 async function retrieveFromIndexer(intent: IntentAnalysis): Promise<RetrievalSource[]> {
   const sources: RetrievalSource[] = [];
 
-  if (!isIndexerConfigured()) {
+  const config = await getEffectiveIndexerConfig();
+  if (!config) {
     sources.push({ type: "indexer", label: "Indexer not configured", data: null, relevance: "error" });
     return sources;
   }
-
-  const config = getIndexerConfig();
 
   try {
     // Build search queries based on intent

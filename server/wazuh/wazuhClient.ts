@@ -159,7 +159,7 @@ export async function wazuhGet(
   }
 }
 
-// ── Config loader ─────────────────────────────────────────────────────────────
+// ── Config loader (env-only, synchronous) ────────────────────────────────────
 export function getWazuhConfig(): WazuhConfig {
   const host = process.env.WAZUH_HOST;
   const port = parseInt(process.env.WAZUH_PORT ?? "55000", 10);
@@ -177,4 +177,29 @@ export function getWazuhConfig(): WazuhConfig {
 
 export function isWazuhConfigured(): boolean {
   return !!(process.env.WAZUH_HOST && process.env.WAZUH_USER && process.env.WAZUH_PASS);
+}
+
+// ── Runtime config loader (DB override → env fallback, async) ────────────────
+
+/**
+ * Get Wazuh config checking DB overrides first, then env vars.
+ * Use this in request handlers instead of the sync version.
+ */
+export async function getEffectiveWazuhConfig(): Promise<WazuhConfig | null> {
+  try {
+    const { getEffectiveWazuhConfig: getFromDb } = await import("../admin/connectionSettingsService");
+    return await getFromDb();
+  } catch {
+    // If DB is not available, fall back to env
+    if (isWazuhConfigured()) return getWazuhConfig();
+    return null;
+  }
+}
+
+/**
+ * Check if Wazuh is configured via DB overrides or env vars.
+ */
+export async function isWazuhEffectivelyConfigured(): Promise<boolean> {
+  const config = await getEffectiveWazuhConfig();
+  return config !== null;
 }

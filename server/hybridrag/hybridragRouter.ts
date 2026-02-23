@@ -18,7 +18,7 @@ import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { analystNotes, ragSessions } from "../../drizzle/schema";
 import { invokeLLM } from "../_core/llm";
-import { isWazuhConfigured, wazuhGet, getWazuhConfig } from "../wazuh/wazuhClient";
+import { isWazuhConfigured, wazuhGet, getWazuhConfig, getEffectiveWazuhConfig } from "../wazuh/wazuhClient";
 
 // ── Nemotron 3 Nano config ────────────────────────────────────────────────────
 const NEMOTRON_BASE_URL = process.env.NEMOTRON_BASE_URL ?? "http://localhost:11434";
@@ -80,11 +80,10 @@ async function checkNemotronAvailability(): Promise<{ available: boolean; model:
  * This is injected into the system prompt for grounded responses.
  */
 async function buildWazuhContext(): Promise<string> {
-  if (!isWazuhConfigured()) {
+  const config = await getEffectiveWazuhConfig();
+  if (!config) {
     return "No Wazuh connection configured. Answering from general security knowledge only.";
   }
-
-  const config = getWazuhConfig();
   const lines: string[] = ["## Live Wazuh Telemetry Context\n"];
 
   try {

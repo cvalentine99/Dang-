@@ -10,6 +10,8 @@ import { publicProcedure, router } from "../_core/trpc";
 import {
   isIndexerConfigured,
   getIndexerConfig,
+  getEffectiveIndexerConfig,
+  isIndexerEffectivelyConfigured,
   indexerSearch,
   indexerHealth,
   indexerIndexExists,
@@ -32,17 +34,17 @@ const paginationSchema = z.object({
   offset: z.number().int().min(0).default(0),
 });
 
-// ── Helper: safe search with fallback ────────────────────────────────────────
+// ── Helper: safe search with fallback (uses DB override → env fallback) ─────
 async function safeSearch(
   index: string,
   body: ESSearchBody,
   rateLimitGroup: string
 ) {
-  if (!isIndexerConfigured()) {
+  const config = await getEffectiveIndexerConfig();
+  if (!config) {
     return { configured: false, data: null };
   }
   try {
-    const config = getIndexerConfig();
     const data = await indexerSearch(config, index, body, rateLimitGroup);
     return { configured: true, data };
   } catch (err) {
@@ -56,11 +58,11 @@ async function safeSearch(
 export const indexerRouter = router({
   // ── Status ─────────────────────────────────────────────────────────────────
   status: publicProcedure.query(async () => {
-    if (!isIndexerConfigured()) {
+    const config = await getEffectiveIndexerConfig();
+    if (!config) {
       return { configured: false, healthy: false, data: null };
     }
     try {
-      const config = getIndexerConfig();
       const health = await indexerHealth(config);
       return { configured: true, healthy: true, data: health };
     } catch (err) {
@@ -70,10 +72,10 @@ export const indexerRouter = router({
 
   /** Check which index patterns exist */
   indexStatus: publicProcedure.query(async () => {
-    if (!isIndexerConfigured()) {
+    const config = await getEffectiveIndexerConfig();
+    if (!config) {
       return { configured: false, indices: {} };
     }
-    const config = getIndexerConfig();
     const indices: Record<string, boolean> = {};
     for (const [name, pattern] of Object.entries(INDEX_PATTERNS)) {
       try {
