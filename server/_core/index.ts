@@ -203,6 +203,13 @@ async function startServer() {
     });
   });
 
+  // SSE alert stream endpoint
+  const { handleSSEConnection, getStreamStats } = await import("../sse/alertStreamService");
+  app.get("/api/sse/alerts", handleSSEConnection);
+  app.get("/api/sse/stats", (_req, res) => {
+    res.json(getStreamStats());
+  });
+
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
   // tRPC API

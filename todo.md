@@ -830,3 +830,39 @@
 - [x] Write 14 vitest tests for indexer router (alertsSearch, alertsAggByDecoder, alertsTimeline, vulnSearch)
 - [x] All 198 tests passing
 - [x] TypeScript compiles clean (0 errors)
+
+## Phase 54: Connection Settings Frontend + SSE Alerts + Mock Cleanup
+
+### Connection Settings Admin Page (Frontend)
+- [x] Already built in previous phase — /admin/settings page with glass-morphism panels
+- [x] Wazuh Manager section: host, port, username, password fields
+- [x] Wazuh Indexer section: host, port, username, password fields
+- [x] "Test Connection" button per section with live status indicator
+- [x] "Save" button with confirmation dialog
+- [x] Show current source (env var vs database override) per field
+- [x] "Reset to Env Defaults" button per section
+- [x] Route /admin/settings and sidebar entry already exist
+
+### Real-Time Alert Streaming (SSE)
+- [x] Backend: SSE endpoint at /api/sse/alerts that polls Indexer for new critical alerts
+- [x] Backend: Configurable poll interval (default 30s, min 15s), severity threshold filter
+- [x] Backend: Connection management (heartbeat every 15s, cleanup on disconnect)
+- [x] Backend: Stats endpoint at /api/sse/stats for monitoring
+- [x] Frontend: useAlertStream hook consuming SSE with reconnection logic
+- [x] Frontend: LiveAlertFeed component on SOC Console with real-time alert display
+- [x] Frontend: Alert detail panel with MITRE tactic tags, agent info, decoder
+- [x] Frontend: Ability to dismiss/acknowledge/clear streamed alerts
+- [x] Frontend: AlertNotificationBell component for sidebar integration
+- [x] Frontend: Stream status indicator (connected/connecting/error/indexer N/A)
+
+### Mock Data Cleanup
+- [x] Audited all 13 pages importing from mockData.ts
+- [x] Found all mock exports are still actively used as graceful fallback across all pages
+- [x] Removed only truly unused export (MOCK_RULE_FILES)
+- [x] Added documentation header explaining fallback purpose
+- [x] Mock data correctly serves as offline/disconnected fallback — cannot be stripped further
+
+### Tests
+- [x] Write 10 vitest tests for SSE alertStreamService
+- [x] All 208 tests passing
+- [x] TypeScript compiles clean (0 errors)
