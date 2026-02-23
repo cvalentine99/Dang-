@@ -2,7 +2,7 @@
 # Dang! SIEM — Continuous Integration
 #
 # Runs on every push and pull request to main.
-# Steps: install → typecheck → test → build verification
+# Steps: install → typecheck → test (with MySQL) → build verification
 # ============================================================================
 
 name: CI
@@ -48,9 +48,26 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpassword
+          MYSQL_DATABASE: dang_test
+          MYSQL_USER: testuser
+          MYSQL_PASSWORD: testpassword
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -ptestpassword"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
     env:
-      # Minimal env vars required for vitest to load server modules
-      DATABASE_URL: "mysql://test:test@localhost:3306/test"
+      # Real MySQL connection for graph/admin tests that need a live database
+      DATABASE_URL: "mysql://testuser:testpassword@127.0.0.1:3306/dang_test"
       JWT_SECRET: "ci-test-secret-not-for-production"
       WAZUH_HOST: "127.0.0.1"
       WAZUH_PORT: "55000"
@@ -60,6 +77,7 @@ jobs:
       WAZUH_INDEXER_PORT: "9200"
       WAZUH_INDEXER_USER: "test"
       WAZUH_INDEXER_PASS: "test"
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -75,6 +93,22 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Wait for MySQL to be ready
+        run: |
+          echo "Waiting for MySQL service..."
+          for i in $(seq 1 30); do
+            if node -e "const net=require('net');const s=net.createConnection({host:'127.0.0.1',port:3306},()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))" 2>/dev/null; then
+              echo "✓ MySQL is reachable on port 3306"
+              sleep 2
+              break
+            fi
+            echo "  Attempt $i/30 — waiting..."
+            sleep 2
+          done
+
+      - name: Run database migrations
+        run: npx drizzle-kit migrate
 
       - name: Run tests
         run: pnpm test

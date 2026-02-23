@@ -777,9 +777,3 @@
 - [x] All 161 tests passing
 - [x] Visual verification: Knowledge Graph with Attack Paths button, Investigations with Export MD/HTML buttons
 - [x] Save checkpoint
-
-## Phase 51: Fix Google Maps Duplicate + Wazuh Timeout Errors
-
-- [ ] Fix Google Maps JavaScript API loaded multiple times on home page
-- [ ] Improve Wazuh auth timeout error handling for graceful degradation
-- [ ] Push fix to GitHub and merge
