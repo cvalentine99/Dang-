@@ -69,7 +69,7 @@ function stripSensitiveFields(obj: unknown): unknown {
 function createAxiosInstance(baseURL: string): AxiosInstance {
   return axios.create({
     baseURL,
-    timeout: 15_000,
+    timeout: 8_000,
     httpsAgent: new https.Agent({ rejectUnauthorized: false }),
     headers: { "Content-Type": "application/json" },
   });

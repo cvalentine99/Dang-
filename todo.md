@@ -778,30 +778,8 @@
 - [x] Visual verification: Knowledge Graph with Attack Paths button, Investigations with Export MD/HTML buttons
 - [x] Save checkpoint
 
-## Phase 50: Dependabot Security Alert Remediation
+## Phase 51: Fix Google Maps Duplicate + Wazuh Timeout Errors
 
-### Audit & Review
-- [x] Run pnpm audit — identified 29 vulnerabilities (1 critical, 13 high, 13 moderate, 2 low)
-- [x] Categorized: 11 direct deps, 18 transitive deps (via AWS SDK, express, geoip-lite, streamdown, tailwind)
-
-### Patch & Update
-- [x] Updated 11 direct dependencies (@trpc/*, axios, @aws-sdk/*, vite, tailwindcss, streamdown, esbuild, pnpm)
-- [x] Applied 9 pnpm overrides for transitive vulnerabilities (qs, fast-xml-parser, tar, lodash, minimatch, mdast-util-to-hast, @smithy/config-resolver, esbuild)
-- [x] Result: 0 vulnerabilities remaining (was 29)
-
-### Verification
-- [x] TypeScript compiles clean (0 errors)
-- [x] All 161 tests pass
-- [x] Production build succeeds (12.39s)
-- [x] Pushed to GitHub (commit 88c7c31)
-- [x] Save checkpoint
-
-## Phase 51: Fix Invalid URL TypeError in Self-Hosted Docker Mode
-- [ ] Fix frontend crash when VITE_OAUTH_PORTAL_URL and OAUTH_SERVER_URL are empty
-- [ ] Ensure app routes to local auth login when OAuth is not configured
-- [ ] Push fix to GitHub
-
-## Bug Fixes (Feb 22, 2026)
-- [x] Fix TypeError: Invalid URL crash — caused by stale cached production build with manus-runtime
-- [x] Make Manus-specific Vite plugins conditional (DOCKER_BUILD env var) to prevent manus-runtime injection in Docker builds
-- [x] Strip passwordHash from auth.me response (security fix)
+- [ ] Fix Google Maps JavaScript API loaded multiple times on home page
+- [ ] Improve Wazuh auth timeout error handling for graceful degradation
+- [ ] Push fix to GitHub and merge
