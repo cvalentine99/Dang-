@@ -30,17 +30,17 @@ interface SiemEvent {
     id: number | string;
     level: number;
     description: string;
-    groups: string[];
-    mitre: { id: string[]; tactic: string[]; technique: string[] };
-    pci_dss: string[];
-    gdpr: string[];
-    hipaa: string[];
-    firedtimes: number;
+    groups?: string[];
+    mitre?: { id?: string[]; tactic?: string[]; technique?: string[] };
+    pci_dss?: string[];
+    gdpr?: string[];
+    hipaa?: string[];
+    firedtimes?: number;
   };
-  decoder: { name: string; parent: string };
-  data: Record<string, unknown>;
-  location: string;
-  full_log: string;
+  decoder: { name: string; parent?: string };
+  data?: Record<string, unknown>;
+  location?: string;
+  full_log?: string;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -301,7 +301,7 @@ export default function SiemEvents() {
       result = result.filter(
         (e) =>
           e.rule.description.toLowerCase().includes(q) ||
-          e.full_log.toLowerCase().includes(q) ||
+          (e.full_log ?? "").toLowerCase().includes(q) ||
           e.agent.name.toLowerCase().includes(q) ||
           (e.agent.ip ?? "").includes(q) ||
           String(e.data?.srcip ?? "").includes(q) ||
@@ -320,7 +320,7 @@ export default function SiemEvents() {
       result = result.filter((e) => e.agent.id === agentFilter);
     }
     if (mitreFilter !== "all") {
-      result = result.filter((e) => e.rule.mitre.id.includes(mitreFilter) || e.rule.mitre.tactic.includes(mitreFilter));
+      result = result.filter((e) => (e.rule.mitre?.id ?? []).includes(mitreFilter) || (e.rule.mitre?.tactic ?? []).includes(mitreFilter));
     }
     result.sort((a, b) => {
       if (sortField === "timestamp") {
@@ -359,8 +359,8 @@ export default function SiemEvents() {
         if (e.agent.id === event.agent.id) sameAgent.push(e);
         if (String(e.rule.id) === String(event.rule.id)) sameRule.push(e);
         if (
-          event.rule.mitre.id.length > 0 &&
-          e.rule.mitre.id.some((id) => event.rule.mitre.id.includes(id))
+          (event.rule.mitre?.id ?? []).length > 0 &&
+          (e.rule.mitre?.id ?? []).some((id) => (event.rule.mitre?.id ?? []).includes(id))
         ) {
           sameMitre.push(e);
         }
@@ -432,7 +432,7 @@ export default function SiemEvents() {
       mockEvents.forEach((e) => {
         severityCounts[LEVEL_TO_SEVERITY(e.rule.level)]++;
         sourceCounts[e.decoder.parent || e.decoder.name] = (sourceCounts[e.decoder.parent || e.decoder.name] || 0) + 1;
-        e.rule.mitre.tactic.forEach((t) => {
+        (e.rule.mitre?.tactic ?? []).forEach((t) => {
           tacticCounts[t] = (tacticCounts[t] || 0) + 1;
         });
         const hour = new Date(e.timestamp).getHours();
@@ -1056,7 +1056,7 @@ export default function SiemEvents() {
           {pagedEvents.map((event) => {
             const severity = LEVEL_TO_SEVERITY(event.rule.level);
             const isExpanded = expandedEvent === event._id;
-            const DecoderIcon = DECODER_ICONS[event.decoder.name] || DECODER_ICONS[event.decoder.parent] || Database;
+            const DecoderIcon = DECODER_ICONS[event.decoder.name] || (event.decoder.parent ? DECODER_ICONS[event.decoder.parent] : undefined) || Database;
             const srcip = event.data?.srcip as string | undefined;
             const dstuser = event.data?.dstuser as string | undefined;
 
@@ -1112,9 +1112,9 @@ export default function SiemEvents() {
                       )}
                     </div>
                     <span className="truncate text-slate-200">{event.rule.description}</span>
-                    {event.rule.mitre.id.length > 0 && (
+                    {(event.rule.mitre?.id ?? []).length > 0 && (
                       <span className="ml-2 flex-shrink-0 text-[10px] bg-violet-500/20 text-violet-300 px-1.5 py-0.5 rounded font-mono">
-                        {event.rule.mitre.id[0]}
+                        {(event.rule.mitre?.id ?? [])[0]}
                       </span>
                     )}
                   </div>
@@ -1128,7 +1128,7 @@ export default function SiemEvents() {
                   {/* Rule ID */}
                   <div className="flex items-center text-xs font-mono text-slate-300">
                     {event.rule.id}
-                    {event.rule.firedtimes > 1 && (
+                    {(event.rule.firedtimes ?? 0) > 1 && (
                       <span className="ml-1 text-[10px] text-slate-500">×{event.rule.firedtimes}</span>
                     )}
                   </div>
@@ -1267,7 +1267,7 @@ export default function SiemEvents() {
                           <div>
                             <span className="text-slate-500">Groups</span>
                             <div className="flex flex-wrap gap-1 mt-1">
-                              {event.rule.groups.map((g) => (
+                              {(event.rule.groups ?? []).map((g) => (
                                 <span key={g} className="px-1.5 py-0.5 bg-white/5 rounded text-[10px] font-mono text-slate-400">
                                   {g}
                                 </span>
@@ -1281,11 +1281,11 @@ export default function SiemEvents() {
                       <div className="space-y-2">
                         <h4 className="text-xs font-semibold text-violet-300">Compliance & MITRE</h4>
                         <div className="space-y-1 text-xs">
-                          {event.rule.mitre.id.length > 0 && (
+                          {(event.rule.mitre?.id ?? []).length > 0 && (
                             <div>
                               <span className="text-slate-500">MITRE ATT&CK</span>
                               <div className="flex flex-wrap gap-1 mt-1">
-                                {event.rule.mitre.id.map((id) => (
+                                {(event.rule.mitre?.id ?? []).map((id) => (
                                   <a
                                     key={id}
                                     href={`https://attack.mitre.org/techniques/${id.replace(".", "/")}`}
@@ -1299,11 +1299,11 @@ export default function SiemEvents() {
                               </div>
                             </div>
                           )}
-                          {event.rule.mitre.tactic.length > 0 && (
+                          {(event.rule.mitre?.tactic ?? []).length > 0 && (
                             <div>
                               <span className="text-slate-500">Tactics</span>
                               <div className="flex flex-wrap gap-1 mt-1">
-                                {event.rule.mitre.tactic.map((t) => (
+                                {(event.rule.mitre?.tactic ?? []).map((t) => (
                                   <span key={t} className="px-1.5 py-0.5 bg-violet-500/10 text-violet-300 rounded text-[10px]">
                                     {t}
                                   </span>
@@ -1311,11 +1311,11 @@ export default function SiemEvents() {
                               </div>
                             </div>
                           )}
-                          {event.rule.pci_dss.length > 0 && (
+                          {(event.rule.pci_dss ?? []).length > 0 && (
                             <div className="flex items-start gap-2">
                               <span className="text-slate-500 flex-shrink-0">PCI DSS</span>
                               <div className="flex flex-wrap gap-1">
-                                {event.rule.pci_dss.map((p) => (
+                                {(event.rule.pci_dss ?? []).map((p) => (
                                   <span key={p} className="px-1.5 py-0.5 bg-blue-500/20 text-blue-300 rounded text-[10px] font-mono">
                                     {p}
                                   </span>
@@ -1323,11 +1323,11 @@ export default function SiemEvents() {
                               </div>
                             </div>
                           )}
-                          {event.rule.gdpr.length > 0 && (
+                          {(event.rule.gdpr ?? []).length > 0 && (
                             <div className="flex items-start gap-2">
                               <span className="text-slate-500 flex-shrink-0">GDPR</span>
                               <div className="flex flex-wrap gap-1">
-                                {event.rule.gdpr.map((g) => (
+                                {(event.rule.gdpr ?? []).map((g) => (
                                   <span key={g} className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 rounded text-[10px] font-mono">
                                     {g}
                                   </span>
@@ -1335,11 +1335,11 @@ export default function SiemEvents() {
                               </div>
                             </div>
                           )}
-                          {event.rule.hipaa.length > 0 && (
+                          {(event.rule.hipaa ?? []).length > 0 && (
                             <div className="flex items-start gap-2">
                               <span className="text-slate-500 flex-shrink-0">HIPAA</span>
                               <div className="flex flex-wrap gap-1">
-                                {event.rule.hipaa.map((h) => (
+                                {(event.rule.hipaa ?? []).map((h) => (
                                   <span key={h} className="px-1.5 py-0.5 bg-amber-500/20 text-amber-300 rounded text-[10px] font-mono">
                                     {h}
                                   </span>
@@ -1505,7 +1505,7 @@ export default function SiemEvents() {
                             {related.sameMitre.length > 0 && (
                               <div>
                                 <h5 className="text-[10px] font-semibold text-violet-400 uppercase tracking-wider mb-1.5">
-                                  Same MITRE Technique ({event.rule.mitre.id.join(", ")}) — {related.sameMitre.length} events
+                                  Same MITRE Technique ({(event.rule.mitre?.id ?? []).join(", ")}) — {related.sameMitre.length} events
                                 </h5>
                                 <div className="bg-black/20 rounded-lg border border-white/5 overflow-hidden">
                                   <div className="max-h-[200px] overflow-y-auto divide-y divide-white/5">
@@ -1533,7 +1533,7 @@ export default function SiemEvents() {
                                         <span className="text-violet-300 font-mono flex-shrink-0">{re.agent.id}</span>
                                         <span className="text-slate-300 truncate">{re.rule.description}</span>
                                         <span className="flex gap-1 flex-shrink-0">
-                                          {re.rule.mitre.id.map((id) => (
+                                          {(re.rule.mitre?.id ?? []).map((id) => (
                                             <span key={id} className="px-1 py-0.5 bg-violet-500/20 text-violet-300 rounded text-[9px] font-mono">
                                               {id}
                                             </span>

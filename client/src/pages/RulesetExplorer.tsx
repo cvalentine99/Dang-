@@ -26,25 +26,25 @@ type WazuhRule = {
   id: number;
   level: number;
   description: string;
-  groups: string[];
-  mitre: { id: string[]; tactic: string[]; technique: string[] };
-  pci_dss: string[];
-  gdpr: string[];
-  hipaa: string[];
-  filename: string;
-  relative_dirname: string;
-  status: string;
-  details: Record<string, string>;
+  groups?: string[];
+  mitre?: { id?: string[]; tactic?: string[]; technique?: string[] };
+  pci_dss?: string[];
+  gdpr?: string[];
+  hipaa?: string[];
+  filename?: string;
+  relative_dirname?: string;
+  status?: string;
+  details?: Record<string, string>;
 };
 
 type WazuhDecoder = {
   name: string;
-  position: number;
-  status: string;
-  file: string;
-  path: string;
-  details: Record<string, string>;
-  relative_dirname: string;
+  position?: number;
+  status?: string;
+  file?: string;
+  path?: string;
+  details?: Record<string, string>;
+  relative_dirname?: string;
 };
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -130,12 +130,12 @@ export default function RulesetExplorer() {
       const q = searchQuery.toLowerCase();
       result = result.filter(
         (r) =>
-          r.description.toLowerCase().includes(q) ||
+          (r.description ?? "").toLowerCase().includes(q) ||
           r.id.toString().includes(q) ||
-          r.groups.some((g) => g.toLowerCase().includes(q)) ||
-          r.filename.toLowerCase().includes(q) ||
-          (r.mitre.id || []).some((id) => id.toLowerCase().includes(q)) ||
-          (r.mitre.technique || []).some((t) => t.toLowerCase().includes(q))
+          (r.groups ?? []).some((g) => g.toLowerCase().includes(q)) ||
+          (r.filename ?? "").toLowerCase().includes(q) ||
+          (r.mitre?.id ?? []).some((id) => id.toLowerCase().includes(q)) ||
+          (r.mitre?.technique ?? []).some((t) => t.toLowerCase().includes(q))
       );
     }
 
@@ -145,7 +145,7 @@ export default function RulesetExplorer() {
     }
 
     if (groupFilter !== "all") {
-      result = result.filter((r) => r.groups.includes(groupFilter));
+      result = result.filter((r) => (r.groups ?? []).includes(groupFilter));
     }
 
     result.sort((a, b) => {
@@ -165,7 +165,7 @@ export default function RulesetExplorer() {
     return decoders.filter(
       (d) =>
         d.name.toLowerCase().includes(q) ||
-        d.file.toLowerCase().includes(q) ||
+        (d.file ?? "").toLowerCase().includes(q) ||
         (d.details?.parent ?? "").toLowerCase().includes(q) ||
         (d.details?.prematch ?? "").toLowerCase().includes(q)
     );
@@ -179,10 +179,11 @@ export default function RulesetExplorer() {
 
     rules.forEach((r) => {
       levelCounts[LEVEL_TO_SEVERITY(r.level)]++;
-      r.groups.forEach((g) => {
+      (r.groups ?? []).forEach((g) => {
         groupCounts[g] = (groupCounts[g] || 0) + 1;
       });
-      fileCounts[r.filename] = (fileCounts[r.filename] || 0) + 1;
+      const fname = r.filename ?? "unknown";
+      fileCounts[fname] = (fileCounts[fname] || 0) + 1;
     });
 
     return { levelCounts, groupCounts, fileCounts };
@@ -193,7 +194,8 @@ export default function RulesetExplorer() {
     const parentCounts: Record<string, number> = {};
 
     decoders.forEach((d) => {
-      fileCounts[d.file] = (fileCounts[d.file] || 0) + 1;
+      const fname = d.file ?? "unknown";
+      fileCounts[fname] = (fileCounts[fname] || 0) + 1;
       const parent = d.details?.parent ?? "root";
       parentCounts[parent] = (parentCounts[parent] || 0) + 1;
     });
@@ -215,8 +217,8 @@ export default function RulesetExplorer() {
     .slice(0, 8)
     .map(([k, v]) => ({ name: k.replace(/^\d+-/, "").replace(/_decoders\.xml$/, ""), count: v }));
 
-  const mitreRuleCount = rules.filter((r) => r.mitre.id.length > 0).length;
-  const complianceRuleCount = rules.filter((r) => r.pci_dss.length > 0 || r.gdpr.length > 0 || r.hipaa.length > 0).length;
+  const mitreRuleCount = rules.filter((r) => (r.mitre?.id ?? []).length > 0).length;
+  const complianceRuleCount = rules.filter((r) => (r.pci_dss ?? []).length > 0 || (r.gdpr ?? []).length > 0 || (r.hipaa ?? []).length > 0).length;
 
   const clearFilters = () => {
     setSearchQuery("");
@@ -557,7 +559,7 @@ export default function RulesetExplorer() {
 
                     {/* Groups */}
                     <div className="flex items-center flex-wrap gap-1">
-                      {rule.groups.slice(0, 2).map((g) => (
+                      {(rule.groups ?? []).slice(0, 2).map((g) => (
                         <span
                           key={g}
                           className="px-1.5 py-0.5 bg-white/5 rounded text-[10px] font-mono text-slate-400 truncate max-w-[60px]"
@@ -566,15 +568,15 @@ export default function RulesetExplorer() {
                           {g}
                         </span>
                       ))}
-                      {rule.groups.length > 2 && (
-                        <span className="text-[10px] text-slate-500">+{rule.groups.length - 2}</span>
+                      {(rule.groups ?? []).length > 2 && (
+                        <span className="text-[10px] text-slate-500">+{(rule.groups ?? []).length - 2}</span>
                       )}
                     </div>
 
                     {/* MITRE */}
                     <div className="flex items-center flex-wrap gap-1">
-                      {rule.mitre.id.length > 0 ? (
-                        rule.mitre.id.slice(0, 2).map((id) => (
+                      {(rule.mitre?.id ?? []).length > 0 ? (
+                        (rule.mitre?.id ?? []).slice(0, 2).map((id) => (
                           <span
                             key={id}
                             className="px-1.5 py-0.5 bg-violet-500/20 text-violet-300 rounded text-[10px] font-mono"
@@ -588,8 +590,8 @@ export default function RulesetExplorer() {
                     </div>
 
                     {/* File */}
-                    <div className="flex items-center text-[10px] text-slate-500 font-mono truncate" title={rule.filename}>
-                      {rule.filename.replace(/^\d+-/, "").replace(/_rules\.xml$/, "")}
+                    <div className="flex items-center text-[10px] text-slate-500 font-mono truncate" title={rule.filename ?? ""}>
+                      {(rule.filename ?? "").replace(/^\d+-/, "").replace(/_rules\.xml$/, "")}
                     </div>
 
                     {/* Actions */}
@@ -636,15 +638,15 @@ export default function RulesetExplorer() {
                             </div>
                             <div className="flex justify-between">
                               <span className="text-slate-500">Status</span>
-                              <span className="font-mono text-emerald-400">{rule.status}</span>
+                              <span className="font-mono text-emerald-400">{rule.status ?? "unknown"}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-slate-500">File</span>
-                              <span className="font-mono text-slate-200 text-right truncate max-w-[180px]">{rule.filename}</span>
+                              <span className="font-mono text-slate-200 text-right truncate max-w-[180px]">{rule.filename ?? "unknown"}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-slate-500">Path</span>
-                              <span className="font-mono text-slate-200">{rule.relative_dirname}</span>
+                              <span className="font-mono text-slate-200">{rule.relative_dirname ?? ""}</span>
                             </div>
                           </div>
                         </div>
@@ -663,7 +665,7 @@ export default function RulesetExplorer() {
                           <div className="mt-2">
                             <span className="text-slate-500 text-xs">Groups</span>
                             <div className="flex flex-wrap gap-1 mt-1">
-                              {rule.groups.map((g) => (
+                              {(rule.groups ?? []).map((g) => (
                                 <span
                                   key={g}
                                   className="px-1.5 py-0.5 bg-white/5 rounded text-[10px] font-mono text-slate-400 cursor-pointer hover:bg-white/10"
@@ -680,11 +682,11 @@ export default function RulesetExplorer() {
                         <div className="space-y-2">
                           <h4 className="text-xs font-semibold text-violet-300">Compliance & MITRE</h4>
                           <div className="space-y-1 text-xs">
-                            {rule.mitre.id.length > 0 && (
+                            {(rule.mitre?.id ?? []).length > 0 && (
                               <div>
                                 <span className="text-slate-500">MITRE ATT&CK</span>
                                 <div className="flex flex-wrap gap-1 mt-1">
-                                  {rule.mitre.id.map((id) => (
+                                  {(rule.mitre?.id ?? []).map((id) => (
                                     <a
                                       key={id}
                                       href={`https://attack.mitre.org/techniques/${id.replace(".", "/")}`}
@@ -697,14 +699,14 @@ export default function RulesetExplorer() {
                                   ))}
                                 </div>
                                 <div className="flex flex-wrap gap-1 mt-1">
-                                  {rule.mitre.tactic.map((t) => (
+                                  {(rule.mitre?.tactic ?? []).map((t) => (
                                     <span key={t} className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 rounded text-[10px]">
                                       {t}
                                     </span>
                                   ))}
                                 </div>
                                 <div className="flex flex-wrap gap-1 mt-1">
-                                  {rule.mitre.technique.map((t) => (
+                                  {(rule.mitre?.technique ?? []).map((t) => (
                                     <span key={t} className="px-1.5 py-0.5 bg-purple-500/20 text-purple-300 rounded text-[10px]">
                                       {t}
                                     </span>
@@ -712,31 +714,31 @@ export default function RulesetExplorer() {
                                 </div>
                               </div>
                             )}
-                            {rule.pci_dss.length > 0 && (
+                            {(rule.pci_dss ?? []).length > 0 && (
                               <div className="flex items-start gap-2 mt-1">
                                 <span className="text-slate-500 flex-shrink-0">PCI DSS</span>
                                 <div className="flex flex-wrap gap-1">
-                                  {rule.pci_dss.map((p) => (
+                                  {(rule.pci_dss ?? []).map((p) => (
                                     <span key={p} className="px-1.5 py-0.5 bg-blue-500/20 text-blue-300 rounded text-[10px] font-mono">{p}</span>
                                   ))}
                                 </div>
                               </div>
                             )}
-                            {rule.gdpr.length > 0 && (
+                            {(rule.gdpr ?? []).length > 0 && (
                               <div className="flex items-start gap-2">
                                 <span className="text-slate-500 flex-shrink-0">GDPR</span>
                                 <div className="flex flex-wrap gap-1">
-                                  {rule.gdpr.map((g) => (
+                                  {(rule.gdpr ?? []).map((g) => (
                                     <span key={g} className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 rounded text-[10px] font-mono">{g}</span>
                                   ))}
                                 </div>
                               </div>
                             )}
-                            {rule.hipaa.length > 0 && (
+                            {(rule.hipaa ?? []).length > 0 && (
                               <div className="flex items-start gap-2">
                                 <span className="text-slate-500 flex-shrink-0">HIPAA</span>
                                 <div className="flex flex-wrap gap-1">
-                                  {rule.hipaa.map((h) => (
+                                  {(rule.hipaa ?? []).map((h) => (
                                     <span key={h} className="px-1.5 py-0.5 bg-amber-500/20 text-amber-300 rounded text-[10px] font-mono">{h}</span>
                                   ))}
                                 </div>
@@ -809,12 +811,12 @@ export default function RulesetExplorer() {
                           <ChevronRight className="h-3.5 w-3.5 text-slate-500" />
                         )}
                       </div>
-                      <span className="font-mono text-sm text-violet-300 truncate">{decoder.name}</span>
+                      <span className="font-mono text-sm text-violet-300 truncate">{decoder.name ?? "unknown"}</span>
                     </div>
 
                     {/* Position */}
                     <div className="flex items-center text-xs font-mono text-slate-400">
-                      {decoder.position}
+                      {decoder.position ?? 0}
                     </div>
 
                     {/* Pattern */}
@@ -825,14 +827,14 @@ export default function RulesetExplorer() {
                     </div>
 
                     {/* File */}
-                    <div className="flex items-center text-xs text-slate-500 font-mono truncate" title={decoder.file}>
-                      {decoder.file}
+                    <div className="flex items-center text-xs text-slate-500 font-mono truncate" title={decoder.file ?? ""}>
+                      {decoder.file ?? "unknown"}
                     </div>
 
                     {/* Status */}
                     <div className="flex items-center">
                       <span className={`text-xs font-mono ${decoder.status === "enabled" ? "text-emerald-400" : "text-slate-500"}`}>
-                        {decoder.status}
+                        {decoder.status ?? "unknown"}
                       </span>
                     </div>
 
@@ -870,11 +872,11 @@ export default function RulesetExplorer() {
                             </div>
                             <div className="flex justify-between">
                               <span className="text-slate-500">File</span>
-                              <span className="font-mono text-slate-200">{decoder.file}</span>
+                              <span className="font-mono text-slate-200">{decoder.file ?? "unknown"}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-slate-500">Path</span>
-                              <span className="font-mono text-slate-200">{decoder.relative_dirname}</span>
+                              <span className="font-mono text-slate-200">{decoder.relative_dirname ?? ""}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-slate-500">Status</span>
