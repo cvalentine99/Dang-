@@ -468,6 +468,7 @@ export const indexerRouter = router({
                 severity: termsAgg("rule.level", 16),
               },
             },
+            levels: termsAgg("rule.level", 16),
             timeline: {
               ...dateHistogramAgg("timestamp", "1d"),
               aggs: {
@@ -475,6 +476,40 @@ export const indexerRouter = router({
               },
             },
           },
+        },
+        "alerts"
+      );
+    }),
+
+  /** Get alert counts for all compliance frameworks at once */
+  complianceFrameworkCounts: publicProcedure
+    .input(timeRangeSchema)
+    .query(async ({ input }) => {
+      const frameworks = ["pci_dss", "hipaa", "nist_800_53", "gdpr", "tsc"] as const;
+      return safeSearch(
+        INDEX_PATTERNS.ALERTS,
+        {
+          query: boolQuery({
+            filter: [
+              timeRangeFilter(input.from, input.to),
+              {
+                bool: {
+                  should: frameworks.map(fw => ({ exists: { field: `rule.${fw}` } })),
+                  minimum_should_match: 1,
+                },
+              },
+            ],
+          }),
+          size: 0,
+          aggs: Object.fromEntries(
+            frameworks.map(fw => [
+              fw,
+              {
+                filter: { exists: { field: `rule.${fw}` } },
+                aggs: { severity: termsAgg("rule.level", 16) },
+              },
+            ])
+          ),
         },
         "alerts"
       );

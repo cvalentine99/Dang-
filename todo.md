@@ -874,3 +874,44 @@
 - [x] Make WazuhRule and WazuhDecoder types optional for fields that real API may omit
 - [x] Make SiemEvent interface fields optional for real Indexer data
 - [x] All 208 tests passing, TypeScript clean (0 errors)
+
+## Phase 56: Wire Remaining Pages to Real Wazuh API
+
+### Audit Results
+All 6 pages were already correctly wired to real Wazuh API data via tRPC.
+Mock data is used only as graceful fallback when the API is unreachable.
+Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge indicators.
+
+### AgentHealth
+- [x] Already wired: trpc.wazuh.agents, agentSummaryStatus, agentSummaryOs, agentGroups
+- [x] Null-safety verified: uses String(item.os ?? ...) and optional chaining throughout
+
+### AlertsTimeline
+- [x] Already wired: trpc.indexer.alertsSearch, alertsAggByLevel, alertsAggByRule, alertsAggByAgent
+- [x] Null-safety verified: uses (rule as Record<string, unknown>) ?? {} with optional chaining
+
+### MitreAttack
+- [x] Already wired: trpc.wazuh.mitreTactics/Techniques/Groups, trpc.indexer.alertsAggByMitre
+- [x] Null-safety verified: uses Array.isArray() guards and optional chaining
+
+### Vulnerabilities
+- [x] Already wired: trpc.indexer.vulnSearch/vulnAggBySeverity/vulnAggByAgent/vulnAggByPackage/vulnAggByCVE, trpc.wazuh.agentVulnerabilities
+- [x] Null-safety verified: uses parseAggs/parseBuckets helpers with null coalescing
+
+### FileIntegrity
+- [x] Already wired: trpc.wazuh.syscheckFiles, syscheckLastScan
+- [x] Null-safety verified: uses String(f.event ?? f.type ?? "") pattern
+
+### Compliance
+- [x] Already wired: trpc.wazuh.scaPolicies/scaChecks, trpc.indexer.alertsComplianceAgg
+- [x] Fixed: Framework overview cards now use real Indexer data via new complianceFrameworkCounts endpoint
+- [x] Fixed: Added top-level levels aggregation to alertsComplianceAgg endpoint
+- [x] Null-safety verified: uses optional chaining and null coalescing throughout
+
+### New Backend Endpoints Added
+- [x] indexer.complianceFrameworkCounts: Get alert counts for all 5 compliance frameworks in one query
+- [x] indexer.alertsComplianceAgg: Added top-level levels aggregation for severity breakdown
+
+### Tests
+- [x] All 208 tests passing
+- [x] TypeScript compiles clean (0 errors)
