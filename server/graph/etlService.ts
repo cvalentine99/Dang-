@@ -25,10 +25,11 @@ import {
   graphSecurityEvents,
   graphSyncStatus,
 } from "../../drizzle/schema";
-import { isWazuhConfigured, getWazuhConfig, wazuhGet } from "../wazuh/wazuhClient";
+import { isWazuhConfigured, getWazuhConfig, wazuhGet, getEffectiveWazuhConfig } from "../wazuh/wazuhClient";
 import {
   isIndexerConfigured,
   getIndexerConfig,
+  getEffectiveIndexerConfig,
   indexerSearch,
   INDEX_PATTERNS,
   boolQuery,
@@ -113,13 +114,14 @@ async function syncEndpoints(): Promise<SyncResult> {
   try {
     await updateSyncStatus(entityType, "syncing");
 
-    if (!isWazuhConfigured()) {
+    const wazuhConfig = await getEffectiveWazuhConfig();
+    if (!wazuhConfig) {
       await updateSyncStatus(entityType, "error", 0, Date.now() - start, "Wazuh not configured");
       return { entityType, status: "skipped", count: 0, durationMs: Date.now() - start, error: "Wazuh not configured" };
     }
 
-    const config = getWazuhConfig();
-    const response = await wazuhGet(config, {
+    
+    const response = await wazuhGet(wazuhConfig, {
       path: "/agents",
       params: { limit: 500, select: "id,name,ip,os.name,os.version,os.platform,os.arch,version,status,lastKeepAlive" },
     }) as { data?: { affected_items?: Array<Record<string, unknown>> } };
@@ -182,12 +184,13 @@ async function syncProcesses(): Promise<SyncResult> {
   try {
     await updateSyncStatus(entityType, "syncing");
 
-    if (!isWazuhConfigured()) {
+    const wazuhConfig = await getEffectiveWazuhConfig();
+    if (!wazuhConfig) {
       await updateSyncStatus(entityType, "error", 0, Date.now() - start, "Wazuh not configured");
       return { entityType, status: "skipped", count: 0, durationMs: Date.now() - start };
     }
 
-    const config = getWazuhConfig();
+    
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
 
@@ -197,7 +200,7 @@ async function syncProcesses(): Promise<SyncResult> {
     let count = 0;
     for (const ep of endpoints) {
       try {
-        const response = await wazuhGet(config, {
+        const response = await wazuhGet(wazuhConfig, {
           path: `/syscollector/${ep.agentId}/processes`,
           params: { limit: 500 },
         }) as { data?: { affected_items?: Array<Record<string, unknown>> } };
@@ -244,12 +247,13 @@ async function syncNetworkPorts(): Promise<SyncResult> {
   try {
     await updateSyncStatus(entityType, "syncing");
 
-    if (!isWazuhConfigured()) {
+    const wazuhConfig = await getEffectiveWazuhConfig();
+    if (!wazuhConfig) {
       await updateSyncStatus(entityType, "error", 0, Date.now() - start, "Wazuh not configured");
       return { entityType, status: "skipped", count: 0, durationMs: Date.now() - start };
     }
 
-    const config = getWazuhConfig();
+    
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
 
@@ -258,7 +262,7 @@ async function syncNetworkPorts(): Promise<SyncResult> {
     let count = 0;
     for (const ep of endpoints) {
       try {
-        const response = await wazuhGet(config, {
+        const response = await wazuhGet(wazuhConfig, {
           path: `/syscollector/${ep.agentId}/ports`,
           params: { limit: 500 },
         }) as { data?: { affected_items?: Array<Record<string, unknown>> } };
@@ -305,12 +309,13 @@ async function syncSoftwarePackages(): Promise<SyncResult> {
   try {
     await updateSyncStatus(entityType, "syncing");
 
-    if (!isWazuhConfigured()) {
+    const wazuhConfig = await getEffectiveWazuhConfig();
+    if (!wazuhConfig) {
       await updateSyncStatus(entityType, "error", 0, Date.now() - start, "Wazuh not configured");
       return { entityType, status: "skipped", count: 0, durationMs: Date.now() - start };
     }
 
-    const config = getWazuhConfig();
+    
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
 
@@ -319,7 +324,7 @@ async function syncSoftwarePackages(): Promise<SyncResult> {
     let count = 0;
     for (const ep of endpoints) {
       try {
-        const response = await wazuhGet(config, {
+        const response = await wazuhGet(wazuhConfig, {
           path: `/syscollector/${ep.agentId}/packages`,
           params: { limit: 500 },
         }) as { data?: { affected_items?: Array<Record<string, unknown>> } };
@@ -364,12 +369,13 @@ async function syncIdentities(): Promise<SyncResult> {
   try {
     await updateSyncStatus(entityType, "syncing");
 
-    if (!isWazuhConfigured()) {
+    const wazuhConfig = await getEffectiveWazuhConfig();
+    if (!wazuhConfig) {
       await updateSyncStatus(entityType, "error", 0, Date.now() - start, "Wazuh not configured");
       return { entityType, status: "skipped", count: 0, durationMs: Date.now() - start };
     }
 
-    const config = getWazuhConfig();
+    
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
 
@@ -378,7 +384,7 @@ async function syncIdentities(): Promise<SyncResult> {
     let count = 0;
     for (const ep of endpoints) {
       try {
-        const response = await wazuhGet(config, {
+        const response = await wazuhGet(wazuhConfig, {
           path: `/syscollector/${ep.agentId}/users`,
           params: { limit: 500 },
         }) as { data?: { affected_items?: Array<Record<string, unknown>> } };
@@ -425,12 +431,13 @@ async function syncSecurityEvents(): Promise<SyncResult> {
   try {
     await updateSyncStatus(entityType, "syncing");
 
-    if (!isIndexerConfigured()) {
+    const indexerConfig = await getEffectiveIndexerConfig();
+    if (!indexerConfig) {
       await updateSyncStatus(entityType, "error", 0, Date.now() - start, "Indexer not configured");
       return { entityType, status: "skipped", count: 0, durationMs: Date.now() - start };
     }
 
-    const config = getIndexerConfig();
+    
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
 
@@ -445,7 +452,7 @@ async function syncSecurityEvents(): Promise<SyncResult> {
     }
 
     const response = await indexerSearch(
-      config,
+      indexerConfig,
       INDEX_PATTERNS.ALERTS,
       {
         query: filters.length > 0 ? boolQuery({ filter: filters }) : { match_all: {} },
@@ -520,17 +527,18 @@ async function syncVulnerabilities(): Promise<SyncResult> {
   try {
     await updateSyncStatus(entityType, "syncing");
 
-    if (!isIndexerConfigured()) {
+    const indexerConfig = await getEffectiveIndexerConfig();
+    if (!indexerConfig) {
       await updateSyncStatus(entityType, "error", 0, Date.now() - start, "Indexer not configured");
       return { entityType, status: "skipped", count: 0, durationMs: Date.now() - start };
     }
 
-    const config = getIndexerConfig();
+    
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
 
     const response = await indexerSearch(
-      config,
+      indexerConfig,
       INDEX_PATTERNS.VULNERABILITIES,
       {
         query: { match_all: {} },

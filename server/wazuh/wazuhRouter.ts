@@ -9,7 +9,7 @@
 
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
-import { getWazuhConfig, isWazuhConfigured, wazuhGet } from "./wazuhClient";
+import { getWazuhConfig, isWazuhConfigured, wazuhGet, getEffectiveWazuhConfig, isWazuhEffectivelyConfigured } from "./wazuhClient";
 
 // ── Shared input schemas ───────────────────────────────────────────────────────
 const paginationSchema = z.object({
@@ -19,9 +19,10 @@ const paginationSchema = z.object({
 
 const agentIdSchema = z.string().regex(/^\d{3,}$/, "Invalid agent ID format");
 
-// ── Helper: wrap with config check ────────────────────────────────────────────
+// ── Helper: wrap with config check (uses DB override → env fallback) ─────────
 async function proxyGet(path: string, params?: Record<string, string | number | boolean | undefined>, group?: string) {
-  const config = getWazuhConfig();
+  const config = await getEffectiveWazuhConfig();
+  if (!config) throw new Error("Wazuh is not configured. Set connection settings in Admin > Connection Settings or via environment variables.");
   return wazuhGet(config, { path, params, rateLimitGroup: group });
 }
 
@@ -32,7 +33,8 @@ export const wazuhRouter = router({
   // SYSTEM STATUS
   // ══════════════════════════════════════════════════════════════════════════════
   status: publicProcedure.query(async () => {
-    if (!isWazuhConfigured()) {
+    const configured = await isWazuhEffectivelyConfigured();
+    if (!configured) {
       return { configured: false, data: null };
     }
     try {
@@ -43,11 +45,14 @@ export const wazuhRouter = router({
     }
   }),
 
-  isConfigured: publicProcedure.query(() => ({
-    configured: isWazuhConfigured(),
-    host: process.env.WAZUH_HOST ?? null,
-    port: process.env.WAZUH_PORT ?? "55000",
-  })),
+  isConfigured: publicProcedure.query(async () => {
+    const configured = await isWazuhEffectivelyConfigured();
+    return {
+      configured,
+      host: process.env.WAZUH_HOST ?? null,
+      port: process.env.WAZUH_PORT ?? "55000",
+    };
+  }),
 
   // ══════════════════════════════════════════════════════════════════════════════
   // MANAGER
