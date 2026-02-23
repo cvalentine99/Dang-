@@ -925,3 +925,13 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Supports collapsed sidebar mode (popover opens to the right)
 - [x] Auto-acknowledges unread count when popover is opened
 - [x] All 208 tests passing, TypeScript clean (0 errors)
+
+## Phase 58: Bug Fix — /rules page crash (persistent)
+
+- [x] Added normalizeRule() and normalizeDecoder() functions to coerce raw API data into safe typed objects
+- [x] Added safeStringArray() helper for robust array field handling
+- [x] All rule fields now normalized: id (Number), level (Number), description (String), groups/mitre/pci_dss/gdpr/hipaa (safe arrays), details (safe Record)
+- [x] All decoder fields now normalized: name (String with decoder_name fallback), position (Number), status/file/path/relative_dirname (String), details (safe Record)
+- [x] Removed all ?? [] and ?? "" fallbacks from JSX — no longer needed since normalization guarantees types
+- [x] Chart data filtered for Number.isFinite values to prevent NaN in Recharts
+- [x] All 208 tests passing, TypeScript clean (0 errors)
