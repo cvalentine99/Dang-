@@ -119,9 +119,11 @@ export const connectionSettingsRouter = router({
             httpsAgent: new https.Agent({ rejectUnauthorized: false }),
           });
 
+          // CRITICAL: Wazuh /security/user/authenticate requires NO request body.
+          // Credentials are passed via Basic Auth header only.
           const response = await instance.post(
             "/security/user/authenticate",
-            {},
+            undefined, // No body — Wazuh auth accepts credentials in the header only
             { auth: { username: user, password: pass } }
           );
 
