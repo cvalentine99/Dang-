@@ -116,11 +116,11 @@ async function startServer() {
     // 2. Wazuh Manager API check
     async function checkWazuhManager(): Promise<CheckResult> {
       try {
-        const { isWazuhConfigured, getWazuhConfig } = await import("../wazuh/wazuhClient");
-        if (!isWazuhConfigured()) return { status: "not_configured" };
+        const { getEffectiveWazuhConfig } = await import("../wazuh/wazuhClient");
+        const config = await getEffectiveWazuhConfig();
+        if (!config) return { status: "not_configured" };
 
         const wStart = Date.now();
-        const config = getWazuhConfig();
         // Use a lightweight TCP connect test instead of full API call for health check
         const net = await import("net");
         await new Promise<void>((resolve, reject) => {
@@ -143,11 +143,11 @@ async function startServer() {
     // 3. Wazuh Indexer (OpenSearch) check
     async function checkWazuhIndexer(): Promise<CheckResult> {
       try {
-        const { isIndexerConfigured, getIndexerConfig } = await import("../indexer/indexerClient");
-        if (!isIndexerConfigured()) return { status: "not_configured" };
+        const { getEffectiveIndexerConfig } = await import("../indexer/indexerClient");
+        const config = await getEffectiveIndexerConfig();
+        if (!config) return { status: "not_configured" };
 
         const iStart = Date.now();
-        const config = getIndexerConfig();
         // Use a lightweight TCP connect test
         const net = await import("net");
         await new Promise<void>((resolve, reject) => {

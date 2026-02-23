@@ -28,6 +28,7 @@ import AnalystChat from "./pages/AnalystChat";
 import KnowledgeGraph from "./pages/KnowledgeGraph";
 import Investigations from "./pages/Investigations";
 import DataPipeline from "./pages/DataPipeline";
+import AdminSettings from "./pages/AdminSettings";
 
 function Router() {
   return (
@@ -57,6 +58,7 @@ function Router() {
             <Route path="/assistant" component={Assistant} />
             <Route path="/status" component={Status} />
             <Route path="/admin/users" component={AdminUsers} />
+            <Route path="/admin/settings" component={AdminSettings} />
             <Route path="/analyst" component={AnalystChat} />
             <Route path="/graph" component={KnowledgeGraph} />
             <Route path="/investigations" component={Investigations} />

@@ -47,6 +47,7 @@ import {
   Network,
   FolderSearch,
   Database,
+  Settings,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -73,6 +74,7 @@ const menuItems = [
   { icon: FolderSearch, label: "Investigations", path: "/investigations", group: "Intelligence" },
   { icon: Database, label: "Data Pipeline", path: "/pipeline", group: "Intelligence" },
   { icon: UserCog, label: "User Management", path: "/admin/users", group: "Admin" },
+  { icon: Settings, label: "Connection Settings", path: "/admin/settings", group: "Admin" },
   { icon: StickyNote, label: "Analyst Notes", path: "/notes", group: "Tools" },
   { icon: Bot, label: "AI Assistant", path: "/assistant", group: "Tools" },
 ];

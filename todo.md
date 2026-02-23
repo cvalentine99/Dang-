@@ -777,3 +777,27 @@
 - [x] All 161 tests passing
 - [x] Visual verification: Knowledge Graph with Attack Paths button, Investigations with Export MD/HTML buttons
 - [x] Save checkpoint
+
+## Phase 52: Connection Settings Admin Page
+
+### Backend
+- [ ] Create connection_settings table (key-value store for runtime config, encrypted values)
+- [ ] Build admin tRPC procedures: getConnectionSettings, updateConnectionSettings, testConnection
+- [ ] Runtime config layer: Wazuh/Indexer clients check DB settings first, fall back to env vars
+- [ ] Test connection endpoint: validate credentials before saving
+- [ ] Encrypt sensitive values (passwords) at rest in the database
+
+### Frontend
+- [ ] Build /admin/settings page with Amethyst Nexus glass-morphism panels
+- [ ] Wazuh Manager section: host, port, username, password fields
+- [ ] Wazuh Indexer section: host, port, username, password fields
+- [ ] "Test Connection" button per section with live status indicator
+- [ ] "Save" button with confirmation dialog
+- [ ] Show current source (env var vs database override) per field
+- [ ] Add /admin/settings route and sidebar entry under Admin group
+
+### Integration
+- [ ] Wire Wazuh client to use runtime config with env fallback
+- [ ] Wire Indexer client to use runtime config with env fallback
+- [ ] Write vitest tests for connection settings CRUD and access control
+- [ ] Verify TypeScript compiles clean

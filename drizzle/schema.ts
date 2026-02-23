@@ -405,3 +405,30 @@ export const investigationNotes = mysqlTable("investigation_notes", {
 ]));
 
 export type InvestigationNote = typeof investigationNotes.$inferSelect;
+
+/**
+ * Connection Settings — runtime-configurable connection parameters.
+ * Allows admins to update Wazuh Manager and Indexer credentials from the UI
+ * without restarting Docker. Values override environment variables.
+ * Sensitive values (passwords) are AES-256 encrypted at rest.
+ */
+export const connectionSettings = mysqlTable("connection_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Setting category: 'wazuh_manager' | 'wazuh_indexer' */
+  category: varchar("category", { length: 64 }).notNull(),
+  /** Setting key: 'host', 'port', 'user', 'pass', 'protocol' */
+  settingKey: varchar("settingKey", { length: 64 }).notNull(),
+  /** Setting value (encrypted for sensitive fields like passwords) */
+  settingValue: text("settingValue").notNull(),
+  /** Whether this value is encrypted */
+  isEncrypted: int("isEncrypted").default(0).notNull(),
+  /** Admin who last updated this setting */
+  updatedBy: int("updatedBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ([
+  index("cs_category_key_idx").on(table.category, table.settingKey),
+]));
+
+export type ConnectionSetting = typeof connectionSettings.$inferSelect;
+export type InsertConnectionSetting = typeof connectionSettings.$inferInsert;

@@ -93,6 +93,31 @@ export function isIndexerConfigured(): boolean {
   );
 }
 
+// ── Runtime config loader (DB override → env fallback, async) ────────────────
+
+/**
+ * Get Indexer config checking DB overrides first, then env vars.
+ * Use this in request handlers instead of the sync version.
+ */
+export async function getEffectiveIndexerConfig(): Promise<IndexerConfig | null> {
+  try {
+    const { getEffectiveIndexerConfig: getFromDb } = await import("../admin/connectionSettingsService");
+    return await getFromDb();
+  } catch {
+    // If DB is not available, fall back to env
+    if (isIndexerConfigured()) return getIndexerConfig();
+    return null;
+  }
+}
+
+/**
+ * Check if Indexer is configured via DB overrides or env vars.
+ */
+export async function isIndexerEffectivelyConfigured(): Promise<boolean> {
+  const config = await getEffectiveIndexerConfig();
+  return config !== null;
+}
+
 // ── Axios instance ───────────────────────────────────────────────────────────
 function createInstance(config: IndexerConfig): AxiosInstance {
   const baseURL = `${config.protocol}://${config.host}:${config.port}`;
