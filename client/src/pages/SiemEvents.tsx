@@ -24,6 +24,50 @@ import { toast } from "sonner";
 // ─── Types ───────────────────────────────────────────────────────────────────
 type SiemEvent = (typeof MOCK_SIEM_EVENTS)[number];
 
+// Time range mapping for indexer queries
+const TIME_RANGE_MAP: Record<string, string> = {
+  "15m": "now-15m",
+  "1h": "now-1h",
+  "6h": "now-6h",
+  "24h": "now-24h",
+  "7d": "now-7d",
+};
+
+// Severity to rule.level range mapping for indexer queries
+const SEVERITY_LEVEL_MAP: Record<string, number> = {
+  critical: 14,
+  high: 10,
+  medium: 7,
+  low: 4,
+  info: 0,
+};
+
+// Log source category heuristic from decoder name
+const DECODER_CATEGORY: Record<string, string> = {
+  sshd: "Authentication",
+  pam: "Authentication",
+  windows_eventchannel: "Windows",
+  "web-accesslog": "Web",
+  syscheck: "Integrity",
+  syscheck_integrity_changed: "Integrity",
+  suricata: "IDS/IPS",
+  docker: "Container",
+  json: "Generic",
+  auditd: "Audit",
+  "apache-errorlog": "Web",
+  "nginx-errorlog": "Web",
+};
+
+/** Data source badge (indexer vs mock) */
+function SourceBadge({ source }: { source: "indexer" | "mock" }) {
+  const styles = {
+    indexer: "text-[9px] font-mono px-1.5 py-0.5 rounded border text-green-400 bg-green-400/10 border-green-400/20",
+    mock: "text-[9px] font-mono px-1.5 py-0.5 rounded border text-slate-400 bg-slate-400/10 border-slate-400/20",
+  };
+  const labels = { indexer: "Indexer", mock: "Mock" };
+  return <span className={styles[source]}>{labels[source]}</span>;
+}
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 const SEVERITY_COLORS: Record<string, string> = {
   critical: "#ef4444",
@@ -88,6 +132,7 @@ export default function SiemEvents() {
   const [otxLookupIndicator, setOtxLookupIndicator] = useState<{ type: "IPv4" | "IPv6" | "domain" | "hostname" | "file" | "url" | "cve"; value: string } | null>(null);
 
   // ─── API Queries ─────────────────────────────────────────────────────────
+  const utils = trpc.useUtils();
   const statusQ = trpc.wazuh.status.useQuery();
   const isConfigured = !!(statusQ.data as Record<string, unknown>)?.configured;
 
@@ -98,6 +143,45 @@ export default function SiemEvents() {
   const agentsQ = trpc.wazuh.agents.useQuery(
     { limit: 500, offset: 0 },
     { enabled: isConfigured }
+  );
+
+  // ─── Indexer Queries ──────────────────────────────────────────────────────
+  const indexerStatusQ = trpc.indexer.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
+  const isIndexerConnected = indexerStatusQ.data?.configured === true && indexerStatusQ.data?.healthy === true;
+
+  const indexerFrom = TIME_RANGE_MAP[timeRange] ?? "now-1h";
+  const indexerSortField = sortField === "level" ? "rule.level" as const : "timestamp" as const;
+
+  // Alert search — server-side filtered, paginated, sorted
+  const alertsSearchQ = trpc.indexer.alertsSearch.useQuery({
+    from: indexerFrom,
+    to: "now",
+    size: pageSize,
+    offset: page * pageSize,
+    query: searchQuery || undefined,
+    ruleLevelMin: severityFilter !== "all" ? SEVERITY_LEVEL_MAP[severityFilter] : undefined,
+    agentId: agentFilter !== "all" ? agentFilter : undefined,
+    mitreTactic: mitreFilter !== "all" ? mitreFilter : undefined,
+    sortField: indexerSortField,
+    sortOrder: sortDir,
+  }, { retry: false, staleTime: 15_000, enabled: isIndexerConnected });
+
+  // Decoder breakdown for log sources panel
+  const alertsAggByDecoderQ = trpc.indexer.alertsAggByDecoder.useQuery(
+    { from: indexerFrom, to: "now", topN: 20 },
+    { retry: false, staleTime: 30_000, enabled: isIndexerConnected }
+  );
+
+  // Severity distribution (agg by level with timeline)
+  const alertsAggByLevelQ = trpc.indexer.alertsAggByLevel.useQuery(
+    { from: indexerFrom, to: "now", interval: timeRange === "15m" ? "1m" : timeRange === "1h" ? "5m" : timeRange === "6h" ? "15m" : "1h" },
+    { retry: false, staleTime: 30_000, enabled: isIndexerConnected }
+  );
+
+  // MITRE tactic distribution
+  const alertsAggByMitreQ = trpc.indexer.alertsAggByMitre.useQuery(
+    { from: indexerFrom, to: "now" },
+    { retry: false, staleTime: 30_000, enabled: isIndexerConnected }
   );
 
   // OTX IOC lookup query
@@ -129,8 +213,6 @@ export default function SiemEvents() {
   });
 
   // ─── Data ────────────────────────────────────────────────────────────────
-  const events: SiemEvent[] = MOCK_SIEM_EVENTS;
-  const logSources = MOCK_LOG_SOURCES;
   const rules = useFallback(rulesQ.data, MOCK_RULES, isConfigured);
   const agents = useFallback(agentsQ.data, MOCK_AGENTS, isConfigured);
 
@@ -138,9 +220,57 @@ export default function SiemEvents() {
     ? ((agents as Record<string, { affected_items: Array<{ id: string; name: string }> }>).data.affected_items || [])
     : [];
 
-  // ─── Filtering ───────────────────────────────────────────────────────────
-  const filteredEvents = useMemo(() => {
-    let result = [...events];
+  // ─── Events (Indexer or mock fallback) ─────────────────────────────────
+  const { events, totalEvents } = useMemo(() => {
+    if (isIndexerConnected && alertsSearchQ.data?.data) {
+      const resp = alertsSearchQ.data.data as unknown as Record<string, unknown>;
+      const hits = (resp.hits as Record<string, unknown>) ?? {};
+      const hitArr = (hits.hits as Array<Record<string, unknown>>) ?? [];
+      const total = typeof hits.total === "object"
+        ? Number((hits.total as Record<string, unknown>).value ?? 0)
+        : Number(hits.total ?? 0);
+      const mapped: SiemEvent[] = hitArr.map(h => {
+        const src = (h._source as Record<string, unknown>) ?? {};
+        const rule = (src.rule as Record<string, unknown>) ?? {};
+        const agent = (src.agent as Record<string, unknown>) ?? {};
+        const decoder = (src.decoder as Record<string, unknown>) ?? {};
+        const mitre = (rule.mitre as Record<string, unknown>) ?? {};
+        return {
+          id: String(h._id ?? src._id ?? ""),
+          timestamp: String(src.timestamp ?? ""),
+          agent: {
+            id: String(agent.id ?? ""),
+            name: String(agent.name ?? ""),
+            ip: String(agent.ip ?? ""),
+          },
+          rule: {
+            id: Number(rule.id ?? 0),
+            level: Number(rule.level ?? 0),
+            description: String(rule.description ?? ""),
+            groups: Array.isArray(rule.groups) ? (rule.groups as string[]) : [],
+            mitre: {
+              id: Array.isArray(mitre.id) ? (mitre.id as string[]) : [],
+              tactic: Array.isArray(mitre.tactic) ? (mitre.tactic as string[]) : [],
+              technique: Array.isArray(mitre.technique) ? (mitre.technique as string[]) : [],
+            },
+            pci_dss: Array.isArray(rule.pci_dss) ? (rule.pci_dss as string[]) : [],
+            gdpr: Array.isArray(rule.gdpr) ? (rule.gdpr as string[]) : [],
+            hipaa: Array.isArray(rule.hipaa) ? (rule.hipaa as string[]) : [],
+            firedtimes: Number(rule.firedtimes ?? 1),
+          },
+          decoder: {
+            name: String(decoder.name ?? ""),
+            parent: String(decoder.parent ?? decoder.name ?? ""),
+          },
+          data: (src.data as Record<string, unknown>) ?? {},
+          location: String(src.location ?? ""),
+          full_log: String(src.full_log ?? ""),
+        } as SiemEvent;
+      });
+      return { events: mapped, totalEvents: total };
+    }
+    // Mock fallback with client-side filtering
+    let result = [...MOCK_SIEM_EVENTS] as SiemEvent[];
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -182,11 +312,34 @@ export default function SiemEvents() {
       return sortDir === "desc" ? b.rule.level - a.rule.level : a.rule.level - b.rule.level;
     });
 
-    return result;
-  }, [events, searchQuery, severityFilter, sourceFilter, agentFilter, mitreFilter, sortField, sortDir]);
+    return { events: result, totalEvents: result.length };
+  }, [isIndexerConnected, alertsSearchQ.data, searchQuery, severityFilter, sourceFilter, agentFilter, mitreFilter, sortField, sortDir]);
 
-  const pagedEvents = filteredEvents.slice(page * pageSize, (page + 1) * pageSize);
-  const totalPages = Math.ceil(filteredEvents.length / pageSize);
+  const eventsSource: "indexer" | "mock" = isIndexerConnected && alertsSearchQ.data?.data ? "indexer" : "mock";
+
+  // When indexer connected, events are already the page; when mock, slice client-side
+  const pagedEvents = eventsSource === "indexer"
+    ? events
+    : events.slice(page * pageSize, (page + 1) * pageSize);
+  const totalPages = Math.ceil(totalEvents / pageSize);
+
+  // ─── Log Sources (Indexer decoder agg or mock fallback) ────────────────
+  const logSources = useMemo(() => {
+    if (isIndexerConnected && alertsAggByDecoderQ.data?.data) {
+      const resp = alertsAggByDecoderQ.data.data as unknown as Record<string, unknown>;
+      const aggs = (resp.aggregations as Record<string, unknown>) ?? {};
+      const topDecoders = (aggs.top_decoders as Record<string, unknown>) ?? {};
+      const buckets = (topDecoders.buckets as Array<Record<string, unknown>>) ?? [];
+      return buckets.map(b => ({
+        name: String(b.key ?? ""),
+        count: Number(b.doc_count ?? 0),
+        category: DECODER_CATEGORY[String(b.key ?? "")] ?? "Other",
+      }));
+    }
+    return MOCK_LOG_SOURCES;
+  }, [isIndexerConnected, alertsAggByDecoderQ.data]);
+
+  const logSourcesSource: "indexer" | "mock" = isIndexerConnected && alertsAggByDecoderQ.data?.data ? "indexer" : "mock";
 
   // ─── Correlation Engine ──────────────────────────────────────────────────
   const getRelatedEvents = useCallback(
@@ -228,19 +381,60 @@ export default function SiemEvents() {
     const tacticCounts: Record<string, number> = {};
     const hourlyBuckets: Record<number, number> = {};
 
+    // When indexer is connected, use aggregation data for severity and tactic counts
+    if (isIndexerConnected && alertsAggByLevelQ.data?.data) {
+      const resp = alertsAggByLevelQ.data.data as unknown as Record<string, unknown>;
+      const aggs = (resp.aggregations as Record<string, unknown>) ?? {};
+      // severity_total aggregation has per-level buckets
+      const severityTotal = (aggs.severity_total as Record<string, unknown>) ?? {};
+      const levelBuckets = (severityTotal.buckets as Array<Record<string, unknown>>) ?? [];
+      levelBuckets.forEach(b => {
+        const lvl = Number(b.key ?? 0);
+        const cnt = Number(b.doc_count ?? 0);
+        severityCounts[LEVEL_TO_SEVERITY(lvl)] += cnt;
+      });
+      // timeline aggregation for hourly buckets
+      const timeline = (aggs.timeline as Record<string, unknown>) ?? {};
+      const timeBuckets = (timeline.buckets as Array<Record<string, unknown>>) ?? [];
+      timeBuckets.forEach(b => {
+        const ts = new Date(String(b.key_as_string ?? ""));
+        const hour = ts.getHours();
+        hourlyBuckets[hour] = (hourlyBuckets[hour] || 0) + Number(b.doc_count ?? 0);
+      });
+    } else {
+      // Mock fallback: compute from local events array
+      events.forEach((e) => {
+        severityCounts[LEVEL_TO_SEVERITY(e.rule.level)]++;
+        const hour = new Date(e.timestamp).getHours();
+        hourlyBuckets[hour] = (hourlyBuckets[hour] || 0) + 1;
+      });
+    }
+
+    // When indexer is connected, use MITRE aggregation for tactic counts
+    if (isIndexerConnected && alertsAggByMitreQ.data?.data) {
+      const resp = alertsAggByMitreQ.data.data as unknown as Record<string, unknown>;
+      const aggs = (resp.aggregations as Record<string, unknown>) ?? {};
+      const tactics = (aggs.tactics as Record<string, unknown>) ?? {};
+      const tacticBuckets = (tactics.buckets as Array<Record<string, unknown>>) ?? [];
+      tacticBuckets.forEach(b => {
+        tacticCounts[String(b.key ?? "")] = Number(b.doc_count ?? 0);
+      });
+    } else {
+      events.forEach((e) => {
+        e.rule.mitre.tactic.forEach((t) => {
+          tacticCounts[t] = (tacticCounts[t] || 0) + 1;
+        });
+      });
+    }
+
+    // Source and agent counts from current page events (no dedicated aggs for these)
     events.forEach((e) => {
-      severityCounts[LEVEL_TO_SEVERITY(e.rule.level)]++;
       sourceCounts[e.decoder.parent || e.decoder.name] = (sourceCounts[e.decoder.parent || e.decoder.name] || 0) + 1;
       agentCounts[e.agent.name] = (agentCounts[e.agent.name] || 0) + 1;
-      e.rule.mitre.tactic.forEach((t) => {
-        tacticCounts[t] = (tacticCounts[t] || 0) + 1;
-      });
-      const hour = new Date(e.timestamp).getHours();
-      hourlyBuckets[hour] = (hourlyBuckets[hour] || 0) + 1;
     });
 
     return { severityCounts, sourceCounts, agentCounts, tacticCounts, hourlyBuckets };
-  }, [events]);
+  }, [events, isIndexerConnected, alertsAggByLevelQ.data, alertsAggByMitreQ.data]);
 
   const severityPieData = Object.entries(stats.severityCounts)
     .filter(([, v]) => v > 0)
@@ -317,6 +511,7 @@ export default function SiemEvents() {
         subtitle="Unified security event viewer — normalized alerts, log correlation, and forensic drill-down"
       >
         <div className="flex items-center gap-2">
+          <SourceBadge source={eventsSource} />
           {/* Saved Searches Dropdown */}
           <div className="relative">
             <Button
@@ -386,8 +581,9 @@ export default function SiemEvents() {
 
           <RefreshControl
             onRefresh={() => {
-              rulesQ.refetch();
-              agentsQ.refetch();
+              utils.wazuh.invalidate();
+              utils.indexer.invalidate();
+              savedSearchesQ.refetch();
             }}
           />
         </div>
@@ -456,7 +652,7 @@ export default function SiemEvents() {
 
       {/* ── KPI Row ───────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <StatCard label="Total Events" value={events.length.toLocaleString()} icon={Layers} />
+        <StatCard label="Total Events" value={totalEvents.toLocaleString()} icon={Layers} />
         <StatCard
           label="Critical"
           value={stats.severityCounts.critical}
@@ -491,9 +687,12 @@ export default function SiemEvents() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Event Timeline */}
         <GlassPanel className="lg:col-span-1">
-          <h3 className="text-sm font-semibold text-violet-300 mb-3 flex items-center gap-2">
-            <Activity className="h-4 w-4" /> Event Volume (24h)
-          </h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-violet-300 flex items-center gap-2">
+              <Activity className="h-4 w-4" /> Event Volume (24h)
+            </h3>
+            <SourceBadge source={eventsSource} />
+          </div>
           <ResponsiveContainer width="100%" height={180}>
             <AreaChart data={hourlyData}>
               <defs>
@@ -515,9 +714,12 @@ export default function SiemEvents() {
 
         {/* Severity Distribution */}
         <GlassPanel>
-          <h3 className="text-sm font-semibold text-violet-300 mb-3 flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4" /> Severity Distribution
-          </h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-violet-300 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" /> Severity Distribution
+            </h3>
+            <SourceBadge source={isIndexerConnected && alertsAggByLevelQ.data?.data ? "indexer" : "mock"} />
+          </div>
           <ResponsiveContainer width="100%" height={180}>
             <PieChart>
               <Pie
@@ -550,9 +752,12 @@ export default function SiemEvents() {
 
         {/* MITRE Tactic Distribution */}
         <GlassPanel>
-          <h3 className="text-sm font-semibold text-violet-300 mb-3 flex items-center gap-2">
-            <Shield className="h-4 w-4" /> MITRE Tactic Hits
-          </h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-violet-300 flex items-center gap-2">
+              <Shield className="h-4 w-4" /> MITRE Tactic Hits
+            </h3>
+            <SourceBadge source={isIndexerConnected && alertsAggByMitreQ.data?.data ? "indexer" : "mock"} />
+          </div>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={tacticBarData} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" />
@@ -570,9 +775,12 @@ export default function SiemEvents() {
       {/* ── Log Source + Decoder Breakdown ─────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <GlassPanel className="lg:col-span-1">
-          <h3 className="text-sm font-semibold text-violet-300 mb-3 flex items-center gap-2">
-            <Database className="h-4 w-4" /> Log Sources
-          </h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-violet-300 flex items-center gap-2">
+              <Database className="h-4 w-4" /> Log Sources
+            </h3>
+            <SourceBadge source={logSourcesSource} />
+          </div>
           <div className="space-y-2">
             {logSources.map((src) => (
               <button
@@ -601,9 +809,12 @@ export default function SiemEvents() {
 
         {/* ── Decoder Bar Chart ─────────────────────────────────────────── */}
         <GlassPanel className="lg:col-span-3">
-          <h3 className="text-sm font-semibold text-violet-300 mb-3 flex items-center gap-2">
-            <Cpu className="h-4 w-4" /> Events by Decoder
-          </h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-violet-300 flex items-center gap-2">
+              <Cpu className="h-4 w-4" /> Events by Decoder
+            </h3>
+            <SourceBadge source={eventsSource} />
+          </div>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={sourceBarData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" />
@@ -714,28 +925,34 @@ export default function SiemEvents() {
 
         <div className="mt-2 flex items-center justify-between">
           <span className="text-xs text-slate-500">
-            Showing {pagedEvents.length} of {filteredEvents.length} events
-            {filteredEvents.length !== events.length && ` (filtered from ${events.length} total)`}
+            {alertsSearchQ.isLoading && isIndexerConnected ? (
+              <span className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Loading events...</span>
+            ) : (
+              <>Showing {pagedEvents.length} of {totalEvents.toLocaleString()} events</>
+            )}
           </span>
-          <ExportButton
-            getData={() => filteredEvents.map(e => ({
-              timestamp: e.timestamp,
-              agent: e.agent.name,
-              agentId: e.agent.id,
-              ruleId: e.rule.id,
-              ruleDescription: e.rule.description,
-              level: e.rule.level,
-              decoder: e.decoder.name,
-              srcIp: String((e.data as Record<string, unknown>)?.srcip ?? ""),
-              dstIp: String((e.data as Record<string, unknown>)?.dstip ?? ""),
-              mitreTactic: e.rule.mitre?.tactic?.join(", ") ?? "",
-              mitreId: e.rule.mitre?.id?.join(", ") ?? "",
-              logSource: e.location,
-            }) as Record<string, unknown>)}
-            baseName="siem-events"
-            columns={EXPORT_COLUMNS.siemEvents}
-            label="Export"
-          />
+          <div className="flex items-center gap-2">
+            <SourceBadge source={eventsSource} />
+            <ExportButton
+              getData={() => pagedEvents.map(e => ({
+                timestamp: e.timestamp,
+                agent: e.agent.name,
+                agentId: e.agent.id,
+                ruleId: e.rule.id,
+                ruleDescription: e.rule.description,
+                level: e.rule.level,
+                decoder: e.decoder.name,
+                srcIp: String((e.data as Record<string, unknown>)?.srcip ?? ""),
+                dstIp: String((e.data as Record<string, unknown>)?.dstip ?? ""),
+                mitreTactic: e.rule.mitre?.tactic?.join(", ") ?? "",
+                mitreId: e.rule.mitre?.id?.join(", ") ?? "",
+                logSource: e.location,
+              }) as Record<string, unknown>)}
+              baseName="siem-events"
+              columns={EXPORT_COLUMNS.siemEvents}
+              label="Export"
+            />
+          </div>
         </div>
       </GlassPanel>
 
@@ -754,6 +971,16 @@ export default function SiemEvents() {
 
         {/* Event Rows */}
         <div className="divide-y divide-white/5">
+          {alertsSearchQ.isLoading && isIndexerConnected && pagedEvents.length === 0 && (
+            <div className="flex items-center justify-center py-12 text-sm text-slate-400">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading events from indexer...
+            </div>
+          )}
+          {!alertsSearchQ.isLoading && pagedEvents.length === 0 && (
+            <div className="py-12 text-center text-sm text-slate-500">
+              No events found for the selected filters
+            </div>
+          )}
           {pagedEvents.map((event) => {
             const severity = LEVEL_TO_SEVERITY(event.rule.level);
             const isExpanded = expandedEvent === event.id;

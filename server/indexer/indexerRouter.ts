@@ -245,6 +245,29 @@ export const indexerRouter = router({
       );
     }),
 
+  /** Top decoders / log sources by alert count */
+  alertsAggByDecoder: publicProcedure
+    .input(timeRangeSchema.extend({ topN: z.number().int().min(1).max(50).default(20) }))
+    .query(async ({ input }) => {
+      return safeSearch(
+        INDEX_PATTERNS.ALERTS,
+        {
+          query: boolQuery({ filter: [timeRangeFilter(input.from, input.to)] }),
+          size: 0,
+          aggs: {
+            top_decoders: {
+              ...termsAgg("decoder.name", input.topN),
+              aggs: {
+                parent_decoder: termsAgg("decoder.parent", 1),
+                avg_level: { avg: { field: "rule.level" } },
+              },
+            },
+          },
+        },
+        "alerts"
+      );
+    }),
+
   /** Alert count timeline (date_histogram) */
   alertsTimeline: publicProcedure
     .input(timeRangeSchema.extend({ interval: z.string().default("1h") }))

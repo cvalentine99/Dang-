@@ -54,7 +54,7 @@ import {
   ChevronUp,
   GitCompare,
 } from "lucide-react";
-import { useState, useMemo, useCallback, lazy, Suspense } from "react";
+import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react";
 
 const DriftComparison = lazy(() => import("@/components/DriftComparison"));
 
@@ -81,6 +81,26 @@ function extractItems(data: unknown): {
   const items = (d?.affected_items as Array<Record<string, unknown>>) ?? [];
   const total = Number(d?.total_affected_items ?? items.length);
   return { items, total };
+}
+
+// ── Source badge ──────────────────────────────────────────────────────────────
+function SourceBadge({ source }: { source: "server" | "mock" }) {
+  const styles = {
+    server: { label: "Live", color: "text-green-400 bg-green-400/10 border-green-400/20" },
+    mock: { label: "Mock", color: "text-slate-400 bg-slate-400/10 border-slate-400/20" },
+  };
+  const s = styles[source];
+  return <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${s.color}`}>{s.label}</span>;
+}
+
+// ── Loading spinner ──────────────────────────────────────────────────────────
+function LoadingSpinner() {
+  return (
+    <div className="flex items-center justify-center py-12">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <span className="ml-2 text-xs text-muted-foreground">Loading...</span>
+    </div>
+  );
 }
 
 // ── State badge helper ─────────────────────────────────────────────────────────
@@ -148,6 +168,18 @@ export default function ITHygiene() {
       (a) => a.status === "active"
     ) as unknown as Array<Record<string, unknown>>;
   }, [agentsQ.data, isConnected]);
+
+  // Auto-select first agent from the list when it loads
+  useEffect(() => {
+    if (agentList.length > 0) {
+      const firstId = String(agentList[0].id ?? "001");
+      setAgentId((prev) => {
+        // Only update if the current selection is not in the list
+        const exists = agentList.some((a) => String(a.id) === prev);
+        return exists ? prev : firstId;
+      });
+    }
+  }, [agentList]);
 
   // ── Software column queries ──────────────────────────────────────────────
   const packagesQ = trpc.wazuh.agentPackages.useQuery(
@@ -349,6 +381,12 @@ export default function ITHygiene() {
   }, [groupsQ.data, isConnected]);
 
   const isLoading = statusQ.isLoading;
+
+  // ── Per-tab source & loading helpers ───────────────────────────────────
+  const tabSource = (query: { data?: unknown; isLoading?: boolean }): "server" | "mock" =>
+    isConnected && query.data ? "server" : "mock";
+  const tabLoading = (query: { isLoading: boolean; isFetching: boolean }): boolean =>
+    query.isLoading || query.isFetching;
 
   // ── KPI stats ────────────────────────────────────────────────────────────
   const runningServices = servicesData.items.filter(
@@ -615,8 +653,9 @@ export default function ITHygiene() {
           <TabsContent value="packages">
             <GlassPanel>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground flex items-center gap-2">
                   {packagesData.total} packages
+                  <SourceBadge source={tabSource(packagesQ)} />
                 </span>
                 <div className="flex items-center gap-2">
                   <ExportButton getData={() => packagesData.items} baseName="packages" columns={EXPORT_COLUMNS.packages} context={`agent-${agentId}`} compact />
@@ -628,7 +667,7 @@ export default function ITHygiene() {
                   ) : null}
                 </div>
               </div>
-              <div className="overflow-x-auto">
+              {tabLoading(packagesQ) ? <LoadingSpinner /> : <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border/30">
@@ -677,7 +716,7 @@ export default function ITHygiene() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </div>}
               {Math.ceil(packagesData.total / pageSize) > 1 && (
                 <Pagination
                   page={page}
@@ -693,8 +732,9 @@ export default function ITHygiene() {
           <TabsContent value="ports">
             <GlassPanel>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground flex items-center gap-2">
                   {portsData.total} open ports
+                  <SourceBadge source={tabSource(portsQ)} />
                 </span>
                 <div className="flex items-center gap-2">
                   <ExportButton getData={() => portsData.items} baseName="ports" columns={EXPORT_COLUMNS.ports} context={`agent-${agentId}`} compact />
@@ -706,7 +746,7 @@ export default function ITHygiene() {
                   ) : null}
                 </div>
               </div>
-              <div className="overflow-x-auto">
+              {tabLoading(portsQ) ? <LoadingSpinner /> : <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border/30">
@@ -771,7 +811,7 @@ export default function ITHygiene() {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </div>}
               {Math.ceil(portsData.total / pageSize) > 1 && (
                 <Pagination
                   page={page}
@@ -787,8 +827,9 @@ export default function ITHygiene() {
           <TabsContent value="processes">
             <GlassPanel>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground flex items-center gap-2">
                   {processesData.total} processes
+                  <SourceBadge source={tabSource(processesQ)} />
                 </span>
                 <div className="flex items-center gap-2">
                   <ExportButton getData={() => processesData.items} baseName="processes" columns={EXPORT_COLUMNS.processes} context={`agent-${agentId}`} compact />
@@ -800,7 +841,7 @@ export default function ITHygiene() {
                   ) : null}
                 </div>
               </div>
-              <div className="overflow-x-auto">
+              {tabLoading(processesQ) ? <LoadingSpinner /> : <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border/30">
@@ -857,7 +898,7 @@ export default function ITHygiene() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </div>}
               {Math.ceil(processesData.total / pageSize) > 1 && (
                 <Pagination
                   page={page}
@@ -876,8 +917,9 @@ export default function ITHygiene() {
                 <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
                   <Network className="h-4 w-4 text-primary" /> Network
                   Interfaces
+                  <SourceBadge source={tabSource(netifaceQ)} />
                 </h3>
-                <div className="overflow-x-auto">
+                {tabLoading(netifaceQ) ? <LoadingSpinner /> : <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b border-border/30">
@@ -938,14 +980,15 @@ export default function ITHygiene() {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </div>}
               </GlassPanel>
 
               <GlassPanel>
                 <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
                   <Globe className="h-4 w-4 text-primary" /> Network Addresses
+                  <SourceBadge source={tabSource(netaddrQ)} />
                 </h3>
-                <div className="overflow-x-auto">
+                {tabLoading(netaddrQ) ? <LoadingSpinner /> : <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b border-border/30">
@@ -990,7 +1033,7 @@ export default function ITHygiene() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </div>}
               </GlassPanel>
             </div>
           </TabsContent>
@@ -999,8 +1042,9 @@ export default function ITHygiene() {
           <TabsContent value="hotfixes">
             <GlassPanel>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground flex items-center gap-2">
                   {hotfixesData.total} hotfixes
+                  <SourceBadge source={tabSource(hotfixesQ)} />
                 </span>
                 <div className="flex items-center gap-2">
                   <ExportButton getData={() => hotfixesData.items} baseName="hotfixes" context={`agent-${agentId}`} compact />
@@ -1012,7 +1056,7 @@ export default function ITHygiene() {
                   ) : null}
                 </div>
               </div>
-              <div className="overflow-x-auto">
+              {tabLoading(hotfixesQ) ? <LoadingSpinner /> : <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border/30">
@@ -1044,7 +1088,7 @@ export default function ITHygiene() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </div>}
               {Math.ceil(hotfixesData.total / pageSize) > 1 && (
                 <Pagination
                   page={page}
@@ -1062,12 +1106,13 @@ export default function ITHygiene() {
           <TabsContent value="extensions">
             <GlassPanel>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground flex items-center gap-2">
                   {extensionsData.total} browser extensions
+                  <SourceBadge source={tabSource(extensionsQ)} />
                 </span>
                 <ExportButton getData={() => extensionsData.items} baseName="browser-extensions" context={`agent-${agentId}`} compact />
               </div>
-              <div className="overflow-x-auto">
+              {tabLoading(extensionsQ) ? <LoadingSpinner /> : <><div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border/30">
@@ -1155,6 +1200,7 @@ export default function ITHygiene() {
                   ))}
                 </div>
               </div>
+              </>}
             </GlassPanel>
           </TabsContent>
 
@@ -1163,8 +1209,9 @@ export default function ITHygiene() {
             <GlassPanel>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-4">
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-muted-foreground flex items-center gap-2">
                     {servicesData.total} services
+                    <SourceBadge source={tabSource(servicesQ)} />
                   </span>
                   <div className="flex items-center gap-3">
                     <span className="text-[10px] text-muted-foreground flex items-center gap-1">
@@ -1179,7 +1226,7 @@ export default function ITHygiene() {
                 </div>
                 <ExportButton getData={() => servicesData.items} baseName="services" columns={EXPORT_COLUMNS.services} context={`agent-${agentId}`} compact />
               </div>
-              <div className="overflow-x-auto">
+              {tabLoading(servicesQ) ? <LoadingSpinner /> : <><div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border/30">
@@ -1281,6 +1328,7 @@ export default function ITHygiene() {
                   ))}
                 </div>
               </div>
+              </>}
             </GlassPanel>
           </TabsContent>
 
@@ -1291,8 +1339,9 @@ export default function ITHygiene() {
             <GlassPanel>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-4">
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-muted-foreground flex items-center gap-2">
                     {usersData.total} local users
+                    <SourceBadge source={tabSource(usersQ)} />
                   </span>
                   <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                     <Shield className="h-3 w-3 text-threat-high" />
@@ -1301,7 +1350,7 @@ export default function ITHygiene() {
                 </div>
                 <ExportButton getData={() => usersData.items} baseName="users" columns={EXPORT_COLUMNS.users} context={`agent-${agentId}`} compact />
               </div>
-              <div className="overflow-x-auto">
+              {tabLoading(usersQ) ? <LoadingSpinner /> : <><div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border/30">
@@ -1420,6 +1469,7 @@ export default function ITHygiene() {
                   </div>
                 </div>
               </div>
+              </>}
             </GlassPanel>
           </TabsContent>
 
@@ -1427,12 +1477,13 @@ export default function ITHygiene() {
           <TabsContent value="groups">
             <GlassPanel>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground flex items-center gap-2">
                   {groupsData.total} local groups
+                  <SourceBadge source={tabSource(groupsQ)} />
                 </span>
                 <ExportButton getData={() => groupsData.items} baseName="groups" columns={EXPORT_COLUMNS.groups} context={`agent-${agentId}`} compact />
               </div>
-              <div className="overflow-x-auto">
+              {tabLoading(groupsQ) ? <LoadingSpinner /> : <><div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border/30">
@@ -1546,6 +1597,7 @@ export default function ITHygiene() {
                     })}
                 </div>
               </div>
+              </>}
             </GlassPanel>
           </TabsContent>
         </Tabs>

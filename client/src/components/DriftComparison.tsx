@@ -52,6 +52,7 @@ import {
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { Wifi, WifiOff } from "lucide-react";
 import {
   MOCK_AGENTS,
   MOCK_AGENT_PACKAGES,
@@ -84,27 +85,64 @@ interface BaselineDriftItem {
   category: "packages" | "services" | "users";
 }
 
+// ── Wazuh response extractor ────────────────────────────────────────────────
+
+function extractItems(raw: unknown): Array<Record<string, unknown>> {
+  const d = (raw as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+  return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
+}
+
+// ── Source badge ────────────────────────────────────────────────────────────
+
+function SourceBadge({ source }: { source: "live" | "mock" }) {
+  const styles = {
+    live: { label: "Live", color: "text-green-400 bg-green-400/10 border-green-400/20", Icon: Wifi },
+    mock: { label: "Mock", color: "text-slate-400 bg-slate-400/10 border-slate-400/20", Icon: WifiOff },
+  };
+  const s = styles[source];
+  return (
+    <span className={`inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded border ${s.color}`}>
+      <s.Icon className="h-2.5 w-2.5" />
+      {s.label}
+    </span>
+  );
+}
+
+// ── Per-agent data shape ────────────────────────────────────────────────────
+
+type AgentDataMap = {
+  packages: Record<string, { data: { affected_items: Array<Record<string, unknown>> } }>;
+  services: Record<string, { data: { affected_items: Array<Record<string, unknown>> } }>;
+  users: Record<string, { data: { affected_items: Array<Record<string, unknown>> } }>;
+};
+
 // ── Snapshot helpers ────────────────────────────────────────────────────
 
-function collectAgentSnapshot(agentIds: string[]) {
+function collectAgentSnapshot(agentIds: string[], liveData: AgentDataMap) {
   const packages: Record<string, Array<{ name: string; version: string }>> = {};
   const services: Record<string, Array<{ name: string; state: string }>> = {};
   const users: Record<string, Array<{ name: string; shell: string }>> = {};
 
   for (const id of agentIds) {
-    const pkgData = MOCK_AGENT_PACKAGES[id] ?? { data: { affected_items: MOCK_PACKAGES.data.affected_items } };
+    const pkgData = liveData.packages[id]
+      ?? MOCK_AGENT_PACKAGES[id]
+      ?? { data: { affected_items: MOCK_PACKAGES.data.affected_items } };
     packages[id] = pkgData.data.affected_items.map((p: Record<string, unknown>) => ({
       name: String(p.name),
       version: String(p.version ?? "unknown"),
     }));
 
-    const svcData = MOCK_AGENT_SERVICES[id] ?? { data: { affected_items: MOCK_SERVICES.data.affected_items } };
+    const svcData = liveData.services[id]
+      ?? MOCK_AGENT_SERVICES[id]
+      ?? { data: { affected_items: MOCK_SERVICES.data.affected_items } };
     services[id] = svcData.data.affected_items.map((s: Record<string, unknown>) => ({
       name: String(s.name),
       state: String(s.state ?? "unknown"),
     }));
 
-    const usrData = MOCK_AGENT_USERS[id] ?? { data: { affected_items: MOCK_USERS.data.affected_items } };
+    const usrData = liveData.users[id]
+      ?? MOCK_AGENT_USERS[id]
+      ?? { data: { affected_items: MOCK_USERS.data.affected_items } };
     users[id] = usrData.data.affected_items.map((u: Record<string, unknown>) => ({
       name: String(u.name),
       shell: String(u.shell ?? "unknown"),
@@ -118,12 +156,15 @@ function collectAgentSnapshot(agentIds: string[]) {
 
 function computePackageDrift(
   agentIds: string[],
-  _isConnected: boolean
+  _isConnected: boolean,
+  liveData: AgentDataMap
 ): DriftItem[] {
   const allPackages = new Map<string, Record<string, { version: string }>>();
 
   for (const id of agentIds) {
-    const data = MOCK_AGENT_PACKAGES[id] ?? { data: { affected_items: MOCK_PACKAGES.data.affected_items } };
+    const data = liveData.packages[id]
+      ?? MOCK_AGENT_PACKAGES[id]
+      ?? { data: { affected_items: MOCK_PACKAGES.data.affected_items } };
     for (const pkg of data.data.affected_items) {
       const name = String(pkg.name);
       if (!allPackages.has(name)) allPackages.set(name, {});
@@ -173,12 +214,15 @@ function computePackageDrift(
 
 function computeServiceDrift(
   agentIds: string[],
-  _isConnected: boolean
+  _isConnected: boolean,
+  liveData: AgentDataMap
 ): DriftItem[] {
   const allServices = new Map<string, Record<string, { state: string }>>();
 
   for (const id of agentIds) {
-    const data = MOCK_AGENT_SERVICES[id] ?? { data: { affected_items: MOCK_SERVICES.data.affected_items } };
+    const data = liveData.services[id]
+      ?? MOCK_AGENT_SERVICES[id]
+      ?? { data: { affected_items: MOCK_SERVICES.data.affected_items } };
     for (const svc of data.data.affected_items) {
       const name = String(svc.name);
       if (!allServices.has(name)) allServices.set(name, {});
@@ -228,12 +272,15 @@ function computeServiceDrift(
 
 function computeUserDrift(
   agentIds: string[],
-  _isConnected: boolean
+  _isConnected: boolean,
+  liveData: AgentDataMap
 ): DriftItem[] {
   const allUsers = new Map<string, Record<string, { shell: string }>>();
 
   for (const id of agentIds) {
-    const data = MOCK_AGENT_USERS[id] ?? { data: { affected_items: MOCK_USERS.data.affected_items } };
+    const data = liveData.users[id]
+      ?? MOCK_AGENT_USERS[id]
+      ?? { data: { affected_items: MOCK_USERS.data.affected_items } };
     for (const user of data.data.affected_items) {
       const name = String(user.name);
       if (!allUsers.has(name)) allUsers.set(name, {});
@@ -280,7 +327,8 @@ function computeUserDrift(
 function computeBaselineDrift(
   baselineSnapshot: Record<string, unknown>,
   agentIds: string[],
-  agentNameMap: Record<string, string>
+  agentNameMap: Record<string, string>,
+  liveData: AgentDataMap
 ): BaselineDriftItem[] {
   const drifts: BaselineDriftItem[] = [];
   const snap = baselineSnapshot as {
@@ -292,9 +340,11 @@ function computeBaselineDrift(
   for (const agentId of agentIds) {
     const agentName = agentNameMap[agentId] ?? agentId;
 
-    // Packages
+    // Packages – prefer live data, fall back to per-agent mock, then global mock
     const baselinePkgs = snap.packages?.[agentId] ?? [];
-    const currentPkgData = MOCK_AGENT_PACKAGES[agentId] ?? { data: { affected_items: MOCK_PACKAGES.data.affected_items } };
+    const currentPkgData = liveData.packages[agentId]
+      ?? MOCK_AGENT_PACKAGES[agentId]
+      ?? { data: { affected_items: MOCK_PACKAGES.data.affected_items } };
     const currentPkgs = currentPkgData.data.affected_items.map((p: Record<string, unknown>) => ({
       name: String(p.name),
       version: String(p.version ?? "unknown"),
@@ -316,9 +366,11 @@ function computeBaselineDrift(
       }
     }
 
-    // Services
+    // Services – prefer live data, fall back to per-agent mock, then global mock
     const baselineSvcs = snap.services?.[agentId] ?? [];
-    const currentSvcData = MOCK_AGENT_SERVICES[agentId] ?? { data: { affected_items: MOCK_SERVICES.data.affected_items } };
+    const currentSvcData = liveData.services[agentId]
+      ?? MOCK_AGENT_SERVICES[agentId]
+      ?? { data: { affected_items: MOCK_SERVICES.data.affected_items } };
     const currentSvcs = currentSvcData.data.affected_items.map((s: Record<string, unknown>) => ({
       name: String(s.name),
       state: String(s.state ?? "unknown"),
@@ -340,9 +392,11 @@ function computeBaselineDrift(
       }
     }
 
-    // Users
+    // Users – prefer live data, fall back to per-agent mock, then global mock
     const baselineUsrs = snap.users?.[agentId] ?? [];
-    const currentUsrData = MOCK_AGENT_USERS[agentId] ?? { data: { affected_items: MOCK_USERS.data.affected_items } };
+    const currentUsrData = liveData.users[agentId]
+      ?? MOCK_AGENT_USERS[agentId]
+      ?? { data: { affected_items: MOCK_USERS.data.affected_items } };
     const currentUsrs = currentUsrData.data.affected_items.map((u: Record<string, unknown>) => ({
       name: String(u.name),
       shell: String(u.shell ?? "unknown"),
@@ -466,11 +520,14 @@ function ChangeTypeBadge({ type }: { type: "new" | "removed" | "changed" }) {
 
 // ── Main component ───────────────────────────────────────────────────────
 
+// Max number of agents the comparison supports (used for fixed hook slots)
+const MAX_COMPARE_AGENTS = 5;
+
 interface DriftComparisonProps {
-  isConnected: boolean;
+  isConnected?: boolean;
 }
 
-export default function DriftComparison({ isConnected }: DriftComparisonProps) {
+export default function DriftComparison({ isConnected: isConnectedProp }: DriftComparisonProps) {
   const [selectedAgents, setSelectedAgents] = useState<string[]>(["001", "002"]);
   const [driftTab, setDriftTab] = useState<"packages" | "services" | "users">("packages");
   const [showDriftOnly, setShowDriftOnly] = useState(false);
@@ -483,6 +540,93 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
   const [baselineDescription, setBaselineDescription] = useState("");
   const [activeBaselineId, setActiveBaselineId] = useState<number | null>(null);
   const [baselineCategoryFilter, setBaselineCategoryFilter] = useState<"all" | "packages" | "services" | "users">("all");
+
+  // ── Wazuh connectivity check ─────────────────────────────────────────
+  const statusQ = trpc.wazuh.status.useQuery(undefined, {
+    retry: 1,
+    staleTime: 60_000,
+  });
+  const isConnected =
+    isConnectedProp ??
+    (statusQ.data?.configured === true && statusQ.data?.data != null);
+
+  // ── Live agent list ──────────────────────────────────────────────────
+  const agentsQ = trpc.wazuh.agents.useQuery(
+    { limit: 500, offset: 0, status: "active" },
+    { retry: 1, staleTime: 30_000, enabled: isConnected }
+  );
+  const agentsSource: "live" | "mock" =
+    isConnected && agentsQ.data ? "live" : "mock";
+
+  // ── Per-agent syscollector queries (fixed hook slots) ────────────────
+  // React requires hooks to be called unconditionally & in the same order
+  // every render, so we allocate MAX_COMPARE_AGENTS slots and use `enabled`
+  // to control which ones actually fire.
+
+  const slot = (i: number) => selectedAgents[i] ?? "";
+  const slotEnabled = (i: number) => isConnected && i < selectedAgents.length && !!selectedAgents[i];
+  const queryOpts = { retry: 1, staleTime: 30_000 };
+
+  // Packages — 5 fixed slots
+  const pkgQ0 = trpc.wazuh.agentPackages.useQuery({ agentId: slot(0), limit: 500, offset: 0 }, { ...queryOpts, enabled: slotEnabled(0) });
+  const pkgQ1 = trpc.wazuh.agentPackages.useQuery({ agentId: slot(1), limit: 500, offset: 0 }, { ...queryOpts, enabled: slotEnabled(1) });
+  const pkgQ2 = trpc.wazuh.agentPackages.useQuery({ agentId: slot(2), limit: 500, offset: 0 }, { ...queryOpts, enabled: slotEnabled(2) });
+  const pkgQ3 = trpc.wazuh.agentPackages.useQuery({ agentId: slot(3), limit: 500, offset: 0 }, { ...queryOpts, enabled: slotEnabled(3) });
+  const pkgQ4 = trpc.wazuh.agentPackages.useQuery({ agentId: slot(4), limit: 500, offset: 0 }, { ...queryOpts, enabled: slotEnabled(4) });
+  const pkgQueries = [pkgQ0, pkgQ1, pkgQ2, pkgQ3, pkgQ4];
+
+  // Services — 5 fixed slots
+  const svcQ0 = trpc.wazuh.agentServices.useQuery({ agentId: slot(0), limit: 500, offset: 0 }, { ...queryOpts, enabled: slotEnabled(0) });
+  const svcQ1 = trpc.wazuh.agentServices.useQuery({ agentId: slot(1), limit: 500, offset: 0 }, { ...queryOpts, enabled: slotEnabled(1) });
+  const svcQ2 = trpc.wazuh.agentServices.useQuery({ agentId: slot(2), limit: 500, offset: 0 }, { ...queryOpts, enabled: slotEnabled(2) });
+  const svcQ3 = trpc.wazuh.agentServices.useQuery({ agentId: slot(3), limit: 500, offset: 0 }, { ...queryOpts, enabled: slotEnabled(3) });
+  const svcQ4 = trpc.wazuh.agentServices.useQuery({ agentId: slot(4), limit: 500, offset: 0 }, { ...queryOpts, enabled: slotEnabled(4) });
+  const svcQueries = [svcQ0, svcQ1, svcQ2, svcQ3, svcQ4];
+
+  // Users — 5 fixed slots
+  const usrQ0 = trpc.wazuh.agentUsers.useQuery({ agentId: slot(0), limit: 500, offset: 0 }, { ...queryOpts, enabled: slotEnabled(0) });
+  const usrQ1 = trpc.wazuh.agentUsers.useQuery({ agentId: slot(1), limit: 500, offset: 0 }, { ...queryOpts, enabled: slotEnabled(1) });
+  const usrQ2 = trpc.wazuh.agentUsers.useQuery({ agentId: slot(2), limit: 500, offset: 0 }, { ...queryOpts, enabled: slotEnabled(2) });
+  const usrQ3 = trpc.wazuh.agentUsers.useQuery({ agentId: slot(3), limit: 500, offset: 0 }, { ...queryOpts, enabled: slotEnabled(3) });
+  const usrQ4 = trpc.wazuh.agentUsers.useQuery({ agentId: slot(4), limit: 500, offset: 0 }, { ...queryOpts, enabled: slotEnabled(4) });
+  const usrQueries = [usrQ0, usrQ1, usrQ2, usrQ3, usrQ4];
+
+  // ── Build AgentDataMap from query results ────────────────────────────
+  const liveData: AgentDataMap = useMemo(() => {
+    const packages: AgentDataMap["packages"] = {};
+    const services: AgentDataMap["services"] = {};
+    const users: AgentDataMap["users"] = {};
+
+    for (let i = 0; i < MAX_COMPARE_AGENTS; i++) {
+      const id = selectedAgents[i];
+      if (!id) continue;
+
+      if (pkgQueries[i]?.data) {
+        const items = extractItems(pkgQueries[i].data);
+        if (items.length > 0) packages[id] = { data: { affected_items: items } };
+      }
+      if (svcQueries[i]?.data) {
+        const items = extractItems(svcQueries[i].data);
+        if (items.length > 0) services[id] = { data: { affected_items: items } };
+      }
+      if (usrQueries[i]?.data) {
+        const items = extractItems(usrQueries[i].data);
+        if (items.length > 0) users[id] = { data: { affected_items: items } };
+      }
+    }
+
+    return { packages, services, users };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedAgents,
+    pkgQ0.data, pkgQ1.data, pkgQ2.data, pkgQ3.data, pkgQ4.data,
+    svcQ0.data, svcQ1.data, svcQ2.data, svcQ3.data, svcQ4.data,
+    usrQ0.data, usrQ1.data, usrQ2.data, usrQ3.data, usrQ4.data,
+  ]);
+
+  // Determine per-category data source
+  const dataSource: "live" | "mock" =
+    isConnected && Object.keys(liveData.packages).length > 0 ? "live" : "mock";
 
   // tRPC queries for baselines
   const baselinesQ = trpc.baselines.list.useQuery(undefined, {
@@ -514,11 +658,25 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
     onError: (err) => toast.error(`Failed to delete: ${err.message}`),
   });
 
+  // ── Agent list: prefer live, fall back to mock ──────────────────────
   const activeAgents = useMemo(() => {
-    return MOCK_AGENTS.data.affected_items.filter(
-      (a) => a.status === "active"
-    );
-  }, []);
+    if (isConnected && agentsQ.data) {
+      const items = extractItems(agentsQ.data);
+      if (items.length > 0) {
+        return items
+          .filter((a) => a.status === "active")
+          .map((a) => ({
+            id: String(a.id),
+            name: String(a.name ?? a.id),
+            ip: String(a.ip ?? ""),
+            status: String(a.status ?? "unknown"),
+          }));
+      }
+    }
+    return MOCK_AGENTS.data.affected_items
+      .filter((a) => a.status === "active")
+      .map((a) => ({ id: a.id, name: a.name, ip: a.ip, status: a.status }));
+  }, [isConnected, agentsQ.data]);
 
   const toggleAgent = (id: string) => {
     setSelectedAgents((prev) => {
@@ -532,16 +690,16 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
   };
 
   const packageDrift = useMemo(
-    () => (selectedAgents.length >= 2 ? computePackageDrift(selectedAgents, isConnected) : []),
-    [selectedAgents, isConnected]
+    () => (selectedAgents.length >= 2 ? computePackageDrift(selectedAgents, isConnected, liveData) : []),
+    [selectedAgents, isConnected, liveData]
   );
   const serviceDrift = useMemo(
-    () => (selectedAgents.length >= 2 ? computeServiceDrift(selectedAgents, isConnected) : []),
-    [selectedAgents, isConnected]
+    () => (selectedAgents.length >= 2 ? computeServiceDrift(selectedAgents, isConnected, liveData) : []),
+    [selectedAgents, isConnected, liveData]
   );
   const userDrift = useMemo(
-    () => (selectedAgents.length >= 2 ? computeUserDrift(selectedAgents, isConnected) : []),
-    [selectedAgents, isConnected]
+    () => (selectedAgents.length >= 2 ? computeUserDrift(selectedAgents, isConnected, liveData) : []),
+    [selectedAgents, isConnected, liveData]
   );
 
   const currentDrift = driftTab === "packages" ? packageDrift : driftTab === "services" ? serviceDrift : userDrift;
@@ -555,19 +713,24 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
 
   const agentNameMap = useMemo(() => {
     const m: Record<string, string> = {};
+    // Seed from mock data first so every known ID has a name
     for (const a of MOCK_AGENTS.data.affected_items) {
       m[a.id] = a.name;
     }
+    // Overlay live agent names when available
+    for (const a of activeAgents) {
+      m[a.id] = a.name;
+    }
     return m;
-  }, []);
+  }, [activeAgents]);
 
   // Baseline drift computation
   const baselineDrifts = useMemo(() => {
     if (!baselineDetailQ.data?.baseline?.snapshotData) return [];
     const baseline = baselineDetailQ.data.baseline;
     const baselineAgentIds = baseline.agentIds as string[];
-    return computeBaselineDrift(baseline.snapshotData, baselineAgentIds, agentNameMap);
-  }, [baselineDetailQ.data, agentNameMap]);
+    return computeBaselineDrift(baseline.snapshotData, baselineAgentIds, agentNameMap, liveData);
+  }, [baselineDetailQ.data, agentNameMap, liveData]);
 
   const filteredBaselineDrifts = useMemo(() => {
     if (baselineCategoryFilter === "all") return baselineDrifts;
@@ -581,7 +744,7 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
   // Save baseline handler
   const handleSaveBaseline = () => {
     if (!baselineName.trim()) return;
-    const snapshot = collectAgentSnapshot(selectedAgents);
+    const snapshot = collectAgentSnapshot(selectedAgents, liveData);
     createBaselineMut.mutate({
       name: baselineName.trim(),
       description: baselineDescription.trim() || undefined,
@@ -606,8 +769,9 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
           <h3 className="text-sm font-medium text-foreground">
             Select Agents to Compare
           </h3>
+          <SourceBadge source={agentsSource} />
           <span className="text-xs text-muted-foreground ml-auto">
-            {selectedAgents.length} selected (2–5 agents)
+            {selectedAgents.length} selected (2-5 agents)
           </span>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
@@ -781,15 +945,18 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
                   </TabsTrigger>
                 </TabsList>
 
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <Checkbox
-                    checked={showDriftOnly}
-                    onCheckedChange={(v) => setShowDriftOnly(v === true)}
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    Show drift only
-                  </span>
-                </label>
+                <div className="flex items-center gap-3">
+                  <SourceBadge source={dataSource} />
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={showDriftOnly}
+                      onCheckedChange={(v) => setShowDriftOnly(v === true)}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      Show drift only
+                    </span>
+                  </label>
+                </div>
               </div>
 
               {(["packages", "services", "users"] as const).map((tabKey) => (
