@@ -41,6 +41,8 @@ import {
   BookmarkPlus,
   Save,
   Trash2,
+  Database,
+  Archive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -84,7 +86,7 @@ const CHART_COLORS = [
 
 // ── Correlation result type ─────────────────────────────────────────────────────
 interface CorrelationHit {
-  source: "agents" | "rules" | "vulnerabilities" | "syscheck" | "logs" | "mitre";
+  source: "agents" | "rules" | "vulnerabilities" | "syscheck" | "logs" | "mitre" | "indexer_alerts" | "archives";
   sourceLabel: string;
   matches: Record<string, unknown>[];
   count: number;
@@ -97,6 +99,17 @@ interface HuntEntry {
   iocType: IOCType;
   totalHits: number;
   sources: string[];
+}
+
+/** Data source badge (indexer vs mock/api) */
+function SourceBadge({ source }: { source: "indexer" | "api" | "mock" }) {
+  const styles = {
+    indexer: "text-[9px] font-mono px-1.5 py-0.5 rounded border text-green-400 bg-green-400/10 border-green-400/20",
+    api: "text-[9px] font-mono px-1.5 py-0.5 rounded border text-blue-400 bg-blue-400/10 border-blue-400/20",
+    mock: "text-[9px] font-mono px-1.5 py-0.5 rounded border text-slate-400 bg-slate-400/10 border-slate-400/20",
+  };
+  const labels = { indexer: "Indexer", api: "Wazuh API", mock: "Mock" };
+  return <span className={styles[source]}>{labels[source]}</span>;
 }
 
 export default function ThreatHunting() {
@@ -149,6 +162,44 @@ export default function ThreatHunting() {
   const mitreTechniques = useFallback(mitreQ.data, MOCK_MITRE_TECHNIQUES, isConnected);
   const vulns = MOCK_VULNERABILITIES; // Vulns require agentId, use mock for cross-search
   const syscheck = MOCK_SYSCHECK_FILES; // Syscheck requires agentId, use mock for cross-search
+
+  // ── Indexer queries (cross-agent search) ────────────────────────────────
+  const indexerStatusQ = trpc.indexer.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
+  const isIndexerConnected = indexerStatusQ.data?.configured === true && indexerStatusQ.data?.healthy === true;
+
+  // Build IOC-specific filters for indexer alertsSearch
+  const indexerAlertFilters = useMemo(() => {
+    if (!activeQuery) return {};
+    const q = activeQuery.trim();
+    switch (activeIocType) {
+      case "ip": return { srcip: q };
+      case "rule_id": return { ruleId: q };
+      case "mitre_id": return { mitreTechnique: q };
+      default: return { query: q };
+    }
+  }, [activeQuery, activeIocType]);
+
+  const indexerAlertsQ = trpc.indexer.alertsSearch.useQuery(
+    {
+      from: "now-30d",
+      to: "now",
+      size: 100,
+      offset: 0,
+      ...indexerAlertFilters,
+    },
+    { retry: false, staleTime: 15_000, enabled: isIndexerConnected && !!activeQuery }
+  );
+
+  const indexerArchivesQ = trpc.indexer.archivesSearch.useQuery(
+    {
+      from: "now-30d",
+      to: "now",
+      size: 100,
+      offset: 0,
+      query: activeQuery || undefined,
+    },
+    { retry: false, staleTime: 15_000, enabled: isIndexerConnected && !!activeQuery }
+  );
 
   // ── Correlation engine ────────────────────────────────────────────────────
   const correlationResults = useMemo<CorrelationHit[]>(() => {
@@ -228,8 +279,28 @@ export default function ThreatHunting() {
       results.push({ source: "mitre", sourceLabel: "MITRE ATT&CK", matches: mitreHits, count: mitreHits.length });
     }
 
+    // Search Indexer Alerts (cross-agent, server-side filtered)
+    if (isIndexerConnected && indexerAlertsQ.data?.data) {
+      const hitsData = indexerAlertsQ.data.data as unknown as Record<string, unknown>;
+      const hitsObj = hitsData?.hits as { total?: { value?: number }; hits?: Array<{ _source: Record<string, unknown> }> } | undefined;
+      const alertHits = (hitsObj?.hits ?? []).map((h) => h._source);
+      if (alertHits.length > 0) {
+        results.push({ source: "indexer_alerts", sourceLabel: "Indexer Alerts", matches: alertHits, count: hitsObj?.total?.value ?? alertHits.length });
+      }
+    }
+
+    // Search Indexer Archives (raw logs, server-side filtered)
+    if (isIndexerConnected && indexerArchivesQ.data?.data) {
+      const hitsData = indexerArchivesQ.data.data as unknown as Record<string, unknown>;
+      const hitsObj = hitsData?.hits as { total?: { value?: number }; hits?: Array<{ _source: Record<string, unknown> }> } | undefined;
+      const archiveHits = (hitsObj?.hits ?? []).map((h) => h._source);
+      if (archiveHits.length > 0) {
+        results.push({ source: "archives", sourceLabel: "Archives (Raw)", matches: archiveHits, count: hitsObj?.total?.value ?? archiveHits.length });
+      }
+    }
+
     return results;
-  }, [activeQuery, activeIocType, agents, rules, vulns, syscheck, logs, mitreTechniques]);
+  }, [activeQuery, activeIocType, agents, rules, vulns, syscheck, logs, mitreTechniques, isIndexerConnected, indexerAlertsQ.data, indexerArchivesQ.data]);
 
   const totalHits = correlationResults.reduce((sum, r) => sum + r.count, 0);
 
@@ -276,9 +347,14 @@ export default function ThreatHunting() {
     rulesQ.refetch();
     logsQ.refetch();
     mitreQ.refetch();
+    if (isIndexerConnected) {
+      indexerAlertsQ.refetch();
+      indexerArchivesQ.refetch();
+    }
   };
 
-  const isLoading = agentsQ.isLoading || rulesQ.isLoading || logsQ.isLoading || mitreQ.isLoading;
+  const isLoading = agentsQ.isLoading || rulesQ.isLoading || logsQ.isLoading || mitreQ.isLoading
+    || (isIndexerConnected && (indexerAlertsQ.isLoading || indexerArchivesQ.isLoading));
 
   // ── Computed stats ────────────────────────────────────────────────────────
   const agentCount = Number(((agents as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items ?? 0);
@@ -286,13 +362,28 @@ export default function ThreatHunting() {
   const vulnCount = Number(((vulns as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items ?? 0);
   const fimCount = Number(((syscheck as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items ?? 0);
 
+  // Indexer alert/archive counts (from last search, or 0 if not queried)
+  const indexerAlertCount = useMemo(() => {
+    if (!indexerAlertsQ.data?.data) return 0;
+    const hitsData = indexerAlertsQ.data.data as unknown as Record<string, unknown>;
+    const hitsObj = hitsData?.hits as { total?: { value?: number } } | undefined;
+    return hitsObj?.total?.value ?? 0;
+  }, [indexerAlertsQ.data]);
+
+  const indexerArchiveCount = useMemo(() => {
+    if (!indexerArchivesQ.data?.data) return 0;
+    const hitsData = indexerArchivesQ.data.data as unknown as Record<string, unknown>;
+    const hitsObj = hitsData?.hits as { total?: { value?: number } } | undefined;
+    return hitsObj?.total?.value ?? 0;
+  }, [indexerArchivesQ.data]);
+
   // Source distribution for pie chart
   const sourceDistribution = correlationResults.map((r) => ({
     name: r.sourceLabel,
     value: r.count,
   }));
 
-  // Severity distribution from rule hits
+  // Severity distribution from rule hits + indexer alerts
   const severityData = useMemo(() => {
     const counts: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
     const ruleResult = correlationResults.find((r) => r.source === "rules");
@@ -311,12 +402,21 @@ export default function ThreatHunting() {
         else counts.info += 1;
       });
     }
+    // Include indexer alerts severity
+    const indexerAlertResult = correlationResults.find((r) => r.source === "indexer_alerts");
+    if (indexerAlertResult) {
+      indexerAlertResult.matches.forEach((m) => {
+        const rule = (m as Record<string, unknown>).rule as Record<string, unknown> | undefined;
+        const level = threatLevelFromNumber(Number(rule?.level ?? 0));
+        counts[level] = (counts[level] || 0) + 1;
+      });
+    }
     return Object.entries(counts)
       .filter(([, v]) => v > 0)
       .map(([k, v]) => ({ name: k.charAt(0).toUpperCase() + k.slice(1), value: v, level: k }));
   }, [correlationResults]);
 
-  // MITRE tactic distribution from correlated rules
+  // MITRE tactic distribution from correlated rules + indexer alerts
   const mitreTacticData = useMemo(() => {
     const tacticCounts: Record<string, number> = {};
     const ruleResult = correlationResults.find((r) => r.source === "rules");
@@ -324,6 +424,18 @@ export default function ThreatHunting() {
       ruleResult.matches.forEach((m) => {
         const mitre = (m as Record<string, unknown>).mitre as { tactic?: string[] } | undefined;
         (mitre?.tactic ?? []).forEach((t: string) => {
+          tacticCounts[t] = (tacticCounts[t] || 0) + 1;
+        });
+      });
+    }
+    // Include MITRE tactics from indexer alerts (nested under rule.mitre.tactic)
+    const indexerAlertResult = correlationResults.find((r) => r.source === "indexer_alerts");
+    if (indexerAlertResult) {
+      indexerAlertResult.matches.forEach((m) => {
+        const rule = (m as Record<string, unknown>).rule as Record<string, unknown> | undefined;
+        const mitre = rule?.mitre as Record<string, unknown> | undefined;
+        const tactics = (mitre?.tactic ?? []) as string[];
+        tactics.forEach((t: string) => {
           tacticCounts[t] = (tacticCounts[t] || 0) + 1;
         });
       });
@@ -764,6 +876,8 @@ export default function ThreatHunting() {
                     : result.source === "vulnerabilities" ? Bug
                     : result.source === "syscheck" ? FileWarning
                     : result.source === "logs" ? Terminal
+                    : result.source === "indexer_alerts" ? Database
+                    : result.source === "archives" ? Archive
                     : Target;
 
                   return (
@@ -784,6 +898,7 @@ export default function ThreatHunting() {
                         })()}
                         <span className="text-sm font-medium text-foreground">{result.sourceLabel}</span>
                         <span className="ml-auto flex items-center gap-2">
+                          <SourceBadge source={result.source === "indexer_alerts" || result.source === "archives" ? "indexer" : isConnected ? "api" : "mock"} />
                           <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-primary">
                             {result.count} hit{result.count !== 1 ? "s" : ""}
                           </span>
@@ -851,6 +966,25 @@ export default function ThreatHunting() {
                                       <th className="px-4 py-2 text-left text-muted-foreground font-medium">Name</th>
                                       <th className="px-4 py-2 text-left text-muted-foreground font-medium">Tactics</th>
                                       <th className="px-4 py-2 text-left text-muted-foreground font-medium">Description</th>
+                                    </>
+                                  )}
+                                  {result.source === "indexer_alerts" && (
+                                    <>
+                                      <th className="px-4 py-2 text-left text-muted-foreground font-medium">Timestamp</th>
+                                      <th className="px-4 py-2 text-left text-muted-foreground font-medium">Agent</th>
+                                      <th className="px-4 py-2 text-left text-muted-foreground font-medium">Rule ID</th>
+                                      <th className="px-4 py-2 text-left text-muted-foreground font-medium">Level</th>
+                                      <th className="px-4 py-2 text-left text-muted-foreground font-medium">Description</th>
+                                      <th className="px-4 py-2 text-left text-muted-foreground font-medium">MITRE</th>
+                                      <th className="px-4 py-2 text-left text-muted-foreground font-medium">Src IP</th>
+                                    </>
+                                  )}
+                                  {result.source === "archives" && (
+                                    <>
+                                      <th className="px-4 py-2 text-left text-muted-foreground font-medium">Timestamp</th>
+                                      <th className="px-4 py-2 text-left text-muted-foreground font-medium">Agent</th>
+                                      <th className="px-4 py-2 text-left text-muted-foreground font-medium">Rule ID</th>
+                                      <th className="px-4 py-2 text-left text-muted-foreground font-medium">Full Log</th>
                                     </>
                                   )}
                                   <th className="px-4 py-2 text-left text-muted-foreground font-medium">JSON</th>
@@ -977,6 +1111,60 @@ export default function ThreatHunting() {
                                         </>
                                       )}
 
+                                      {result.source === "indexer_alerts" && (() => {
+                                        const rule = m.rule as Record<string, unknown> | undefined;
+                                        const agent = m.agent as Record<string, unknown> | undefined;
+                                        const mitre = rule?.mitre as Record<string, unknown> | undefined;
+                                        const mitreIds = (mitre?.id ?? mitre?.technique ?? []) as string[];
+                                        const mitreTactics = (mitre?.tactic ?? []) as string[];
+                                        const data = m.data as Record<string, unknown> | undefined;
+                                        return (
+                                          <>
+                                            <td className="px-4 py-2 font-mono text-muted-foreground whitespace-nowrap">
+                                              {m.timestamp ? new Date(String(m.timestamp)).toLocaleString() : "—"}
+                                            </td>
+                                            <td className="px-4 py-2">
+                                              <span className="text-foreground">{String(agent?.name ?? "—")}</span>
+                                              <span className="text-muted-foreground text-[10px] ml-1">({String(agent?.id ?? "")})</span>
+                                            </td>
+                                            <td className="px-4 py-2 font-mono text-primary">{String(rule?.id ?? "—")}</td>
+                                            <td className="px-4 py-2">
+                                              <ThreatBadge level={threatLevelFromNumber(Number(rule?.level ?? 0))} />
+                                            </td>
+                                            <td className="px-4 py-2 text-foreground max-w-[250px] truncate">{String(rule?.description ?? "—")}</td>
+                                            <td className="px-4 py-2">
+                                              <div className="flex flex-wrap gap-1">
+                                                {mitreIds.map((id: string) => (
+                                                  <span key={id} className="px-1.5 py-0.5 rounded bg-threat-critical/10 border border-threat-critical/20 text-threat-critical text-[10px] font-mono">{id}</span>
+                                                ))}
+                                                {mitreTactics.map((t: string) => (
+                                                  <span key={t} className="px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary text-[10px]">{t}</span>
+                                                ))}
+                                              </div>
+                                            </td>
+                                            <td className="px-4 py-2 font-mono text-muted-foreground">{String(data?.srcip ?? "—")}</td>
+                                          </>
+                                        );
+                                      })()}
+
+                                      {result.source === "archives" && (() => {
+                                        const agent = m.agent as Record<string, unknown> | undefined;
+                                        const rule = m.rule as Record<string, unknown> | undefined;
+                                        return (
+                                          <>
+                                            <td className="px-4 py-2 font-mono text-muted-foreground whitespace-nowrap">
+                                              {m.timestamp ? new Date(String(m.timestamp)).toLocaleString() : "—"}
+                                            </td>
+                                            <td className="px-4 py-2">
+                                              <span className="text-foreground">{String(agent?.name ?? "—")}</span>
+                                              <span className="text-muted-foreground text-[10px] ml-1">({String(agent?.id ?? "")})</span>
+                                            </td>
+                                            <td className="px-4 py-2 font-mono text-primary">{String(rule?.id ?? "—")}</td>
+                                            <td className="px-4 py-2 text-foreground max-w-[400px] truncate font-mono text-[11px]">{String(m.full_log ?? "—")}</td>
+                                          </>
+                                        );
+                                      })()}
+
                                       <td className="px-4 py-2">
                                         <RawJsonViewer data={match} title={`${result.sourceLabel} #${idx + 1}`} />
                                       </td>
@@ -1068,22 +1256,26 @@ export default function ThreatHunting() {
           </h3>
           <div className="space-y-3">
             {[
-              { label: "Agents", count: agentCount, icon: Activity, color: "bg-primary" },
-              { label: "Detection Rules", count: ruleCount, icon: Shield, color: "bg-[oklch(0.789_0.154_211.53)]" },
-              { label: "Vulnerabilities (CVE)", count: vulnCount, icon: Bug, color: "bg-[oklch(0.705_0.191_22.216)]" },
-              { label: "FIM Events", count: fimCount, icon: FileWarning, color: "bg-[oklch(0.795_0.184_86.047)]" },
-              { label: "MITRE Techniques", count: Number(((mitreTechniques as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items ?? 0), icon: Target, color: "bg-[oklch(0.637_0.237_25.331)]" },
-              { label: "Manager Log Entries", count: Number(((logs as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items ?? 0), icon: Terminal, color: "bg-[oklch(0.765_0.177_163.223)]" },
+              { label: "Agents", count: agentCount, icon: Activity, color: "bg-primary", badge: isConnected ? "api" as const : "mock" as const },
+              { label: "Detection Rules", count: ruleCount, icon: Shield, color: "bg-[oklch(0.789_0.154_211.53)]", badge: isConnected ? "api" as const : "mock" as const },
+              { label: "Vulnerabilities (CVE)", count: vulnCount, icon: Bug, color: "bg-[oklch(0.705_0.191_22.216)]", badge: "mock" as const },
+              { label: "FIM Events", count: fimCount, icon: FileWarning, color: "bg-[oklch(0.795_0.184_86.047)]", badge: "mock" as const },
+              { label: "MITRE Techniques", count: Number(((mitreTechniques as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items ?? 0), icon: Target, color: "bg-[oklch(0.637_0.237_25.331)]", badge: isConnected ? "api" as const : "mock" as const },
+              { label: "Manager Log Entries", count: Number(((logs as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items ?? 0), icon: Terminal, color: "bg-[oklch(0.765_0.177_163.223)]", badge: isConnected ? "api" as const : "mock" as const },
+              ...(isIndexerConnected ? [
+                { label: "Indexer Alerts", count: indexerAlertCount, icon: Database, color: "bg-[oklch(0.72_0.19_295)]", badge: "indexer" as const },
+                { label: "Indexer Archives", count: indexerArchiveCount, icon: Archive, color: "bg-[oklch(0.72_0.15_180)]", badge: "indexer" as const },
+              ] : []),
             ].map((src) => {
               const Icon = src.icon;
-              const maxCount = Math.max(agentCount, ruleCount, vulnCount, fimCount, 1);
+              const maxCount = Math.max(agentCount, ruleCount, vulnCount, fimCount, indexerAlertCount, indexerArchiveCount, 1);
               const pct = Math.min((src.count / maxCount) * 100, 100);
               return (
                 <div key={src.label} className="flex items-center gap-3">
                   <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-foreground">{src.label}</span>
+                      <span className="text-xs text-foreground flex items-center gap-1.5">{src.label} <SourceBadge source={src.badge} /></span>
                       <span className="text-xs font-mono text-muted-foreground">{src.count.toLocaleString()}</span>
                     </div>
                     <div className="h-1.5 rounded-full bg-secondary/50 overflow-hidden">
@@ -1095,7 +1287,7 @@ export default function ThreatHunting() {
             })}
           </div>
 
-          <div className="mt-4 pt-3 border-t border-border/30">
+          <div className="mt-4 pt-3 border-t border-border/30 space-y-1.5">
             <p className="text-xs text-muted-foreground">
               {isConnected ? (
                 <span className="flex items-center gap-1.5">
@@ -1106,6 +1298,19 @@ export default function ThreatHunting() {
                 <span className="flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.795_0.184_86.047)]" />
                   Using sample data — connect Wazuh API for live hunting
+                </span>
+              )}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {isIndexerConnected ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.72_0.19_295)]" />
+                  Wazuh Indexer connected — cross-agent search active
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.5_0.05_286)]" />
+                  Indexer not connected — configure for cross-agent search
                 </span>
               )}
             </p>

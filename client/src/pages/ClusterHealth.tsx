@@ -18,6 +18,7 @@ import { useMemo, useCallback } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
+  AreaChart, Area,
 } from "recharts";
 
 const COLORS = {
@@ -64,6 +65,19 @@ function extractItems(raw: unknown): Array<Record<string, unknown>> {
   return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
 }
 
+function SourceBadge({ source }: { source: "indexer" | "server" | "mock" }) {
+  const config = {
+    indexer: { label: "Indexer", color: "text-threat-low bg-threat-low/10 border-threat-low/20" },
+    server: { label: "Server API", color: "text-primary bg-primary/10 border-primary/20" },
+    mock: { label: "Mock", color: "text-muted-foreground bg-secondary/30 border-border/30" },
+  }[source];
+  return (
+    <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded border ${config.color}`}>
+      {config.label}
+    </span>
+  );
+}
+
 export default function ClusterHealth() {
   const utils = trpc.useUtils();
 
@@ -77,8 +91,17 @@ export default function ClusterHealth() {
   const configValidQ = trpc.wazuh.managerConfigValidation.useQuery(undefined, { retry: 1, staleTime: 60_000, enabled: isConnected });
   const clusterStatusQ = trpc.wazuh.clusterStatus.useQuery(undefined, { retry: 1, staleTime: 30_000, enabled: isConnected });
   const clusterNodesQ = trpc.wazuh.clusterNodes.useQuery(undefined, { retry: 1, staleTime: 30_000, enabled: isConnected });
+  const clusterHealthQ = trpc.wazuh.clusterHealthcheck.useQuery(undefined, { retry: 1, staleTime: 30_000, enabled: isConnected });
 
-  const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); }, [utils]);
+  // ── Indexer statistics ───────────────────────────────────────────────
+  const indexerStatusQ = trpc.indexer.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
+  const isIndexerConnected = indexerStatusQ.data?.configured === true && indexerStatusQ.data?.healthy === true;
+  const statisticsQ = trpc.indexer.statisticsPerformance.useQuery(
+    { from: "now-24h", to: "now", interval: "1h" },
+    { retry: 1, staleTime: 60_000, enabled: isIndexerConnected },
+  );
+
+  const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); utils.indexer.invalidate(); }, [utils]);
 
   // ── Daemon status (real or fallback) ──────────────────────────────────
   const daemonStatuses = useMemo(() => {
@@ -139,6 +162,58 @@ export default function ClusterHealth() {
     return extractItems(src);
   }, [clusterNodesQ.data, isConnected]);
 
+  // ── Master node ID for per-node stats ──────────────────────────────
+  const masterNodeId = useMemo(() => {
+    const master = clusterNodes.find(n => String(n.type) === "master");
+    return master ? String(master.name ?? "") : "";
+  }, [clusterNodes]);
+
+  const nodeStatsQ = trpc.wazuh.clusterNodeStats.useQuery(
+    { nodeId: masterNodeId },
+    { retry: 1, staleTime: 15_000, enabled: isConnected && !!masterNodeId },
+  );
+
+  // ── Cluster healthcheck data ──────────────────────────────────────────
+  const healthcheckNodes = useMemo((): Array<Record<string, unknown>> => {
+    if (!isConnected || !clusterHealthQ.data) return [];
+    const d = (clusterHealthQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    const nodes = d?.nodes as Record<string, unknown> | undefined;
+    if (!nodes) {
+      // Some Wazuh versions return affected_items
+      return extractItems(clusterHealthQ.data);
+    }
+    return Object.entries(nodes).map(([name, info]) => ({
+      name,
+      ...(typeof info === "object" && info !== null ? info as Record<string, unknown> : {}),
+    } as Record<string, unknown>));
+  }, [clusterHealthQ.data, isConnected]);
+
+  // ── Master node stats data ────────────────────────────────────────────
+  const masterNodeStats = useMemo(() => {
+    if (!isConnected || !nodeStatsQ.data) return [];
+    return extractItems(nodeStatsQ.data);
+  }, [nodeStatsQ.data, isConnected]);
+
+  // ── Indexer statistics chart data ─────────────────────────────────────
+  const statisticsData = useMemo(() => {
+    if (!isIndexerConnected || !statisticsQ.data) return [];
+    const d = (statisticsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    const aggs = d?.aggregations as Record<string, unknown> | undefined;
+    const buckets = (aggs?.metrics_over_time as Record<string, unknown>)?.buckets as Array<Record<string, unknown>> | undefined;
+    if (!buckets) return [];
+    return buckets.map(b => {
+      const ts = b.key_as_string ?? b.key;
+      const label = typeof ts === "string" ? ts.replace(/T/, " ").slice(11, 16) : String(ts);
+      return {
+        time: label,
+        received: Number((b.avg_events as Record<string, unknown>)?.value ?? 0),
+        decoded: Number((b.avg_decoded as Record<string, unknown>)?.value ?? 0),
+        dropped: Number((b.avg_dropped as Record<string, unknown>)?.value ?? 0),
+        written: Number((b.avg_written as Record<string, unknown>)?.value ?? 0),
+      };
+    });
+  }, [statisticsQ.data, isIndexerConnected]);
+
   // Count running/stopped daemons
   const daemonEntries = Object.entries(daemonStatuses).filter(([k]) => !["affected_items", "total_affected_items", "total_failed_items", "failed_items"].includes(k));
   const runningCount = daemonEntries.filter(([, v]) => String(v) === "running").length;
@@ -177,7 +252,7 @@ export default function ClusterHealth() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Daemon Status Grid */}
           <GlassPanel className="lg:col-span-5">
-            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Activity className="h-4 w-4 text-primary" /> Daemon Status</h3>
+            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Activity className="h-4 w-4 text-primary" /> Daemon Status <SourceBadge source={isConnected && managerStatusQ.data ? "server" : "mock"} /></h3>
             <div className="grid grid-cols-2 gap-2">
               {daemonEntries.map(([name, status]) => {
                 const isRunning = String(status) === "running";
@@ -197,7 +272,7 @@ export default function ClusterHealth() {
 
           {/* Event Queue Gauges */}
           <GlassPanel className="lg:col-span-3">
-            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Gauge className="h-4 w-4 text-primary" /> Event Queues</h3>
+            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Gauge className="h-4 w-4 text-primary" /> Event Queues <SourceBadge source={isConnected && daemonStatsQ.data ? "server" : "mock"} /></h3>
             <div className="flex flex-col items-center gap-4">
               <QueueGauge label="Remoted Queue" used={queueUsed} total={queueTotal} />
               {daemonPie.length > 0 ? (
@@ -216,7 +291,7 @@ export default function ClusterHealth() {
 
           {/* Manager Info */}
           <GlassPanel className="lg:col-span-4">
-            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Server className="h-4 w-4 text-primary" /> Manager Info</h3>
+            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Server className="h-4 w-4 text-primary" /> Manager Info <SourceBadge source={isConnected && managerInfoQ.data ? "server" : "mock"} /></h3>
             <div className="space-y-2">
               {([
                 ["Name", managerInfo.name],
@@ -244,7 +319,7 @@ export default function ClusterHealth() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Analysisd */}
           <GlassPanel>
-            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2"><Activity className="h-4 w-4 text-primary" /> wazuh-analysisd</h3>
+            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2"><Activity className="h-4 w-4 text-primary" /> wazuh-analysisd <SourceBadge source={isConnected && daemonStatsQ.data ? "server" : "mock"} /></h3>
             <div className="space-y-2">
               {([
                 ["Events Received", analysisdDaemon?.events_received],
@@ -267,7 +342,7 @@ export default function ClusterHealth() {
 
           {/* Remoted */}
           <GlassPanel>
-            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2"><Network className="h-4 w-4 text-primary" /> wazuh-remoted</h3>
+            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2"><Network className="h-4 w-4 text-primary" /> wazuh-remoted <SourceBadge source={isConnected && daemonStatsQ.data ? "server" : "mock"} /></h3>
             <div className="space-y-2">
               {([
                 ["Queue Size", remotedDaemon?.queue_size],
@@ -289,7 +364,7 @@ export default function ClusterHealth() {
 
           {/* wazuh-db */}
           <GlassPanel>
-            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2"><Server className="h-4 w-4 text-primary" /> wazuh-db</h3>
+            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2"><Server className="h-4 w-4 text-primary" /> wazuh-db <SourceBadge source={isConnected && daemonStatsQ.data ? "server" : "mock"} /></h3>
             <div className="space-y-2">
               {(() => {
                 const breakdown = (dbDaemon?.queries_breakdown as Record<string, unknown>) ?? {};
@@ -311,9 +386,53 @@ export default function ClusterHealth() {
           </GlassPanel>
         </div>
 
+        {/* Master Node Stats */}
+        {masterNodeId && masterNodeStats.length > 0 ? (
+          <GlassPanel>
+            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
+              <Gauge className="h-4 w-4 text-primary" /> Master Node Stats
+              <span className="text-[10px] font-mono text-muted-foreground">({masterNodeId})</span>
+              <SourceBadge source="server" />
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {masterNodeStats.map((stat, i) => {
+                const hour = String(stat.hour ?? i);
+                const totalAll = Number(stat.totalall ?? stat.total ?? 0);
+                const events = Number(stat.events ?? 0);
+                const syscheck = Number(stat.syscheck ?? 0);
+                const firewall = Number(stat.firewall ?? 0);
+                return (
+                  <div key={i} className="bg-secondary/20 rounded-lg p-3 border border-border/20">
+                    <p className="text-[10px] text-muted-foreground mb-1">Hour {hour}</p>
+                    <div className="space-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Total</span>
+                        <span className="font-mono text-foreground">{totalAll.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Events</span>
+                        <span className="font-mono text-foreground">{events.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Syscheck</span>
+                        <span className="font-mono text-foreground">{syscheck.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Firewall</span>
+                        <span className="font-mono text-foreground">{firewall.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {nodeStatsQ.data ? <div className="mt-3"><RawJsonViewer data={nodeStatsQ.data as Record<string, unknown>} title="Master Node Stats JSON" /></div> : null}
+          </GlassPanel>
+        ) : null}
+
         {/* Hourly Stats Chart */}
         <GlassPanel>
-          <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /> Hourly Event Ingestion</h3>
+          <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /> Hourly Event Ingestion <SourceBadge source={isConnected && managerStatsHourlyQ.data ? "server" : "mock"} /></h3>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={hourlyData}>
               <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.04 286 / 20%)" />
@@ -329,9 +448,35 @@ export default function ClusterHealth() {
           </ResponsiveContainer>
         </GlassPanel>
 
-        {/* Cluster Nodes */}
+        {/* Indexer Statistics — Performance Over Time */}
+        {statisticsData.length > 0 ? (
+          <GlassPanel>
+            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-primary" /> Indexer Performance (24h)
+              <SourceBadge source="indexer" />
+            </h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <AreaChart data={statisticsData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.04 286 / 20%)" />
+                <XAxis dataKey="time" tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 10 }} />
+                <YAxis tick={{ fill: "oklch(0.65 0.02 286)", fontSize: 10 }} />
+                <ReTooltip content={<ChartTooltip />} />
+                <Legend wrapperStyle={{ fontSize: 11, color: "oklch(0.65 0.02 286)" }} />
+                <Area type="monotone" dataKey="received" stroke={COLORS.cyan} fill={COLORS.cyan} fillOpacity={0.15} name="Received" />
+                <Area type="monotone" dataKey="decoded" stroke={COLORS.green} fill={COLORS.green} fillOpacity={0.15} name="Decoded" />
+                <Area type="monotone" dataKey="dropped" stroke={COLORS.red} fill={COLORS.red} fillOpacity={0.15} name="Dropped" />
+                <Area type="monotone" dataKey="written" stroke={COLORS.purple} fill={COLORS.purple} fillOpacity={0.15} name="Written" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </GlassPanel>
+        ) : null}
+
+        {/* Cluster Nodes + Healthcheck */}
         <GlassPanel>
-          <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Network className="h-4 w-4 text-primary" /> Cluster Topology</h3>
+          <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
+            <Network className="h-4 w-4 text-primary" /> Cluster Topology
+            <SourceBadge source={isConnected && clusterNodesQ.data ? "server" : "mock"} />
+          </h3>
           <div className="flex items-center gap-3 mb-4">
             <span className="text-xs text-muted-foreground">Cluster Enabled:</span>
             <ThreatBadge level={String(clusterStatus.enabled) === "yes" ? "low" : "info"} />
@@ -342,27 +487,56 @@ export default function ClusterHealth() {
             {clusterNodes.map((node, i) => {
               const nodeType = String(node.type ?? "worker");
               const isMaster = nodeType === "master";
+              const nodeName = String(node.name ?? "Unknown");
+              const healthInfo = healthcheckNodes.find(h => String(h.name) === nodeName);
               return (
                 <div key={i} className={`bg-secondary/20 rounded-lg p-4 border ${isMaster ? "border-primary/40 bg-primary/5" : "border-border/20"}`}>
                   <div className="flex items-center gap-2 mb-2">
                     <Server className={`h-4 w-4 ${isMaster ? "text-primary" : "text-muted-foreground"}`} />
-                    <span className="text-sm font-medium text-foreground">{String(node.name ?? "Unknown")}</span>
+                    <span className="text-sm font-medium text-foreground">{nodeName}</span>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded ${isMaster ? "bg-primary/20 text-primary" : "bg-secondary/40 text-muted-foreground"}`}>{nodeType}</span>
                   </div>
                   <div className="space-y-1 text-xs">
                     <div className="flex justify-between"><span className="text-muted-foreground">IP</span><span className="font-mono text-foreground">{String(node.ip ?? "—")}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Version</span><span className="font-mono text-foreground">{String(node.version ?? "—")}</span></div>
+                    {healthInfo ? (
+                      <>
+                        {healthInfo.info != null && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Health</span>
+                            <span className={`font-mono ${String(healthInfo.info).toLowerCase().includes("error") ? "text-threat-critical" : "text-threat-low"}`}>
+                              {String(healthInfo.info)}
+                            </span>
+                          </div>
+                        )}
+                        {healthInfo.status != null && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Status</span>
+                            <span className={`font-mono ${String(healthInfo.status) === "connected" ? "text-threat-low" : "text-threat-high"}`}>
+                              {String(healthInfo.status)}
+                            </span>
+                          </div>
+                        )}
+                        {healthInfo.n_active_agents != null && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Active Agents</span>
+                            <span className="font-mono text-foreground">{Number(healthInfo.n_active_agents).toLocaleString()}</span>
+                          </div>
+                        )}
+                      </>
+                    ) : null}
                   </div>
                 </div>
               );
             })}
           </div>
+          {clusterHealthQ.data ? <div className="mt-3"><RawJsonViewer data={clusterHealthQ.data as Record<string, unknown>} title="Cluster Healthcheck JSON" /></div> : null}
           {clusterNodesQ.data ? <div className="mt-3"><RawJsonViewer data={clusterNodesQ.data as Record<string, unknown>} title="Cluster Nodes JSON" /></div> : null}
         </GlassPanel>
 
         {/* Config Validation */}
         <GlassPanel>
-          <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-primary" /> Configuration Validation</h3>
+          <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-primary" /> Configuration Validation <SourceBadge source={isConnected && configValidQ.data ? "server" : "mock"} /></h3>
           <div className="flex items-center gap-3">
             <div className={`h-12 w-12 rounded-lg flex items-center justify-center ${String(configValid.status) === "OK" || !configValid.status ? "bg-threat-low/10 border border-threat-low/20" : "bg-threat-critical/10 border border-threat-critical/20"}`}>
               {String(configValid.status) === "OK" || !configValid.status ? <CheckCircle2 className="h-6 w-6 text-threat-low" /> : <XCircle className="h-6 w-6 text-threat-critical" />}
