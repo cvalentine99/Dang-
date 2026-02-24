@@ -13,8 +13,9 @@ import {
 import {
   Server, Activity, CheckCircle2,
   XCircle, AlertTriangle, Network, Gauge, BarChart3,
+  Database, ChevronDown, ChevronRight, Radio, Settings,
 } from "lucide-react";
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
@@ -100,6 +101,13 @@ export default function ClusterHealth() {
     { from: "now-24h", to: "now", interval: "1h" },
     { retry: 1, staleTime: 60_000, enabled: isIndexerConnected },
   );
+
+  // ── New endpoints: remoted, managerConfiguration, indexStatus ────────────
+  const remotedQ = trpc.wazuh.remoted.useQuery(undefined, { retry: 1, staleTime: 30_000, enabled: isConnected });
+  const managerConfigQ = trpc.wazuh.managerConfiguration.useQuery(undefined, { retry: 1, staleTime: 120_000, enabled: isConnected });
+  const indexStatusQ = trpc.indexer.indexStatus.useQuery(undefined, { retry: 1, staleTime: 60_000, enabled: isIndexerConnected });
+
+  const [managerConfigOpen, setManagerConfigOpen] = useState(false);
 
   const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); utils.indexer.invalidate(); }, [utils]);
 
@@ -213,6 +221,33 @@ export default function ClusterHealth() {
       };
     });
   }, [statisticsQ.data, isIndexerConnected]);
+
+  // ── Remoted stats (from /manager/stats/remoted) ─────────────────────────
+  const remotedStats = useMemo(() => {
+    if (!isConnected || !remotedQ.data) return null;
+    const d = (remotedQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    const items = (d?.affected_items as Array<Record<string, unknown>>) ?? [];
+    return items[0] ?? d ?? null;
+  }, [remotedQ.data, isConnected]);
+
+  // ── Manager configuration sections ─────────────────────────────────────
+  const managerConfigSections = useMemo((): Array<{ key: string; value: unknown }> => {
+    if (!isConnected || !managerConfigQ.data) return [];
+    const d = (managerConfigQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    const items = (d?.affected_items as Array<Record<string, unknown>>) ?? [];
+    const cfg = items[0] ?? d ?? {};
+    return Object.entries(cfg)
+      .filter(([k]) => !["affected_items", "total_affected_items", "total_failed_items", "failed_items"].includes(k))
+      .map(([key, value]) => ({ key, value }));
+  }, [managerConfigQ.data, isConnected]);
+
+  // ── Index status data ──────────────────────────────────────────────────
+  const indexStatusEntries = useMemo((): Array<{ name: string; exists: boolean }> => {
+    if (!isIndexerConnected || !indexStatusQ.data) return [];
+    const indices = (indexStatusQ.data as Record<string, unknown>)?.indices as Record<string, boolean> | undefined;
+    if (!indices) return [];
+    return Object.entries(indices).map(([name, exists]) => ({ name, exists }));
+  }, [indexStatusQ.data, isIndexerConnected]);
 
   // Count running/stopped daemons
   const daemonEntries = Object.entries(daemonStatuses).filter(([k]) => !["affected_items", "total_affected_items", "total_failed_items", "failed_items"].includes(k));
@@ -548,6 +583,104 @@ export default function ClusterHealth() {
           </div>
           {configValidQ.data ? <div className="mt-3"><RawJsonViewer data={configValidQ.data as Record<string, unknown>} title="Config Validation JSON" /></div> : null}
         </GlassPanel>
+
+        {/* ── Remoted Stats Section ─────────────────────────────────────────── */}
+        {remotedStats ? (
+          <GlassPanel>
+            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
+              <Radio className="h-4 w-4 text-primary" /> Remoted Daemon Statistics
+              <SourceBadge source="server" />
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              {([
+                ["TCP Sessions", remotedStats.tcp_sessions, "text-primary"],
+                ["UDP Msgs Received", remotedStats.recv_bytes ?? remotedStats.udp_count, "text-threat-low"],
+                ["Control Messages", remotedStats.ctrl_msg_count, "text-yellow-400"],
+                ["Discarded", remotedStats.discarded_count, "text-threat-critical"],
+                ["Queue Size", remotedStats.queue_size, "text-muted-foreground"],
+              ] as [string, unknown, string][]).map(([label, val, color]) => (
+                <div key={label} className="bg-secondary/20 rounded-lg p-3 border border-border/20 text-center">
+                  <p className="text-[10px] text-muted-foreground mb-1">{label}</p>
+                  <p className={`text-lg font-mono font-bold ${color}`}>{val != null ? Number(val).toLocaleString() : "—"}</p>
+                </div>
+              ))}
+            </div>
+            {remotedQ.data ? <div className="mt-3"><RawJsonViewer data={remotedQ.data as Record<string, unknown>} title="Remoted Stats JSON" /></div> : null}
+          </GlassPanel>
+        ) : null}
+
+        {/* ── Manager Configuration Panel ───────────────────────────────────── */}
+        {managerConfigSections.length > 0 ? (
+          <GlassPanel>
+            <button
+              onClick={() => setManagerConfigOpen(!managerConfigOpen)}
+              className="w-full flex items-center gap-2 text-sm font-medium text-muted-foreground"
+            >
+              <Settings className="h-4 w-4 text-primary" />
+              Manager Configuration ({managerConfigSections.length} sections)
+              <SourceBadge source="server" />
+              <span className="ml-auto">
+                {managerConfigOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              </span>
+            </button>
+            {managerConfigOpen && (
+              <div className="mt-4 space-y-3">
+                {managerConfigSections.map(({ key, value }) => (
+                  <details key={key} className="bg-secondary/20 rounded-lg border border-border/20">
+                    <summary className="px-4 py-2.5 cursor-pointer text-xs font-medium text-foreground hover:bg-secondary/30 rounded-lg select-none">
+                      {key}
+                    </summary>
+                    <div className="px-4 pb-3">
+                      <pre className="text-[11px] font-mono text-muted-foreground whitespace-pre-wrap break-all bg-black/20 rounded p-3 mt-1 border border-border/10 max-h-[300px] overflow-y-auto">
+                        {typeof value === "object" ? JSON.stringify(value, null, 2) : String(value)}
+                      </pre>
+                    </div>
+                  </details>
+                ))}
+                {managerConfigQ.data ? <RawJsonViewer data={managerConfigQ.data as Record<string, unknown>} title="Full Manager Configuration JSON" /> : null}
+              </div>
+            )}
+          </GlassPanel>
+        ) : null}
+
+        {/* ── Index Status Panel ────────────────────────────────────────────── */}
+        {indexStatusEntries.length > 0 ? (
+          <GlassPanel>
+            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
+              <Database className="h-4 w-4 text-primary" /> Index Pattern Status
+              <SourceBadge source="indexer" />
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border/20 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    <th className="text-left py-2 px-3">Index Name</th>
+                    <th className="text-left py-2 px-3">Health</th>
+                    <th className="text-left py-2 px-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/10">
+                  {indexStatusEntries.map(({ name, exists }) => (
+                    <tr key={name} className="hover:bg-secondary/20 transition-colors">
+                      <td className="py-2 px-3 font-mono text-xs text-foreground">{name}</td>
+                      <td className="py-2 px-3">
+                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                          exists
+                            ? "bg-threat-low/10 text-threat-low border border-threat-low/20"
+                            : "bg-threat-critical/10 text-threat-critical border border-threat-critical/20"
+                        }`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${exists ? "bg-threat-low" : "bg-threat-critical"}`} />
+                          {exists ? "green" : "red"}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-xs text-muted-foreground">{exists ? "Available" : "Missing"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </GlassPanel>
+        ) : null}
       </div>
     </WazuhGuard>
   );

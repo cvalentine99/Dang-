@@ -17,6 +17,7 @@ import {
 import {
   Users, Activity, AlertTriangle, Wifi, WifiOff, Clock, Search,
   Monitor, Server, Cpu, ChevronLeft, ChevronRight, X,
+  Database, Bug, Key, Eye, EyeOff, Copy, Shield, BarChart3,
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import {
@@ -49,6 +50,19 @@ function extractItems(raw: unknown): Array<Record<string, unknown>> {
   return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
 }
 
+function SourceBadge({ source }: { source: "indexer" | "server" | "mock" }) {
+  const config = {
+    indexer: { label: "Indexer", color: "text-threat-low bg-threat-low/10 border-threat-low/20", Icon: Database },
+    server: { label: "Server API", color: "text-primary bg-primary/10 border-primary/20", Icon: Server },
+    mock: { label: "Mock", color: "text-muted-foreground bg-secondary/30 border-border/30", Icon: Bug },
+  }[source];
+  return (
+    <span className={`inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded-full border ${config.color}`}>
+      <config.Icon className="h-2.5 w-2.5" />{config.label}
+    </span>
+  );
+}
+
 export default function AgentHealth() {
   const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
@@ -56,6 +70,8 @@ export default function AgentHealth() {
   const [groupFilter, setGroupFilter] = useState<string>("all");
   const [page, setPage] = useState(0);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [showKey, setShowKey] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const pageSize = 25;
 
   const statusQ = trpc.wazuh.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
@@ -76,7 +92,38 @@ export default function AgentHealth() {
   const agentOsQ = trpc.wazuh.agentOs.useQuery({ agentId: selectedAgent ?? "000" }, { enabled: !!selectedAgent && isConnected });
   const agentHwQ = trpc.wazuh.agentHardware.useQuery({ agentId: selectedAgent ?? "000" }, { enabled: !!selectedAgent && isConnected });
 
-  const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); }, [utils]);
+  // ── New Wazuh agent endpoints ──────────────────────────────────────────
+  const agentDaemonQ = trpc.wazuh.agentDaemonStats.useQuery(
+    { agentId: selectedAgent ?? "000" },
+    { retry: 1, staleTime: 30_000, enabled: isConnected && !!selectedAgent },
+  );
+  const agentConfigQ = trpc.wazuh.agentConfig.useQuery(
+    { agentId: selectedAgent ?? "000", component: "logcollector", configuration: "localfile" },
+    { retry: 1, staleTime: 60_000, enabled: isConnected && !!selectedAgent },
+  );
+  const agentKeyQ = trpc.wazuh.agentKey.useQuery(
+    { agentId: selectedAgent ?? "000" },
+    { retry: 1, staleTime: 120_000, enabled: isConnected && !!selectedAgent },
+  );
+  const agentStatsQ = trpc.wazuh.agentStats.useQuery(
+    { agentId: selectedAgent ?? "000", component: "logcollector" },
+    { retry: 1, staleTime: 30_000, enabled: isConnected && !!selectedAgent },
+  );
+  const groupMembersQ = trpc.wazuh.agentGroupMembers.useQuery(
+    { groupId: selectedGroup ?? "default", limit: 100, offset: 0 },
+    { retry: 1, staleTime: 30_000, enabled: isConnected && !!selectedGroup },
+  );
+
+  // ── Indexer: status + agent connection history ─────────────────────────
+  const indexerStatusQ = trpc.indexer.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
+  const isIndexerConnected = indexerStatusQ.data?.configured === true && indexerStatusQ.data?.healthy === true;
+
+  const agentHistoryQ = trpc.indexer.monitoringAgentHistory.useQuery(
+    { agentId: selectedAgent ?? "000", from: "now-7d", to: "now" },
+    { retry: 1, staleTime: 60_000, enabled: isIndexerConnected && !!selectedAgent },
+  );
+
+  const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); utils.indexer.invalidate(); }, [utils]);
 
   // ── Agent summary (real or fallback) ──────────────────────────────────
   const agentData = useMemo(() => {
@@ -221,7 +268,7 @@ export default function AgentHealth() {
             <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Server className="h-4 w-4 text-primary" /> Agent Groups ({groups.length})</h3>
             <div className="space-y-2 max-h-[200px] overflow-y-auto">
               {groups.map(g => (
-                <button key={g.name} onClick={() => { setGroupFilter(g.name); setPage(0); }}
+                <button key={g.name} onClick={() => { setGroupFilter(g.name); setSelectedGroup(g.name); setPage(0); }}
                   className={`w-full flex items-center justify-between py-2 px-3 rounded-lg transition-colors text-left ${groupFilter === g.name ? "bg-primary/15 border border-primary/30" : "bg-secondary/30 border border-border/30 hover:bg-secondary/50"}`}>
                   <span className="text-xs font-medium text-foreground">{g.name}</span>
                   <span className="text-xs font-mono text-muted-foreground">{g.count}</span>
@@ -251,7 +298,7 @@ export default function AgentHealth() {
                 </SelectContent>
               </Select>
               {groupFilter !== "all" && (
-                <Button variant="outline" size="sm" onClick={() => setGroupFilter("all")} className="h-8 text-xs bg-transparent border-border gap-1"><X className="h-3 w-3" /> {groupFilter}</Button>
+                <Button variant="outline" size="sm" onClick={() => { setGroupFilter("all"); setSelectedGroup(null); }} className="h-8 text-xs bg-transparent border-border gap-1"><X className="h-3 w-3" /> {groupFilter}</Button>
               )}
             </div>
           </div>
@@ -303,6 +350,57 @@ export default function AgentHealth() {
           )}
         </GlassPanel>
 
+        {/* Group Members Panel */}
+        {selectedGroup && (
+          <GlassPanel>
+            <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
+              <Users className="h-4 w-4 text-primary" /> Group Members — {selectedGroup}
+              <SourceBadge source={isConnected && groupMembersQ.data ? "server" : "mock"} />
+            </h3>
+            {groupMembersQ.isLoading ? (
+              <div className="flex items-center justify-center py-6"><div className="h-6 w-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+            ) : groupMembersQ.data ? (
+              (() => {
+                const members = extractItems(groupMembersQ.data);
+                if (members.length === 0) return <p className="text-xs text-muted-foreground italic">No agents found in this group</p>;
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead><tr className="border-b border-border/30">
+                        {["ID", "Name", "IP", "Status", "Version", "Last Keep Alive"].map(h => (
+                          <th key={h} className="text-left py-2 px-3 text-muted-foreground font-medium">{h}</th>
+                        ))}
+                      </tr></thead>
+                      <tbody>
+                        {members.map(m => {
+                          const st = String(m.status ?? "unknown");
+                          return (
+                            <tr key={String(m.id)} className="border-b border-border/10 hover:bg-secondary/20 transition-colors">
+                              <td className="py-2 px-3 font-mono text-primary">{String(m.id)}</td>
+                              <td className="py-2 px-3 text-foreground font-medium">{String(m.name ?? "—")}</td>
+                              <td className="py-2 px-3 font-mono text-muted-foreground">{String(m.ip ?? "—")}</td>
+                              <td className="py-2 px-3">
+                                <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${st === "active" ? "text-threat-low" : st === "disconnected" ? "text-threat-high" : "text-muted-foreground"}`}>
+                                  <span className={`h-1.5 w-1.5 rounded-full ${st === "active" ? "bg-threat-low" : st === "disconnected" ? "bg-threat-high" : "bg-muted-foreground"}`} />
+                                  {st}
+                                </span>
+                              </td>
+                              <td className="py-2 px-3 font-mono text-muted-foreground">{String(m.version ?? "—")}</td>
+                              <td className="py-2 px-3 text-muted-foreground font-mono text-[10px]">{m.lastKeepAlive ? new Date(String(m.lastKeepAlive)).toLocaleString() : "—"}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()
+            ) : (
+              <p className="text-xs text-muted-foreground italic">No group member data available</p>
+            )}
+          </GlassPanel>
+        )}
+
         {/* Agent Detail Drawer */}
         <Dialog open={!!selectedAgent} onOpenChange={(open) => !open && setSelectedAgent(null)}>
           <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto bg-card border-border">
@@ -345,11 +443,155 @@ export default function AgentHealth() {
                     </div>
                   </div>
                 )}
+
+                {/* ── Daemon Stats ──────────────────────────────────── */}
+                <GlassPanel>
+                  <h4 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-2">
+                    <Activity className="h-3.5 w-3.5 text-primary" /> Daemon Statistics
+                    <SourceBadge source={isConnected && agentDaemonQ.data ? "server" : "mock"} />
+                  </h4>
+                  {agentDaemonQ.isLoading ? (
+                    <div className="flex items-center justify-center py-4"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+                  ) : agentDaemonQ.data ? (
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {(() => {
+                        const items = extractItems(agentDaemonQ.data);
+                        const raw = items.length ? items : [((agentDaemonQ.data as Record<string, unknown>)?.data ?? {}) as Record<string, unknown>];
+                        return raw.flatMap(obj =>
+                          Object.entries(obj).filter(([k]) => k !== "affected_items" && k !== "total_affected_items" && k !== "total_failed_items" && k !== "failed_items").map(([k, v]) => (
+                            <div key={k} className="bg-secondary/20 rounded-lg p-2.5 border border-border/20">
+                              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{k.replace(/_/g, " ")}</p>
+                              <p className="text-sm font-mono text-foreground mt-0.5">{typeof v === "object" ? JSON.stringify(v) : String(v ?? "—")}</p>
+                            </div>
+                          ))
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No daemon stats available</p>
+                  )}
+                </GlassPanel>
+
+                {/* ── Agent Component Stats ─────────────────────────── */}
+                <GlassPanel>
+                  <h4 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-2">
+                    <BarChart3 className="h-3.5 w-3.5 text-primary" /> Component Stats — logcollector
+                    <SourceBadge source={isConnected && agentStatsQ.data ? "server" : "mock"} />
+                  </h4>
+                  {agentStatsQ.isLoading ? (
+                    <div className="flex items-center justify-center py-4"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+                  ) : agentStatsQ.data ? (
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {(() => {
+                        const items = extractItems(agentStatsQ.data);
+                        const raw = items.length ? items : [((agentStatsQ.data as Record<string, unknown>)?.data ?? {}) as Record<string, unknown>];
+                        return raw.flatMap(obj =>
+                          Object.entries(obj).filter(([k]) => k !== "affected_items" && k !== "total_affected_items" && k !== "total_failed_items" && k !== "failed_items").map(([k, v]) => (
+                            <div key={k} className="bg-secondary/20 rounded-lg p-2.5 border border-border/20">
+                              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{k.replace(/_/g, " ")}</p>
+                              <p className="text-sm font-mono text-foreground mt-0.5">{typeof v === "object" ? JSON.stringify(v) : String(v ?? "—")}</p>
+                            </div>
+                          ))
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No component stats available</p>
+                  )}
+                </GlassPanel>
+
+                {/* ── Agent Config (logcollector / localfile) ───────── */}
+                <GlassPanel>
+                  <h4 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-2">
+                    <Shield className="h-3.5 w-3.5 text-primary" /> Agent Config — logcollector / localfile
+                    <SourceBadge source={isConnected && agentConfigQ.data ? "server" : "mock"} />
+                  </h4>
+                  {agentConfigQ.isLoading ? (
+                    <div className="flex items-center justify-center py-4"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+                  ) : agentConfigQ.data ? (
+                    <pre className="bg-secondary/30 border border-border/20 rounded-lg p-3 text-[11px] font-mono text-foreground overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap">
+                      {JSON.stringify(agentConfigQ.data, null, 2)}
+                    </pre>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No configuration data available</p>
+                  )}
+                </GlassPanel>
+
+                {/* ── Agent Enrollment Key ──────────────────────────── */}
+                <GlassPanel>
+                  <h4 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-2">
+                    <Key className="h-3.5 w-3.5 text-primary" /> Enrollment Key
+                    <SourceBadge source={isConnected && agentKeyQ.data ? "server" : "mock"} />
+                  </h4>
+                  {agentKeyQ.isLoading ? (
+                    <div className="flex items-center justify-center py-4"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+                  ) : agentKeyQ.data ? (
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-secondary/30 border border-border/20 rounded-lg px-3 py-2 font-mono text-xs text-foreground overflow-hidden">
+                        {showKey
+                          ? String(extractItems(agentKeyQ.data)[0]?.key ?? ((agentKeyQ.data as Record<string, unknown>)?.data as Record<string, unknown>)?.key ?? JSON.stringify(agentKeyQ.data))
+                          : "••••••••••••••••••••••••••••••••••••••••"}
+                      </div>
+                      <Button variant="outline" size="sm" onClick={() => setShowKey(k => !k)} className="h-8 w-8 p-0 bg-transparent border-border" title={showKey ? "Hide key" : "Show key"}>
+                        {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </Button>
+                      <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-transparent border-border" title="Copy key"
+                        onClick={() => {
+                          const key = String(extractItems(agentKeyQ.data!)[0]?.key ?? ((agentKeyQ.data as Record<string, unknown>)?.data as Record<string, unknown>)?.key ?? "");
+                          navigator.clipboard.writeText(key);
+                        }}>
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No enrollment key available</p>
+                  )}
+                </GlassPanel>
+
+                {/* ── Connection History (Indexer) ──────────────────── */}
+                <GlassPanel>
+                  <h4 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-2">
+                    <Activity className="h-3.5 w-3.5" style={{ color: COLORS.cyan }} /> Connection History (7d)
+                    <SourceBadge source="indexer" />
+                  </h4>
+                  {!isIndexerConnected ? (
+                    <p className="text-xs text-muted-foreground italic">Indexer not connected</p>
+                  ) : agentHistoryQ.isLoading ? (
+                    <div className="flex items-center justify-center py-4"><div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+                  ) : agentHistoryQ.data ? (
+                    (() => {
+                      const hits = Array.isArray(agentHistoryQ.data) ? agentHistoryQ.data : ((agentHistoryQ.data as Record<string, unknown>)?.hits as Array<Record<string, unknown>>) ?? [];
+                      if (hits.length === 0) return <p className="text-xs text-muted-foreground italic">No connection history found</p>;
+                      return (
+                        <div className="space-y-1 max-h-[180px] overflow-y-auto">
+                          {hits.slice(0, 50).map((hit, i) => {
+                            const src = (hit._source ?? hit) as Record<string, unknown>;
+                            const ts = String(src.timestamp ?? src["@timestamp"] ?? "—");
+                            const status = String(src.status ?? src.connection_status ?? "unknown");
+                            return (
+                              <div key={i} className="flex items-center gap-2 bg-secondary/20 rounded px-2.5 py-1.5 border border-border/10">
+                                <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${status === "active" || status === "connected" ? "bg-threat-low" : status === "disconnected" ? "bg-threat-high" : "bg-muted-foreground"}`} />
+                                <span className="text-[10px] font-mono text-muted-foreground w-40 flex-shrink-0">{ts !== "—" ? new Date(ts).toLocaleString() : "—"}</span>
+                                <span className={`text-xs font-medium ${status === "active" || status === "connected" ? "text-threat-low" : status === "disconnected" ? "text-threat-high" : "text-muted-foreground"}`}>{status}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No connection history available</p>
+                  )}
+                </GlassPanel>
+
                 <div className="flex flex-wrap gap-2">
                   <AddNoteDialog entityType="agent" entityId={selectedAgent ?? ""} defaultTitle={`Agent ${selectedAgent}: ${String(agentDetail.name ?? "")} investigation`} triggerLabel="Annotate Agent" />
                   <RawJsonViewer data={agentDetail} title="Agent Detail JSON" />
                   {agentOsDetail ? <RawJsonViewer data={agentOsDetail} title="OS Detail JSON" /> : null}
                   {agentHwDetail ? <RawJsonViewer data={agentHwDetail} title="Hardware Detail JSON" /> : null}
+                  {agentDaemonQ.data ? <RawJsonViewer data={agentDaemonQ.data} title="Daemon Stats JSON" /> : null}
+                  {agentStatsQ.data ? <RawJsonViewer data={agentStatsQ.data} title="Component Stats JSON" /> : null}
+                  {agentConfigQ.data ? <RawJsonViewer data={agentConfigQ.data} title="Agent Config JSON" /> : null}
                 </div>
               </div>
             ) : (

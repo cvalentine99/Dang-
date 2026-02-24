@@ -17,7 +17,7 @@ import {
 import {
   ShieldCheck, ShieldAlert, CheckCircle2, XCircle, MinusCircle,
   Search, Layers, ChevronLeft, ChevronRight, Database, Activity,
-  AlertTriangle, Clock,
+  AlertTriangle, Clock, FileCheck, BookOpen, Shield, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import {
@@ -138,7 +138,19 @@ export default function Compliance() {
     { retry: 1, staleTime: 60_000, enabled: indexerHealthy }
   );
 
-  const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); utils.indexer.invalidate(); }, [utils]);
+  // CIS-CAT benchmark results (requires agent)
+  const ciscatQ = trpc.wazuh.ciscatResults.useQuery(
+    { agentId: agentId || "001", limit: 500, offset: 0 },
+    { retry: 1, staleTime: 60_000, enabled: isConnected && !!agentId }
+  );
+
+  // Rules by compliance requirement
+  const rulesByReqQ = trpc.wazuh.rulesByRequirement.useQuery(
+    { requirement: selectedFramework || "pci_dss" },
+    { retry: 1, staleTime: 60_000, enabled: isConnected }
+  );
+
+  const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); utils.indexer.invalidate(); ciscatQ.refetch(); rulesByReqQ.refetch(); }, [utils, ciscatQ, rulesByReqQ]);
 
   // ── Policies (real or fallback) ───────────────────────────────────────
   const policies = useMemo(() => {
@@ -212,6 +224,21 @@ export default function Compliance() {
     return MOCK_COMPLIANCE_ALERTS[fw] ?? MOCK_COMPLIANCE_ALERTS.pci_dss;
   }, [complianceQ.data, indexerHealthy, selectedFramework]);
 
+  // ── CIS-CAT results extraction ────────────────────────────────────────
+  const ciscatResults = useMemo(() => extractItems(ciscatQ.data), [ciscatQ.data]);
+  const ciscatOverallPassRate = useMemo(() => {
+    if (ciscatResults.length === 0) return 0;
+    const totalPass = ciscatResults.reduce((s, r) => s + Number(r.pass ?? 0), 0);
+    const totalAll = ciscatResults.reduce((s, r) => s + Number(r.pass ?? 0) + Number(r.fail ?? 0) + Number(r.error ?? 0) + Number(r.unknown ?? 0) + Number(r.notchecked ?? 0), 0);
+    return totalAll > 0 ? Math.round((totalPass / totalAll) * 100) : 0;
+  }, [ciscatResults]);
+
+  // ── Rules by requirement extraction ─────────────────────────────────────
+  const relatedRules = useMemo(() => extractItems(rulesByReqQ.data), [rulesByReqQ.data]);
+
+  // Collapsible state for related rules
+  const [relatedRulesExpanded, setRelatedRulesExpanded] = useState(true);
+
   const currentFw = FRAMEWORKS.find(f => f.id === selectedFramework) ?? FRAMEWORKS[0];
   const isLoading = statusQ.isLoading;
 
@@ -233,6 +260,9 @@ export default function Compliance() {
             <TabsTrigger value="overview" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary">Overview</TabsTrigger>
             <TabsTrigger value="framework-alerts" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
               <Database className="h-3 w-3 mr-1" /> Framework Alerts
+            </TabsTrigger>
+            <TabsTrigger value="ciscat" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
+              <FileCheck className="h-3 w-3 mr-1" /> CIS-CAT
             </TabsTrigger>
             <TabsTrigger value="policies" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary">Policies</TabsTrigger>
             <TabsTrigger value="checks" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary">Checks</TabsTrigger>
@@ -410,6 +440,145 @@ export default function Compliance() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            </GlassPanel>
+
+            {/* Related Rules by Requirement */}
+            <GlassPanel>
+              <button onClick={() => setRelatedRulesExpanded(prev => !prev)} className="w-full flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-primary" /> Related Rules for {currentFw.label} ({relatedRules.length})
+                  <SourceBadge source={isConnected && rulesByReqQ.data ? "server" : "mock"} />
+                </h3>
+                {relatedRulesExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+              </button>
+              {relatedRulesExpanded && (
+                <div className="overflow-x-auto">
+                  {rulesByReqQ.isLoading ? (
+                    <p className="text-xs text-muted-foreground py-8 text-center">Loading related rules...</p>
+                  ) : relatedRules.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-8 text-center">No rules mapped to {currentFw.label} requirement</p>
+                  ) : (
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-border/30">
+                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">Rule ID</th>
+                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">Level</th>
+                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">Description</th>
+                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">Groups</th>
+                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">File</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {relatedRules.slice(0, 100).map((r, i) => {
+                          const level = Number(r.level ?? 0);
+                          const levelColor = level >= 12 ? "text-threat-critical" : level >= 8 ? "text-threat-high" : level >= 4 ? "text-threat-medium" : "text-threat-low";
+                          const groups = Array.isArray(r.groups) ? (r.groups as string[]).join(", ") : String(r.groups ?? "");
+                          return (
+                            <tr key={i} className="border-b border-border/10 hover:bg-secondary/20 transition-colors">
+                              <td className="py-2 px-3 font-mono text-primary">{String(r.id ?? "")}</td>
+                              <td className={`py-2 px-3 font-mono font-medium ${levelColor}`}>{level}</td>
+                              <td className="py-2 px-3 text-foreground max-w-[400px] truncate">{String(r.description ?? "")}</td>
+                              <td className="py-2 px-3 text-muted-foreground max-w-[200px] truncate">{groups || "\u2014"}</td>
+                              <td className="py-2 px-3 text-muted-foreground font-mono text-[10px]">{String(r.filename ?? "")}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                  {relatedRules.length > 100 && <p className="text-[10px] text-muted-foreground mt-2 text-right">Showing 100 of {relatedRules.length} rules</p>}
+                </div>
+              )}
+            </GlassPanel>
+          </TabsContent>
+
+          {/* ── CIS-CAT Benchmarks Tab ────────────────────────────────────── */}
+          <TabsContent value="ciscat" className="space-y-4 mt-4">
+            <GlassPanel className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <div className="flex items-center gap-2">
+                <FileCheck className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium text-muted-foreground">CIS-CAT Benchmarks</span>
+                <SourceBadge source={isConnected && ciscatQ.data ? "server" : "mock"} />
+              </div>
+              <div className="flex items-center gap-2 ml-auto">
+                <span className="text-xs text-muted-foreground">Agent:</span>
+                <Select value={agentId} onValueChange={(v) => setAgentId(v)}>
+                  <SelectTrigger className="w-[280px] h-8 text-xs bg-secondary/50 border-border"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-popover border-border max-h-60">
+                    {agentList.map(a => <SelectItem key={String(a.id)} value={String(a.id)}>{String(a.id)} — {String(a.name ?? "Unknown")} ({String(a.ip ?? "")})</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </GlassPanel>
+
+            {/* Overall Pass Rate */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <StatCard label="Overall Pass Rate" value={`${ciscatOverallPassRate}%`} icon={CheckCircle2} colorClass={ciscatOverallPassRate >= 80 ? "text-threat-low" : ciscatOverallPassRate >= 60 ? "text-threat-medium" : "text-threat-critical"} />
+              <StatCard label="Benchmarks" value={ciscatResults.length} icon={FileCheck} colorClass="text-primary" />
+              <StatCard label="Total Pass" value={ciscatResults.reduce((s, r) => s + Number(r.pass ?? 0), 0)} icon={CheckCircle2} colorClass="text-threat-low" />
+              <StatCard label="Total Fail" value={ciscatResults.reduce((s, r) => s + Number(r.fail ?? 0), 0)} icon={XCircle} colorClass="text-threat-critical" />
+            </div>
+
+            {/* Benchmark Results Table */}
+            <GlassPanel>
+              <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-primary" /> Benchmark Results (Agent {agentId})
+              </h3>
+              <div className="overflow-x-auto">
+                {ciscatQ.isLoading ? (
+                  <p className="text-xs text-muted-foreground py-8 text-center">Loading CIS-CAT results...</p>
+                ) : ciscatResults.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-8 text-center">No CIS-CAT benchmark results available for agent {agentId}</p>
+                ) : (
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border/30">
+                        <th className="text-left py-2 px-3 text-muted-foreground font-medium">Profile</th>
+                        <th className="text-left py-2 px-3 text-muted-foreground font-medium">Benchmark</th>
+                        <th className="text-left py-2 px-3 text-muted-foreground font-medium">Score</th>
+                        <th className="text-left py-2 px-3 text-muted-foreground font-medium">Pass</th>
+                        <th className="text-left py-2 px-3 text-muted-foreground font-medium">Fail</th>
+                        <th className="text-left py-2 px-3 text-muted-foreground font-medium">Error</th>
+                        <th className="text-left py-2 px-3 text-muted-foreground font-medium">Unknown</th>
+                        <th className="text-left py-2 px-3 text-muted-foreground font-medium">Not Checked</th>
+                        <th className="text-left py-2 px-3 text-muted-foreground font-medium w-1/4">Pass Rate</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ciscatResults.map((r, i) => {
+                        const pass = Number(r.pass ?? 0);
+                        const fail = Number(r.fail ?? 0);
+                        const error = Number(r.error ?? 0);
+                        const unknown = Number(r.unknown ?? 0);
+                        const notchecked = Number(r.notchecked ?? 0);
+                        const total = pass + fail + error + unknown + notchecked;
+                        const passRate = total > 0 ? Math.round((pass / total) * 100) : 0;
+                        const score = r.score != null ? Number(r.score) : passRate;
+                        return (
+                          <tr key={i} className="border-b border-border/10 hover:bg-secondary/20 transition-colors">
+                            <td className="py-2 px-3 text-foreground font-medium">{String(r.profile ?? "")}</td>
+                            <td className="py-2 px-3 text-muted-foreground max-w-[250px] truncate">{String(r.benchmark ?? "")}</td>
+                            <td className={`py-2 px-3 font-mono font-medium ${score >= 80 ? "text-threat-low" : score >= 60 ? "text-threat-medium" : "text-threat-critical"}`}>{score}%</td>
+                            <td className="py-2 px-3 font-mono text-threat-low">{pass}</td>
+                            <td className="py-2 px-3 font-mono text-threat-critical">{fail}</td>
+                            <td className="py-2 px-3 font-mono text-threat-high">{error}</td>
+                            <td className="py-2 px-3 font-mono text-muted-foreground">{unknown}</td>
+                            <td className="py-2 px-3 font-mono text-muted-foreground">{notchecked}</td>
+                            <td className="py-2 px-3">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-2 bg-secondary/40 rounded-full overflow-hidden">
+                                  <div className="h-full rounded-full transition-all duration-700" style={{ width: `${passRate}%`, backgroundColor: passRate >= 80 ? COLORS.green : passRate >= 60 ? COLORS.yellow : COLORS.red }} />
+                                </div>
+                                <span className="text-[10px] text-muted-foreground w-10 text-right">{passRate}%</span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </GlassPanel>
           </TabsContent>

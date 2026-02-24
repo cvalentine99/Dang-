@@ -15,6 +15,7 @@ import {
 import {
   Crosshair, Shield, Layers, Grid3X3, Target, ExternalLink,
   Database, Activity, TrendingUp, Flame, Clock,
+  ShieldOff, Bug, Link, Info, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import {
@@ -154,13 +155,44 @@ export default function MitreAttack() {
   const groupsQ = trpc.wazuh.mitreGroups.useQuery({ limit: 100 }, { retry: 1, staleTime: 120_000, enabled: isConnected });
   const rulesQ = trpc.wazuh.rules.useQuery({ limit: 500, offset: 0, sort: "-level" }, { retry: 1, staleTime: 60_000, enabled: isConnected });
 
+  // MITRE Intelligence endpoints
+  const mitreMetaQ = trpc.wazuh.mitreMetadata.useQuery(undefined, { retry: 1, staleTime: 60_000, enabled: isConnected });
+  const mitreMitigationsQ = trpc.wazuh.mitreMitigations.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 60_000, enabled: isConnected });
+  const mitreSoftwareQ = trpc.wazuh.mitreSoftware.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 60_000, enabled: isConnected });
+  const mitreReferencesQ = trpc.wazuh.mitreReferences.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 60_000, enabled: isConnected });
+
   // Indexer MITRE aggregation
   const mitreAggQ = trpc.indexer.alertsAggByMitre.useQuery(
     { from: new Date(Date.now() - trMs).toISOString(), to: new Date().toISOString() },
     { retry: 1, staleTime: 60_000, enabled: indexerHealthy }
   );
 
-  const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); utils.indexer.invalidate(); }, [utils]);
+  const handleRefresh = useCallback(() => {
+    utils.wazuh.invalidate();
+    utils.indexer.invalidate();
+    mitreMitigationsQ.refetch();
+    mitreSoftwareQ.refetch();
+    mitreReferencesQ.refetch();
+    mitreMetaQ.refetch();
+  }, [utils, mitreMitigationsQ, mitreSoftwareQ, mitreReferencesQ, mitreMetaQ]);
+
+  // ── MITRE Intelligence data extraction ──────────────────────────────
+  const mitigations = useMemo(() => extractItems(mitreMitigationsQ.data), [mitreMitigationsQ.data]);
+  const software = useMemo(() => extractItems(mitreSoftwareQ.data), [mitreSoftwareQ.data]);
+  const references = useMemo(() => extractItems(mitreReferencesQ.data), [mitreReferencesQ.data]);
+
+  const mitreMetadata = useMemo(() => {
+    if (!mitreMetaQ.data) return null;
+    const d = (mitreMetaQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    return d ?? null;
+  }, [mitreMetaQ.data]);
+
+  // Collapsible state for intel sections
+  const [intelExpanded, setIntelExpanded] = useState<Record<string, boolean>>({
+    mitigations: true,
+    software: true,
+    references: false,
+  });
 
   // ── Tactics (real or fallback) ────────────────────────────────────────
   const mitreTactics = useMemo(() => {
@@ -355,6 +387,7 @@ export default function MitreAttack() {
             <TabsTrigger value="heatmap" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary"><Flame className="h-3 w-3 mr-1" /> Detection Heatmap</TabsTrigger>
             <TabsTrigger value="alerts" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary"><Database className="h-3 w-3 mr-1" /> Alert Activity</TabsTrigger>
             <TabsTrigger value="groups" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary"><Target className="h-3 w-3 mr-1" /> Threat Groups</TabsTrigger>
+            <TabsTrigger value="intel" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary"><Info className="h-3 w-3 mr-1" /> MITRE Intel</TabsTrigger>
           </TabsList>
 
           {/* ── ATT&CK Matrix Tab ──────────────────────────────────────── */}
@@ -602,6 +635,169 @@ export default function MitreAttack() {
                   </div>
                 ))}
               </div>
+            </GlassPanel>
+          </TabsContent>
+
+          {/* ── MITRE Intelligence Tab ────────────────────────────────── */}
+          <TabsContent value="intel" className="space-y-4 mt-4">
+            {/* Metadata Info Bar */}
+            <GlassPanel className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Info className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium text-muted-foreground">MITRE Framework Metadata</span>
+                <SourceBadge source={isConnected && mitreMetaQ.data ? "server" : "mock"} />
+              </div>
+              {mitreMetadata ? (
+                <div className="flex items-center gap-4 flex-wrap text-xs text-muted-foreground ml-auto">
+                  {mitreMetadata.version != null && (
+                    <span>Version: <span className="font-mono text-foreground">{String(mitreMetadata.version)}</span></span>
+                  )}
+                  {mitreMetadata.description != null && (
+                    <span className="max-w-xs truncate">{String(mitreMetadata.description)}</span>
+                  )}
+                  {mitreMetadata.last_update != null && (
+                    <span>Updated: <span className="font-mono text-foreground">{String(mitreMetadata.last_update)}</span></span>
+                  )}
+                  {mitreMetadata.timestamp != null && (
+                    <span>Timestamp: <span className="font-mono text-foreground">{String(mitreMetadata.timestamp)}</span></span>
+                  )}
+                </div>
+              ) : (
+                <span className="text-xs text-muted-foreground ml-auto">{mitreMetaQ.isLoading ? "Loading metadata..." : "No metadata available"}</span>
+              )}
+            </GlassPanel>
+
+            {/* Mitigations Section */}
+            <GlassPanel>
+              <button onClick={() => setIntelExpanded(prev => ({ ...prev, mitigations: !prev.mitigations }))} className="w-full flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <ShieldOff className="h-4 w-4 text-primary" /> Mitigations ({mitigations.length})
+                  <SourceBadge source={isConnected && mitreMitigationsQ.data ? "server" : "mock"} />
+                </h3>
+                {intelExpanded.mitigations ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+              </button>
+              {intelExpanded.mitigations && (
+                <div className="overflow-x-auto">
+                  {mitreMitigationsQ.isLoading ? (
+                    <p className="text-xs text-muted-foreground py-8 text-center">Loading mitigations...</p>
+                  ) : mitigations.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-8 text-center">No mitigations available</p>
+                  ) : (
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-border/30">
+                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">ID</th>
+                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">Name</th>
+                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">Description</th>
+                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">Related Techniques</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {mitigations.slice(0, 100).map((m, i) => {
+                          const relTech = Array.isArray(m.techniques) ? (m.techniques as string[]).length : 0;
+                          return (
+                            <tr key={i} className="border-b border-border/10 hover:bg-secondary/20 transition-colors">
+                              <td className="py-2 px-3 font-mono text-primary">{String(m.external_id ?? m.id ?? "")}</td>
+                              <td className="py-2 px-3 text-foreground font-medium">{String(m.name ?? "")}</td>
+                              <td className="py-2 px-3 text-muted-foreground max-w-[400px] truncate">{String(m.description ?? "").slice(0, 200)}</td>
+                              <td className="py-2 px-3 text-foreground font-mono">{relTech}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                  {mitigations.length > 100 && <p className="text-[10px] text-muted-foreground mt-2 text-right">Showing 100 of {mitigations.length} mitigations</p>}
+                </div>
+              )}
+            </GlassPanel>
+
+            {/* Software Section */}
+            <GlassPanel>
+              <button onClick={() => setIntelExpanded(prev => ({ ...prev, software: !prev.software }))} className="w-full flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <Bug className="h-4 w-4 text-primary" /> Software / Malware ({software.length})
+                  <SourceBadge source={isConnected && mitreSoftwareQ.data ? "server" : "mock"} />
+                </h3>
+                {intelExpanded.software ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+              </button>
+              {intelExpanded.software && (
+                <div className="overflow-x-auto">
+                  {mitreSoftwareQ.isLoading ? (
+                    <p className="text-xs text-muted-foreground py-8 text-center">Loading software...</p>
+                  ) : software.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-8 text-center">No software data available</p>
+                  ) : (
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-border/30">
+                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">ID</th>
+                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">Name</th>
+                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">Platform(s)</th>
+                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">Description</th>
+                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">Related Techniques</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {software.slice(0, 100).map((s, i) => {
+                          const platforms = Array.isArray(s.platforms) ? (s.platforms as string[]).join(", ") : String(s.platforms ?? "");
+                          const relTech = Array.isArray(s.techniques) ? (s.techniques as string[]).length : 0;
+                          return (
+                            <tr key={i} className="border-b border-border/10 hover:bg-secondary/20 transition-colors">
+                              <td className="py-2 px-3 font-mono text-primary">{String(s.external_id ?? s.id ?? "")}</td>
+                              <td className="py-2 px-3 text-foreground font-medium">{String(s.name ?? "")}</td>
+                              <td className="py-2 px-3 text-muted-foreground">{platforms || "\u2014"}</td>
+                              <td className="py-2 px-3 text-muted-foreground max-w-[350px] truncate">{String(s.description ?? "").slice(0, 180)}</td>
+                              <td className="py-2 px-3 text-foreground font-mono">{relTech}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                  {software.length > 100 && <p className="text-[10px] text-muted-foreground mt-2 text-right">Showing 100 of {software.length} software entries</p>}
+                </div>
+              )}
+            </GlassPanel>
+
+            {/* References Section */}
+            <GlassPanel>
+              <button onClick={() => setIntelExpanded(prev => ({ ...prev, references: !prev.references }))} className="w-full flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <Link className="h-4 w-4 text-primary" /> External References ({references.length})
+                  <SourceBadge source={isConnected && mitreReferencesQ.data ? "server" : "mock"} />
+                </h3>
+                {intelExpanded.references ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+              </button>
+              {intelExpanded.references && (
+                <div>
+                  {mitreReferencesQ.isLoading ? (
+                    <p className="text-xs text-muted-foreground py-8 text-center">Loading references...</p>
+                  ) : references.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-8 text-center">No references available</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[400px] overflow-y-auto">
+                      {references.slice(0, 150).map((r, i) => {
+                        const url = String(r.url ?? r.source ?? "");
+                        const title = String(r.source_name ?? r.description ?? r.title ?? url).slice(0, 80);
+                        return (
+                          <div key={i} className="bg-secondary/20 rounded p-2 border border-border/20 hover:bg-secondary/30 transition-colors">
+                            {url && url.startsWith("http") ? (
+                              <a href={url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-primary hover:text-primary/80 flex items-center gap-1 truncate">
+                                <ExternalLink className="h-2.5 w-2.5 shrink-0" /> {title}
+                              </a>
+                            ) : (
+                              <span className="text-[10px] text-foreground truncate block">{title}</span>
+                            )}
+                            {r.external_id && <span className="text-[9px] font-mono text-muted-foreground">{String(r.external_id)}</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {references.length > 150 && <p className="text-[10px] text-muted-foreground mt-2 text-right">Showing 150 of {references.length} references</p>}
+                </div>
+              )}
             </GlassPanel>
           </TabsContent>
         </Tabs>

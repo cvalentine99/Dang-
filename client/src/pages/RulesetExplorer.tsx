@@ -7,6 +7,7 @@ import {
   MOCK_RULES_EXTENDED,
   MOCK_DECODERS,
   MOCK_RULE_GROUPS,
+  MOCK_RULE_FILES,
   useFallback,
 } from "@/lib/mockData";
 import {
@@ -16,7 +17,7 @@ import {
 import {
   Search, Shield, FileText, Terminal, ChevronDown, ChevronRight,
   ExternalLink, Copy, X, BookOpen, Code, Filter, Layers,
-  AlertTriangle, Eye, Hash, Cpu, Database, Globe, Activity,
+  AlertTriangle, Eye, Hash, Cpu, Database, Globe, Activity, List,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -75,7 +76,18 @@ const CHART_COLORS = [
   "oklch(0.7 0.15 320)",
 ];
 
-type TabType = "rules" | "decoders";
+type TabType = "rules" | "decoders" | "ruleFiles" | "cdbLists";
+
+// ─── Source Badge ─────────────────────────────────────────────────────────────
+function SourceBadge({ source }: { source: "indexer" | "server" | "mock" }) {
+  const styles = {
+    indexer: { label: "Indexer", color: "text-threat-low bg-threat-low/10 border-threat-low/20" },
+    server: { label: "Server API", color: "text-primary bg-primary/10 border-primary/20" },
+    mock: { label: "Mock", color: "text-muted-foreground bg-secondary/30 border-border/30" },
+  };
+  const s = styles[source];
+  return <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${s.color}`}>{s.label}</span>;
+}
 
 export default function RulesetExplorer() {
   // ─── State ───────────────────────────────────────────────────────────────
@@ -105,6 +117,20 @@ export default function RulesetExplorer() {
     enabled: isConfigured,
   });
 
+  // ─── New Endpoints: Rule Files + CDB Lists ─────────────────────────────
+  const rulesFilesQ = trpc.wazuh.rulesFiles.useQuery(
+    { limit: 500, offset: 0 },
+    { retry: 1, staleTime: 60_000, enabled: isConfigured },
+  );
+  const listsQ = trpc.wazuh.lists.useQuery(
+    { limit: 500, offset: 0 },
+    { retry: 1, staleTime: 60_000, enabled: isConfigured },
+  );
+  const listsFilesQ = trpc.wazuh.listsFiles.useQuery(
+    { limit: 500, offset: 0 },
+    { retry: 1, staleTime: 60_000, enabled: isConfigured },
+  );
+
   // ─── Data ────────────────────────────────────────────────────────────────
   const rulesRaw = useFallback(rulesQ.data, MOCK_RULES_EXTENDED, isConfigured);
   const decodersRaw = useFallback(decodersQ.data, MOCK_DECODERS, isConfigured);
@@ -121,6 +147,25 @@ export default function RulesetExplorer() {
   const ruleGroups: string[] = (
     (ruleGroupsRaw as Record<string, unknown>)?.data as Record<string, unknown> | undefined
   )?.affected_items as string[] ?? [];
+
+  // ─── Rule Files Data ────────────────────────────────────────────────────
+  const ruleFilesRaw = useFallback(rulesFilesQ.data, MOCK_RULE_FILES, isConfigured);
+  const ruleFiles: Array<{ filename: string; relative_dirname: string; status: string }> = (
+    (ruleFilesRaw as Record<string, unknown>)?.data as Record<string, unknown> | undefined
+  )?.affected_items as Array<{ filename: string; relative_dirname: string; status: string }> ?? [];
+
+  // ─── CDB Lists Data ────────────────────────────────────────────────────
+  const cdbListItems = useMemo(() => {
+    if (!isConfigured || !listsQ.data) return [];
+    const d = (listsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
+  }, [listsQ.data, isConfigured]);
+
+  const cdbListFiles = useMemo(() => {
+    if (!isConfigured || !listsFilesQ.data) return [];
+    const d = (listsFilesQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
+  }, [listsFilesQ.data, isConfigured]);
 
   // ─── Filtering: Rules ────────────────────────────────────────────────────
   const filteredRules = useMemo(() => {
@@ -239,6 +284,9 @@ export default function RulesetExplorer() {
             rulesQ.refetch();
             decodersQ.refetch();
             ruleGroupsQ.refetch();
+            rulesFilesQ.refetch();
+            listsQ.refetch();
+            listsFilesQ.refetch();
           }}
         />
       </PageHeader>
@@ -399,6 +447,28 @@ export default function RulesetExplorer() {
             <Code className="h-4 w-4" />
             Decoders ({decoders.length})
           </button>
+          <button
+            onClick={() => setActiveTab("ruleFiles")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeTab === "ruleFiles"
+                ? "bg-violet-500/20 text-violet-300 border-b-2 border-violet-400"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+            }`}
+          >
+            <FileText className="h-4 w-4" />
+            Rule Files ({ruleFiles.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("cdbLists")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeTab === "cdbLists"
+                ? "bg-violet-500/20 text-violet-300 border-b-2 border-violet-400"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+            }`}
+          >
+            <List className="h-4 w-4" />
+            CDB Lists ({cdbListFiles.length || cdbListItems.length})
+          </button>
         </div>
 
         {/* Search + Filters */}
@@ -490,9 +560,10 @@ export default function RulesetExplorer() {
 
         {/* Result count */}
         <div className="text-xs text-slate-500">
-          {activeTab === "rules"
-            ? `${filteredRules.length} rules found`
-            : `${filteredDecoders.length} decoders found`}
+          {activeTab === "rules" && `${filteredRules.length} rules found`}
+          {activeTab === "decoders" && `${filteredDecoders.length} decoders found`}
+          {activeTab === "ruleFiles" && `${ruleFiles.length} rule files found`}
+          {activeTab === "cdbLists" && `${cdbListFiles.length || cdbListItems.length} CDB lists found`}
         </div>
       </GlassPanel>
 
@@ -933,6 +1004,148 @@ export default function RulesetExplorer() {
             <div className="py-12 text-center text-slate-500">
               <Code className="h-8 w-8 mx-auto mb-2 opacity-30" />
               <p className="text-sm">No decoders match your search</p>
+            </div>
+          )}
+        </GlassPanel>
+      )}
+
+      {/* ── Rule Files Table ──────────────────────────────────────────────── */}
+      {activeTab === "ruleFiles" && (
+        <GlassPanel className="overflow-hidden">
+          <h3 className="text-sm font-semibold text-violet-300 mb-3 flex items-center gap-2">
+            <FileText className="h-4 w-4" /> Rule Source Files
+            <SourceBadge source={isConfigured && rulesFilesQ.data ? "server" : "mock"} />
+          </h3>
+          {/* Header */}
+          <div className="grid grid-cols-[1fr_120px_1fr] gap-3 px-4 py-2.5 bg-white/5 border-b border-white/10 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+            <span>Filename</span>
+            <span>Status</span>
+            <span>Relative Path</span>
+          </div>
+
+          {/* Rows */}
+          <div className="divide-y divide-white/5 max-h-[600px] overflow-y-auto">
+            {ruleFiles.map((file, i) => (
+              <div
+                key={`${file.filename}-${i}`}
+                className="grid grid-cols-[1fr_120px_1fr] gap-3 px-4 py-3 hover:bg-white/5 transition-colors"
+              >
+                <div className="flex items-center text-sm font-mono text-slate-200 truncate" title={file.filename}>
+                  {file.filename}
+                </div>
+                <div className="flex items-center">
+                  <span className={`text-xs font-mono px-2 py-0.5 rounded ${
+                    file.status === "enabled"
+                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                      : "bg-red-500/20 text-red-400 border border-red-500/30"
+                  }`}>
+                    {file.status}
+                  </span>
+                </div>
+                <div className="flex items-center text-xs text-slate-500 font-mono truncate" title={file.relative_dirname}>
+                  {file.relative_dirname}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {ruleFiles.length === 0 && (
+            <div className="py-12 text-center text-slate-500">
+              <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No rule files available</p>
+            </div>
+          )}
+        </GlassPanel>
+      )}
+
+      {/* ── CDB Lists Table ───────────────────────────────────────────────── */}
+      {activeTab === "cdbLists" && (
+        <GlassPanel className="overflow-hidden">
+          <h3 className="text-sm font-semibold text-violet-300 mb-3 flex items-center gap-2">
+            <List className="h-4 w-4" /> CDB Lists
+            <SourceBadge source={isConfigured && (listsFilesQ.data || listsQ.data) ? "server" : "mock"} />
+          </h3>
+
+          {/* List Files Table */}
+          {cdbListFiles.length > 0 && (
+            <>
+              <div className="grid grid-cols-[1fr_1fr_120px] gap-3 px-4 py-2.5 bg-white/5 border-b border-white/10 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                <span>Filename</span>
+                <span>Relative Path</span>
+                <span>Items</span>
+              </div>
+
+              <div className="divide-y divide-white/5 max-h-[400px] overflow-y-auto">
+                {cdbListFiles.map((file, i) => {
+                  const filename = String(file.filename ?? file.name ?? "—");
+                  const relativePath = String(file.relative_dirname ?? file.path ?? "—");
+                  const matchingList = cdbListItems.find(
+                    (item) => String(item.filename ?? item.name) === filename
+                  );
+                  const itemCount = matchingList
+                    ? (Array.isArray(matchingList.items) ? matchingList.items.length : Number(matchingList.items ?? 0))
+                    : "—";
+                  return (
+                    <div
+                      key={`${filename}-${i}`}
+                      className="grid grid-cols-[1fr_1fr_120px] gap-3 px-4 py-3 hover:bg-white/5 transition-colors"
+                    >
+                      <div className="flex items-center text-sm font-mono text-slate-200 truncate" title={filename}>
+                        {filename}
+                      </div>
+                      <div className="flex items-center text-xs text-slate-500 font-mono truncate" title={relativePath}>
+                        {relativePath}
+                      </div>
+                      <div className="flex items-center text-xs font-mono text-slate-400">
+                        {typeof itemCount === "number" ? itemCount.toLocaleString() : itemCount}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {/* Fallback: show lists content if no file metadata */}
+          {cdbListFiles.length === 0 && cdbListItems.length > 0 && (
+            <>
+              <div className="grid grid-cols-[1fr_1fr_120px] gap-3 px-4 py-2.5 bg-white/5 border-b border-white/10 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                <span>Filename</span>
+                <span>Relative Path</span>
+                <span>Items</span>
+              </div>
+
+              <div className="divide-y divide-white/5 max-h-[400px] overflow-y-auto">
+                {cdbListItems.map((item, i) => {
+                  const filename = String(item.filename ?? item.name ?? "—");
+                  const relativePath = String(item.relative_dirname ?? item.path ?? "—");
+                  const items = Array.isArray(item.items) ? item.items.length : Number(item.items ?? 0);
+                  return (
+                    <div
+                      key={`${filename}-${i}`}
+                      className="grid grid-cols-[1fr_1fr_120px] gap-3 px-4 py-3 hover:bg-white/5 transition-colors"
+                    >
+                      <div className="flex items-center text-sm font-mono text-slate-200 truncate" title={filename}>
+                        {filename}
+                      </div>
+                      <div className="flex items-center text-xs text-slate-500 font-mono truncate" title={relativePath}>
+                        {relativePath}
+                      </div>
+                      <div className="flex items-center text-xs font-mono text-slate-400">
+                        {items > 0 ? items.toLocaleString() : "—"}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {cdbListFiles.length === 0 && cdbListItems.length === 0 && (
+            <div className="py-12 text-center text-slate-500">
+              <List className="h-8 w-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No CDB lists available</p>
+              <p className="text-xs text-slate-600 mt-1">Connect to a Wazuh server to view CDB list data</p>
             </div>
           )}
         </GlassPanel>

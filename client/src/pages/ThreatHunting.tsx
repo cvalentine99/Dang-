@@ -43,6 +43,8 @@ import {
   Trash2,
   Database,
   Archive,
+  Zap,
+  ListChecks,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -155,6 +157,10 @@ export default function ThreatHunting() {
   const rulesQ = trpc.wazuh.rules.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 60_000 });
   const logsQ = trpc.wazuh.managerLogs.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 30_000 });
   const mitreQ = trpc.wazuh.mitreTechniques.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 60_000 });
+
+  // ── Active Response & Task Status ────────────────────────────────────────
+  const activeResponseQ = trpc.wazuh.activeResponseList.useQuery(undefined, { retry: 1, staleTime: 60_000, enabled: isConnected });
+  const taskStatusQ = trpc.wazuh.taskStatus.useQuery({}, { retry: 1, staleTime: 30_000, enabled: isConnected });
 
   const agents = useFallback(agentsQ.data, MOCK_AGENTS, isConnected);
   const rules = useFallback(rulesQ.data, MOCK_RULES, isConnected);
@@ -347,6 +353,10 @@ export default function ThreatHunting() {
     rulesQ.refetch();
     logsQ.refetch();
     mitreQ.refetch();
+    if (isConnected) {
+      activeResponseQ.refetch();
+      taskStatusQ.refetch();
+    }
     if (isIndexerConnected) {
       indexerAlertsQ.refetch();
       indexerArchivesQ.refetch();
@@ -1190,8 +1200,8 @@ export default function ThreatHunting() {
         </>
       )}
 
-      {/* ── Bottom Row: Hunt History + Data Coverage ─────────────────────── */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      {/* ── Bottom Row: Hunt History + Data Coverage + Active Response / Tasks ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         {/* Hunt History */}
         <GlassPanel>
           <h3 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
@@ -1262,6 +1272,10 @@ export default function ThreatHunting() {
               { label: "FIM Events", count: fimCount, icon: FileWarning, color: "bg-[oklch(0.795_0.184_86.047)]", badge: "mock" as const },
               { label: "MITRE Techniques", count: Number(((mitreTechniques as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items ?? 0), icon: Target, color: "bg-[oklch(0.637_0.237_25.331)]", badge: isConnected ? "api" as const : "mock" as const },
               { label: "Manager Log Entries", count: Number(((logs as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items ?? 0), icon: Terminal, color: "bg-[oklch(0.765_0.177_163.223)]", badge: isConnected ? "api" as const : "mock" as const },
+              ...(isConnected ? [
+                { label: "Active Response Cmds", count: ((activeResponseQ.data as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items as number ?? 0, icon: Zap, color: "bg-[oklch(0.75_0.18_60)]", badge: "api" as const },
+                { label: "Agent Tasks", count: ((taskStatusQ.data as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items as number ?? 0, icon: ListChecks, color: "bg-[oklch(0.70_0.16_250)]", badge: "api" as const },
+              ] : []),
               ...(isIndexerConnected ? [
                 { label: "Indexer Alerts", count: indexerAlertCount, icon: Database, color: "bg-[oklch(0.72_0.19_295)]", badge: "indexer" as const },
                 { label: "Indexer Archives", count: indexerArchiveCount, icon: Archive, color: "bg-[oklch(0.72_0.15_180)]", badge: "indexer" as const },
@@ -1314,6 +1328,93 @@ export default function ThreatHunting() {
                 </span>
               )}
             </p>
+          </div>
+        </GlassPanel>
+
+        {/* Active Response Commands & Agent Tasks */}
+        <GlassPanel>
+          <h3 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
+            <Zap className="h-4 w-4 text-[oklch(0.75_0.18_60)]" />
+            Active Response Commands
+            <SourceBadge source={isConnected ? "api" : "mock"} />
+          </h3>
+          {!isConnected ? (
+            <div className="py-4 text-center text-xs text-muted-foreground">
+              Connect Wazuh API to view active response commands
+            </div>
+          ) : activeResponseQ.isLoading ? (
+            <div className="py-4 text-center text-xs text-muted-foreground">Loading...</div>
+          ) : (() => {
+            const arData = (activeResponseQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+            const arItems = ((arData?.affected_items ?? []) as Record<string, unknown>[]);
+            return arItems.length === 0 ? (
+              <div className="py-4 text-center text-xs text-muted-foreground">No active response commands configured</div>
+            ) : (
+              <div className="overflow-x-auto max-h-[180px] overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border/30">
+                      <th className="px-3 py-1.5 text-left text-muted-foreground font-medium">Command</th>
+                      <th className="px-3 py-1.5 text-left text-muted-foreground font-medium">Timeout</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {arItems.map((item, idx) => (
+                      <tr key={idx} className="border-b border-border/20 hover:bg-secondary/20">
+                        <td className="px-3 py-1.5 font-mono text-foreground">{String(item.name ?? item.command ?? `cmd-${idx}`)}</td>
+                        <td className="px-3 py-1.5 text-muted-foreground">{item.timeout != null ? `${item.timeout}s` : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+
+          {/* Agent Task Status */}
+          <div className="mt-4 pt-3 border-t border-border/30">
+            <h4 className="text-xs font-medium text-foreground mb-2 flex items-center gap-2">
+              <ListChecks className="h-3.5 w-3.5 text-[oklch(0.70_0.16_250)]" />
+              Agent Task Status
+              <SourceBadge source={isConnected ? "api" : "mock"} />
+            </h4>
+            {!isConnected ? (
+              <div className="py-2 text-center text-[10px] text-muted-foreground">
+                Connect Wazuh API to view agent tasks
+              </div>
+            ) : taskStatusQ.isLoading ? (
+              <div className="py-2 text-center text-[10px] text-muted-foreground">Loading...</div>
+            ) : (() => {
+              const tsData = (taskStatusQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+              const tsItems = ((tsData?.affected_items ?? []) as Record<string, unknown>[]);
+              return tsItems.length === 0 ? (
+                <div className="py-2 text-center text-[10px] text-muted-foreground">No pending agent tasks</div>
+              ) : (
+                <div className="space-y-1 max-h-[120px] overflow-y-auto">
+                  {tsItems.slice(0, 20).map((task, idx) => (
+                    <div key={idx} className="flex items-center justify-between px-2 py-1 rounded bg-secondary/20 text-[11px]">
+                      <span className="font-mono text-foreground">
+                        {String(task.command ?? task.task_id ?? `task-${idx}`)}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {task.node && (
+                          <span className="text-muted-foreground">node: {String(task.node)}</span>
+                        )}
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                          task.status === "Done" || task.status === "done"
+                            ? "bg-[oklch(0.765_0.177_163.223)]/20 text-[oklch(0.765_0.177_163.223)]"
+                            : task.status === "In progress" || task.status === "in_progress"
+                            ? "bg-[oklch(0.795_0.184_86.047)]/20 text-[oklch(0.795_0.184_86.047)]"
+                            : "bg-secondary/50 text-muted-foreground"
+                        }`}>
+                          {String(task.status ?? "unknown")}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         </GlassPanel>
       </div>
