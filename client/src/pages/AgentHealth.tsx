@@ -17,6 +17,7 @@ import {
 import {
   Users, Activity, AlertTriangle, Wifi, WifiOff, Clock, Search,
   Monitor, Server, Cpu, ChevronLeft, ChevronRight, X,
+  ArrowDownCircle, FolderX,
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import {
@@ -71,6 +72,20 @@ export default function AgentHealth() {
     group: groupFilter !== "all" ? groupFilter : undefined,
     search: search || undefined, sort: "-dateAdd",
   }, { retry: 1, staleTime: 15_000, enabled: isConnected });
+
+  // New: outdated & ungrouped agent queries
+  const outdatedQ = trpc.wazuh.agentsOutdated.useQuery({ limit: 1, offset: 0 }, { retry: 1, staleTime: 60_000, enabled: isConnected });
+  const noGroupQ = trpc.wazuh.agentsNoGroup.useQuery({ limit: 1, offset: 0 }, { retry: 1, staleTime: 60_000, enabled: isConnected });
+
+  const outdatedCount = useMemo(() => {
+    const d = (outdatedQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    return Number(d?.total_affected_items ?? 0);
+  }, [outdatedQ.data]);
+
+  const noGroupCount = useMemo(() => {
+    const d = (noGroupQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    return Number(d?.total_affected_items ?? 0);
+  }, [noGroupQ.data]);
 
   const agentDetailQ = trpc.wazuh.agentById.useQuery({ agentId: selectedAgent ?? "000" }, { enabled: !!selectedAgent && isConnected });
   const agentOsQ = trpc.wazuh.agentOs.useQuery({ agentId: selectedAgent ?? "000" }, { enabled: !!selectedAgent && isConnected });
@@ -169,12 +184,14 @@ export default function AgentHealth() {
         <PageHeader title="Fleet Command" subtitle="Agent lifecycle management — status, OS distribution, groups, and deep inspection" onRefresh={handleRefresh} isLoading={isLoading} />
 
         {/* KPI Row */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
           <StatCard label="Total Agents" value={agentData.total} icon={Users} colorClass="text-primary" />
           <StatCard label="Active" value={agentData.active} icon={Wifi} colorClass="text-threat-low" />
           <StatCard label="Disconnected" value={agentData.disconnected} icon={WifiOff} colorClass="text-threat-high" />
           <StatCard label="Never Connected" value={agentData.never} icon={AlertTriangle} colorClass="text-threat-medium" />
           <StatCard label="Pending" value={agentData.pending} icon={Clock} colorClass="text-info-cyan" />
+          <StatCard label="Outdated" value={outdatedCount} icon={ArrowDownCircle} colorClass="text-threat-medium" />
+          <StatCard label="Ungrouped" value={noGroupCount} icon={FolderX} colorClass="text-threat-high" />
         </div>
 
         {/* Charts Row */}

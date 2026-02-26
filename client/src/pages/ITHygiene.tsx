@@ -174,6 +174,10 @@ export default function ITHygiene() {
     { agentId },
     { retry: 1, staleTime: 60_000, enabled: isConnected && tab === "network" }
   );
+  const netprotoQ = trpc.wazuh.agentNetproto.useQuery(
+    { agentId },
+    { retry: 1, staleTime: 60_000, enabled: isConnected && tab === "network" }
+  );
   const hotfixesQ = trpc.wazuh.agentHotfixes.useQuery(
     { agentId, limit: pageSize, offset: page * pageSize },
     {
@@ -242,6 +246,11 @@ export default function ITHygiene() {
     if (isConnected && netaddrQ.data) return extractItems(netaddrQ.data);
     return { items: [] as Array<Record<string, unknown>>, total: 0 };
   }, [netaddrQ.data, isConnected]);
+
+  const netprotoData = useMemo(() => {
+    if (isConnected && netprotoQ.data) return extractItems(netprotoQ.data);
+    return { items: [] as Array<Record<string, unknown>>, total: 0 };
+  }, [netprotoQ.data, isConnected]);
 
   const hotfixesData = useMemo(() => {
     if (isConnected && hotfixesQ.data) return extractItems(hotfixesQ.data);
@@ -913,6 +922,36 @@ export default function ITHygiene() {
                 </div>
               </GlassPanel>
             </div>
+
+              {/* Network Protocols */}
+              <GlassPanel className="lg:col-span-2">
+                <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                  <Network className="h-4 w-4 text-primary" /> Network Protocols
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border/30">
+                        {["Interface", "Type", "Gateway", "DHCP"].map((h) => (
+                          <th key={h} className="text-left py-2 px-3 text-muted-foreground font-medium">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {netprotoData.items.length === 0 ? (
+                        <tr><td colSpan={4} className="py-4 text-center text-muted-foreground/50">No protocol data available</td></tr>
+                      ) : netprotoData.items.map((proto, i) => (
+                        <tr key={i} className="border-b border-border/10 hover:bg-secondary/20 transition-colors">
+                          <td className="py-2 px-3 text-foreground font-medium">{String(proto.iface ?? "—")}</td>
+                          <td className="py-2 px-3 text-muted-foreground">{String(proto.type ?? "—")}</td>
+                          <td className="py-2 px-3 font-mono text-primary">{String(proto.gateway ?? "—")}</td>
+                          <td className="py-2 px-3 text-muted-foreground">{String(proto.dhcp ?? "—")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </GlassPanel>
           </TabsContent>
 
           {/* Hotfixes Tab */}

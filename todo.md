@@ -1247,3 +1247,21 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Identified 6 minor gaps (non-blocking): netproto, decoders/parents, file content viewers
 - [x] TypeScript clean (0 errors), 328+ tests passing
 - [x] Produced DEPLOYMENT_READINESS_REPORT.md — comprehensive audit document
+
+## Phase: Full Wazuh Spec Coverage — Remaining Endpoints
+- [x] Add GET /syscollector/{agent_id}/netproto — network protocol inventory per agent
+- [x] Add GET /decoders/parents — list parent decoders
+- [x] Add GET /rules/files/{filename} — view rule file content by filename
+- [x] Add GET /decoders/files/{filename} — view decoder file content by filename
+- [x] Add GET /agents/outdated — list agents with outdated versions
+- [x] Add GET /agents/no_group — list agents not assigned to any group
+- [x] Add GET /agents/stats/distinct — distinct agent field values
+- [x] Add GET /groups/{group_id}/configuration — group configuration
+- [x] Wire netproto into IT Hygiene Network tab (Network Protocols panel)
+- [x] Wire decoders/parents into Ruleset Explorer (parent decoder query)
+- [x] Wire rules/files and decoders/files into Ruleset Explorer (View Source File button)
+- [x] Wire agents/outdated into Fleet Command (outdated agents stat card)
+- [x] Wire agents/no_group into Fleet Command (ungrouped agents stat card)
+- [x] Write wazuhSpecCoverage.test.ts — 11 tests verifying all endpoints exist + read-only enforcement
+- [x] Verify TypeScript clean (0 errors), 339/339 tests ALL passing
+- [x] Save checkpoint

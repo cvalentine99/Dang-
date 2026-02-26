@@ -195,6 +195,27 @@ export const wazuhRouter = router({
 
   agentGroups: publicProcedure.query(() => proxyGet("/groups")),
 
+  /** Agents with outdated version compared to manager */
+  agentsOutdated: publicProcedure
+    .input(paginationSchema)
+    .query(({ input }) =>
+      proxyGet("/agents/outdated", { limit: input.limit, offset: input.offset })
+    ),
+
+  /** Agents not assigned to any group */
+  agentsNoGroup: publicProcedure
+    .input(paginationSchema)
+    .query(({ input }) =>
+      proxyGet("/agents/no_group", { limit: input.limit, offset: input.offset })
+    ),
+
+  /** Agent stats distinct — unique field values across agents */
+  agentsStatsDistinct: publicProcedure
+    .input(z.object({ fields: z.string() }))
+    .query(({ input }) =>
+      proxyGet("/agents/stats/distinct", { fields: input.fields })
+    ),
+
   agentGroupMembers: publicProcedure
     .input(z.object({ groupId: z.string(), ...paginationSchema.shape }))
     .query(({ input }) =>
@@ -324,6 +345,16 @@ export const wazuhRouter = router({
       }).catch(() => ({ data: { affected_items: [], total_affected_items: 0 } }))
     ),
 
+  /** Network protocol inventory per agent */
+  agentNetproto: publicProcedure
+    .input(z.object({ agentId: agentIdSchema, ...paginationSchema.shape }))
+    .query(({ input }) =>
+      proxyGet(`/syscollector/${input.agentId}/netproto`, {
+        limit: input.limit,
+        offset: input.offset,
+      }).catch(() => ({ data: { affected_items: [], total_affected_items: 0 } }))
+    ),
+
   // ══════════════════════════════════════════════════════════════════════════════
   // ALERTS / RULES
   // ══════════════════════════════════════════════════════════════════════════════
@@ -360,6 +391,13 @@ export const wazuhRouter = router({
     .input(paginationSchema)
     .query(({ input }) =>
       proxyGet("/rules/files", { limit: input.limit, offset: input.offset })
+    ),
+
+  /** View rule file content by filename */
+  ruleFileContent: publicProcedure
+    .input(z.object({ filename: z.string() }))
+    .query(({ input }) =>
+      proxyGet(`/rules/files/${input.filename}`)
     ),
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -539,6 +577,20 @@ export const wazuhRouter = router({
       proxyGet("/decoders/files", { limit: input.limit, offset: input.offset })
     ),
 
+  /** Parent decoders — top-level decoders that other decoders inherit from */
+  decoderParents: publicProcedure
+    .input(paginationSchema.extend({ search: z.string().optional() }))
+    .query(({ input }) =>
+      proxyGet("/decoders/parents", { limit: input.limit, offset: input.offset, search: input.search })
+    ),
+
+  /** View decoder file content by filename */
+  decoderFileContent: publicProcedure
+    .input(z.object({ filename: z.string() }))
+    .query(({ input }) =>
+      proxyGet(`/decoders/files/${input.filename}`)
+    ),
+
   // ══════════════════════════════════════════════════════════════════════════════
   // TASKS
   // ══════════════════════════════════════════════════════════════════════════════
@@ -577,5 +629,22 @@ export const wazuhRouter = router({
     .input(paginationSchema)
     .query(({ input }) =>
       proxyGet("/lists/files", { limit: input.limit, offset: input.offset })
+    ),
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // GROUPS — Configuration & Files (read-only)
+  // ══════════════════════════════════════════════════════════════════════════════
+  /** Group configuration (agent.conf for the group) */
+  groupConfiguration: publicProcedure
+    .input(z.object({ groupId: z.string() }))
+    .query(({ input }) =>
+      proxyGet(`/groups/${input.groupId}/configuration`)
+    ),
+
+  /** Group files listing */
+  groupFiles: publicProcedure
+    .input(z.object({ groupId: z.string() }))
+    .query(({ input }) =>
+      proxyGet(`/groups/${input.groupId}/files`)
     ),
 });

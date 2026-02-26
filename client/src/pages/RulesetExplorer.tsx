@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { GlassPanel, StatCard, ThreatBadge, RawJsonViewer, RefreshControl } from "@/components/shared";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
@@ -71,6 +71,63 @@ const CHART_COLORS = [
 ];
 
 type TabType = "rules" | "decoders";
+
+// ─── View Source File Button ────────────────────────────────────────────────
+function ViewSourceButton({ type, filename }: { type: "rules" | "decoders"; filename: string }) {
+  const [open, setOpen] = useState(false);
+  const [content, setContent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const fileQ = type === "rules"
+    ? trpc.wazuh.ruleFileContent.useQuery({ filename }, { enabled: open })
+    : trpc.wazuh.decoderFileContent.useQuery({ filename }, { enabled: open });
+
+  useEffect(() => {
+    if (fileQ.data) {
+      const raw = fileQ.data as Record<string, unknown>;
+      const data = raw?.data as Record<string, unknown> | undefined;
+      const items = data?.affected_items as string[] | undefined;
+      setContent(items?.[0] ?? JSON.stringify(raw, null, 2));
+      setLoading(false);
+    }
+    if (fileQ.isLoading) setLoading(true);
+  }, [fileQ.data, fileQ.isLoading]);
+
+  return (
+    <div className="mt-3">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 text-xs text-violet-400 hover:text-violet-300 transition-colors"
+      >
+        <FileText className="h-3.5 w-3.5" />
+        {open ? "Hide Source" : "View Source File"}
+      </button>
+      {open && (
+        <div className="mt-2 relative">
+          {loading ? (
+            <div className="py-4 text-center text-xs text-slate-500">Loading source file...</div>
+          ) : (
+            <div className="relative">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(content ?? "");
+                  toast.success("Source copied to clipboard");
+                }}
+                className="absolute top-2 right-2 p-1 rounded bg-white/5 hover:bg-white/10 text-slate-500 hover:text-violet-300 transition-colors z-10"
+                title="Copy source"
+              >
+                <Copy className="h-3 w-3" />
+              </button>
+              <pre className="text-[11px] text-slate-200 bg-black/40 rounded-lg px-4 py-3 font-mono overflow-x-auto max-h-[400px] overflow-y-auto whitespace-pre-wrap break-all border border-white/5">
+                {content}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function RulesetExplorer() {
   // ─── State ───────────────────────────────────────────────────────────────
@@ -740,12 +797,14 @@ export default function RulesetExplorer() {
                           </div>
                         </div>
                       </div>
+
+                      {/* View Source File */}
+                      <ViewSourceButton type="rules" filename={rule.filename} />
                     </div>
                   )}
 
                   {/* Raw JSON Panel */}
-                  {showRawJson === rule.id && (
-                    <div className="px-4 py-3 bg-black/20 border-t border-white/5">
+                  {showRawJson === rule.id && (                    <div className="px-4 py-3 bg-black/20 border-t border-white/5">
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="text-xs font-semibold text-violet-300">Raw Rule JSON</h4>
                         <button onClick={() => setShowRawJson(null)} className="text-slate-500 hover:text-slate-300">
@@ -911,6 +970,9 @@ export default function RulesetExplorer() {
                           </div>
                         </div>
                       )}
+
+                      {/* View Source File */}
+                      <ViewSourceButton type="decoders" filename={decoder.file} />
 
                       {/* Raw JSON */}
                       <div>
