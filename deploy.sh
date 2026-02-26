@@ -97,12 +97,12 @@ get_env() {
 
 # ── Helper: prompt with default ───────────────────────────────────────────
 prompt() {
-  local varname="$1" prompt_text="$2" default="$3"
+  local prompt_text="$1" default="${2:-}"
   local input
   if [ -n "$default" ]; then
-    echo -en "  ${CYAN}${prompt_text}${NC} [${GREEN}${default}${NC}]: "
+    echo -en "  ${CYAN}${prompt_text}${NC} [${GREEN}${default}${NC}]: " >&2
   else
-    echo -en "  ${CYAN}${prompt_text}${NC}: "
+    echo -en "  ${CYAN}${prompt_text}${NC}: " >&2
   fi
   read -r input
   echo "${input:-$default}"
@@ -110,15 +110,15 @@ prompt() {
 
 # ── Helper: prompt for password (hidden input) ────────────────────────────
 prompt_secret() {
-  local prompt_text="$1" default="$2"
+  local prompt_text="$1" default="${2:-}"
   local input
   if [ -n "$default" ]; then
-    echo -en "  ${CYAN}${prompt_text}${NC} [${YELLOW}press Enter to keep current${NC}]: "
+    echo -en "  ${CYAN}${prompt_text}${NC} [${YELLOW}press Enter to keep current${NC}]: " >&2
   else
-    echo -en "  ${CYAN}${prompt_text}${NC}: "
+    echo -en "  ${CYAN}${prompt_text}${NC}: " >&2
   fi
   read -rs input
-  echo ""
+  echo "" >&2
   echo "${input:-$default}"
 }
 
@@ -160,7 +160,7 @@ first_run_setup() {
   log "Admin Account"
   info "This is the login for the Dang! SIEM web UI."
   local admin_user admin_pass
-  admin_user=$(prompt "admin_user" "Admin username" "admin")
+  admin_user=$(prompt "Admin username" "admin")
   admin_pass=$(prompt_secret "Admin password")
   while [ -z "$admin_pass" ]; do
     warn "Password cannot be empty."
@@ -188,7 +188,7 @@ first_run_setup() {
       set_env "WAZUH_NETWORK" "$detected_net"
     else
       local wazuh_net
-      wazuh_net=$(prompt "wazuh_net" "Wazuh Docker network name" "single-node_default")
+      wazuh_net=$(prompt "Wazuh Docker network name" "single-node_default")
       set_env "WAZUH_NETWORK" "$wazuh_net"
     fi
 
@@ -200,7 +200,7 @@ first_run_setup() {
       set_env "WAZUH_HOST" "$detected_mgr"
     else
       local wazuh_host
-      wazuh_host=$(prompt "wazuh_host" "Wazuh Manager hostname" "wazuh.manager")
+      wazuh_host=$(prompt "Wazuh Manager hostname" "wazuh.manager")
       set_env "WAZUH_HOST" "$wazuh_host"
     fi
 
@@ -212,7 +212,7 @@ first_run_setup() {
       set_env "WAZUH_INDEXER_HOST" "$detected_idx"
     else
       local wazuh_idx_host
-      wazuh_idx_host=$(prompt "wazuh_idx" "Wazuh Indexer hostname" "wazuh.indexer")
+      wazuh_idx_host=$(prompt "Wazuh Indexer hostname" "wazuh.indexer")
       set_env "WAZUH_INDEXER_HOST" "$wazuh_idx_host"
     fi
   fi
@@ -221,7 +221,7 @@ first_run_setup() {
   log "Wazuh API Credentials"
   info "These are the credentials for the Wazuh Manager API (port 55000)."
   local wazuh_user wazuh_pass
-  wazuh_user=$(prompt "wazuh_user" "Wazuh API username" "wazuh-wui")
+  wazuh_user=$(prompt "Wazuh API username" "wazuh-wui")
   wazuh_pass=$(prompt_secret "Wazuh API password")
   if [ -n "$wazuh_pass" ]; then
     set_env "WAZUH_USER" "$wazuh_user"
@@ -235,7 +235,7 @@ first_run_setup() {
   log "Wazuh Indexer Credentials"
   info "These are the credentials for the Wazuh Indexer / OpenSearch (port 9200)."
   local idx_user idx_pass
-  idx_user=$(prompt "idx_user" "Indexer username" "admin")
+  idx_user=$(prompt "Indexer username" "admin")
   idx_pass=$(prompt_secret "Indexer password")
   if [ -n "$idx_pass" ]; then
     set_env "WAZUH_INDEXER_USER" "$idx_user"
@@ -348,39 +348,33 @@ preflight() {
   fi
   ok "Docker daemon is running"
 
-  # ── First-run interactive setup ─────────────────────────────────────────
+  # ── First-run or stale-template setup ────────────────────────────────────
+  local run_setup=false
+
   if [ ! -f ".env" ]; then
     if [ ! -f "env.docker.template" ]; then
       err "No .env file and no env.docker.template found."
       exit 1
     fi
-    log "No .env file found — starting interactive setup..."
+    run_setup=true
+  else
+    # Detect if .env is an unmodified template copy (e.g., from a previous failed run)
+    local jwt_val=$(grep "^JWT_SECRET=" .env 2>/dev/null | cut -d'=' -f2-)
+    if [ -z "$jwt_val" ] || [[ "$jwt_val" == *"CHANGE_ME"* ]]; then
+      warn ".env exists but has placeholder credentials — re-running setup..."
+      run_setup=true
+    fi
+  fi
+
+  if [ "$run_setup" = "true" ]; then
     echo ""
     first_run_setup
     echo ""
   fi
   ok ".env file found"
 
-  # ── Fix any remaining placeholder values interactively ─────────────────
-  local needs_fix=false
-
+  # ── Validate critical values (should be set by now) ────────────────────
   local jwt_val=$(grep "^JWT_SECRET=" .env 2>/dev/null | cut -d'=' -f2-)
-  if [ -z "$jwt_val" ] || [[ "$jwt_val" == *"CHANGE_ME"* ]]; then
-    needs_fix=true
-  fi
-
-  local wazuh_pass_val=$(grep "^WAZUH_PASS=" .env 2>/dev/null | cut -d'=' -f2-)
-  local admin_pass_val=$(grep "^LOCAL_ADMIN_PASS=" .env 2>/dev/null | cut -d'=' -f2-)
-
-  if [ "$needs_fix" = "true" ]; then
-    warn "Some credentials still have placeholder values."
-    echo ""
-    fix_placeholders
-    echo ""
-  fi
-
-  # Re-validate after fixes
-  jwt_val=$(grep "^JWT_SECRET=" .env 2>/dev/null | cut -d'=' -f2-)
   if [ -z "$jwt_val" ] || [[ "$jwt_val" == *"CHANGE_ME"* ]]; then
     err "JWT_SECRET is still not set. Cannot continue."
     exit 1
