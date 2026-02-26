@@ -49,18 +49,10 @@ import {
   MinusCircle,
   ArrowUpDown,
 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import {
-  MOCK_AGENTS,
-  MOCK_AGENT_PACKAGES,
-  MOCK_AGENT_SERVICES,
-  MOCK_AGENT_USERS,
-  MOCK_PACKAGES,
-  MOCK_SERVICES,
-  MOCK_USERS,
-} from "@/lib/mockData";
+import { DataLoading, DataEmpty } from "@/components/shared/DataStates";
 
 type DriftStatus = "present" | "absent" | "version_mismatch" | "state_mismatch";
 
@@ -84,31 +76,36 @@ interface BaselineDriftItem {
   category: "packages" | "services" | "users";
 }
 
+// ── Data extraction helper ─────────────────────────────────────────────
+
+function extractItems(data: unknown): Array<Record<string, unknown>> {
+  const d = (data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+  return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
+}
+
+// ── Per-agent data maps ───────────────────────────────────────────────
+
+type PkgEntry = { name: string; version: string };
+type SvcEntry = { name: string; state: string };
+type UsrEntry = { name: string; shell: string };
+
+interface AgentDataMaps {
+  packages: Record<string, PkgEntry[]>;
+  services: Record<string, SvcEntry[]>;
+  users: Record<string, UsrEntry[]>;
+}
+
 // ── Snapshot helpers ────────────────────────────────────────────────────
 
-function collectAgentSnapshot(agentIds: string[]) {
-  const packages: Record<string, Array<{ name: string; version: string }>> = {};
-  const services: Record<string, Array<{ name: string; state: string }>> = {};
-  const users: Record<string, Array<{ name: string; shell: string }>> = {};
+function collectAgentSnapshot(data: AgentDataMaps, agentIds: string[]) {
+  const packages: Record<string, PkgEntry[]> = {};
+  const services: Record<string, SvcEntry[]> = {};
+  const users: Record<string, UsrEntry[]> = {};
 
   for (const id of agentIds) {
-    const pkgData = MOCK_AGENT_PACKAGES[id] ?? { data: { affected_items: MOCK_PACKAGES.data.affected_items } };
-    packages[id] = pkgData.data.affected_items.map((p: Record<string, unknown>) => ({
-      name: String(p.name),
-      version: String(p.version ?? "unknown"),
-    }));
-
-    const svcData = MOCK_AGENT_SERVICES[id] ?? { data: { affected_items: MOCK_SERVICES.data.affected_items } };
-    services[id] = svcData.data.affected_items.map((s: Record<string, unknown>) => ({
-      name: String(s.name),
-      state: String(s.state ?? "unknown"),
-    }));
-
-    const usrData = MOCK_AGENT_USERS[id] ?? { data: { affected_items: MOCK_USERS.data.affected_items } };
-    users[id] = usrData.data.affected_items.map((u: Record<string, unknown>) => ({
-      name: String(u.name),
-      shell: String(u.shell ?? "unknown"),
-    }));
+    packages[id] = data.packages[id] ?? [];
+    services[id] = data.services[id] ?? [];
+    users[id] = data.users[id] ?? [];
   }
 
   return { packages, services, users };
@@ -118,16 +115,14 @@ function collectAgentSnapshot(agentIds: string[]) {
 
 function computePackageDrift(
   agentIds: string[],
-  _isConnected: boolean
+  pkgData: Record<string, PkgEntry[]>
 ): DriftItem[] {
   const allPackages = new Map<string, Record<string, { version: string }>>();
 
   for (const id of agentIds) {
-    const data = MOCK_AGENT_PACKAGES[id] ?? { data: { affected_items: MOCK_PACKAGES.data.affected_items } };
-    for (const pkg of data.data.affected_items) {
-      const name = String(pkg.name);
-      if (!allPackages.has(name)) allPackages.set(name, {});
-      allPackages.get(name)![id] = { version: String(pkg.version ?? "unknown") };
+    for (const pkg of (pkgData[id] ?? [])) {
+      if (!allPackages.has(pkg.name)) allPackages.set(pkg.name, {});
+      allPackages.get(pkg.name)![id] = { version: pkg.version };
     }
   }
 
@@ -173,16 +168,14 @@ function computePackageDrift(
 
 function computeServiceDrift(
   agentIds: string[],
-  _isConnected: boolean
+  svcData: Record<string, SvcEntry[]>
 ): DriftItem[] {
   const allServices = new Map<string, Record<string, { state: string }>>();
 
   for (const id of agentIds) {
-    const data = MOCK_AGENT_SERVICES[id] ?? { data: { affected_items: MOCK_SERVICES.data.affected_items } };
-    for (const svc of data.data.affected_items) {
-      const name = String(svc.name);
-      if (!allServices.has(name)) allServices.set(name, {});
-      allServices.get(name)![id] = { state: String(svc.state ?? "unknown") };
+    for (const svc of (svcData[id] ?? [])) {
+      if (!allServices.has(svc.name)) allServices.set(svc.name, {});
+      allServices.get(svc.name)![id] = { state: svc.state };
     }
   }
 
@@ -228,16 +221,14 @@ function computeServiceDrift(
 
 function computeUserDrift(
   agentIds: string[],
-  _isConnected: boolean
+  usrData: Record<string, UsrEntry[]>
 ): DriftItem[] {
   const allUsers = new Map<string, Record<string, { shell: string }>>();
 
   for (const id of agentIds) {
-    const data = MOCK_AGENT_USERS[id] ?? { data: { affected_items: MOCK_USERS.data.affected_items } };
-    for (const user of data.data.affected_items) {
-      const name = String(user.name);
-      if (!allUsers.has(name)) allUsers.set(name, {});
-      allUsers.get(name)![id] = { shell: String(user.shell ?? "unknown") };
+    for (const user of (usrData[id] ?? [])) {
+      if (!allUsers.has(user.name)) allUsers.set(user.name, {});
+      allUsers.get(user.name)![id] = { shell: user.shell };
     }
   }
 
@@ -280,7 +271,8 @@ function computeUserDrift(
 function computeBaselineDrift(
   baselineSnapshot: Record<string, unknown>,
   agentIds: string[],
-  agentNameMap: Record<string, string>
+  agentNameMap: Record<string, string>,
+  currentData: AgentDataMaps
 ): BaselineDriftItem[] {
   const drifts: BaselineDriftItem[] = [];
   const snap = baselineSnapshot as {
@@ -294,11 +286,7 @@ function computeBaselineDrift(
 
     // Packages
     const baselinePkgs = snap.packages?.[agentId] ?? [];
-    const currentPkgData = MOCK_AGENT_PACKAGES[agentId] ?? { data: { affected_items: MOCK_PACKAGES.data.affected_items } };
-    const currentPkgs = currentPkgData.data.affected_items.map((p: Record<string, unknown>) => ({
-      name: String(p.name),
-      version: String(p.version ?? "unknown"),
-    }));
+    const currentPkgs = currentData.packages[agentId] ?? [];
 
     const baselinePkgMap = new Map(baselinePkgs.map((p) => [p.name, p.version]));
     const currentPkgMap = new Map(currentPkgs.map((p: { name: string; version: string }) => [p.name, p.version]));
@@ -318,11 +306,7 @@ function computeBaselineDrift(
 
     // Services
     const baselineSvcs = snap.services?.[agentId] ?? [];
-    const currentSvcData = MOCK_AGENT_SERVICES[agentId] ?? { data: { affected_items: MOCK_SERVICES.data.affected_items } };
-    const currentSvcs = currentSvcData.data.affected_items.map((s: Record<string, unknown>) => ({
-      name: String(s.name),
-      state: String(s.state ?? "unknown"),
-    }));
+    const currentSvcs = currentData.services[agentId] ?? [];
 
     const baselineSvcMap = new Map(baselineSvcs.map((s) => [s.name, s.state]));
     const currentSvcMap = new Map(currentSvcs.map((s: { name: string; state: string }) => [s.name, s.state]));
@@ -342,11 +326,7 @@ function computeBaselineDrift(
 
     // Users
     const baselineUsrs = snap.users?.[agentId] ?? [];
-    const currentUsrData = MOCK_AGENT_USERS[agentId] ?? { data: { affected_items: MOCK_USERS.data.affected_items } };
-    const currentUsrs = currentUsrData.data.affected_items.map((u: Record<string, unknown>) => ({
-      name: String(u.name),
-      shell: String(u.shell ?? "unknown"),
-    }));
+    const currentUsrs = currentData.users[agentId] ?? [];
 
     const baselineUsrMap = new Map(baselineUsrs.map((u) => [u.name, u.shell]));
     const currentUsrMap = new Map(currentUsrs.map((u: { name: string; shell: string }) => [u.name, u.shell]));
@@ -468,12 +448,15 @@ function ChangeTypeBadge({ type }: { type: "new" | "removed" | "changed" }) {
 
 interface DriftComparisonProps {
   isConnected: boolean;
+  agentList?: Array<Record<string, unknown>>;
 }
 
-export default function DriftComparison({ isConnected }: DriftComparisonProps) {
-  const [selectedAgents, setSelectedAgents] = useState<string[]>(["001", "002"]);
+export default function DriftComparison({ isConnected, agentList = [] }: DriftComparisonProps) {
+  const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [driftTab, setDriftTab] = useState<"packages" | "services" | "users">("packages");
   const [showDriftOnly, setShowDriftOnly] = useState(false);
+  const [agentData, setAgentData] = useState<AgentDataMaps>({ packages: {}, services: {}, users: {} });
+  const [dataLoading, setDataLoading] = useState(false);
 
   // Baseline state
   const [viewMode, setViewMode] = useState<"live" | "baseline">("live");
@@ -515,10 +498,54 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
   });
 
   const activeAgents = useMemo(() => {
-    return MOCK_AGENTS.data.affected_items.filter(
-      (a) => a.status === "active"
+    return agentList.filter(
+      (a) => String(a.status ?? "") === "active"
     );
-  }, []);
+  }, [agentList]);
+
+  // Auto-select first 2 agents when list loads
+  useEffect(() => {
+    if (activeAgents.length >= 2 && selectedAgents.length === 0) {
+      setSelectedAgents([String(activeAgents[0].id), String(activeAgents[1].id)]);
+    }
+  }, [activeAgents, selectedAgents.length]);
+
+  // Fetch per-agent data when selection changes
+  const utils = trpc.useUtils();
+  const fetchAgentData = useCallback(async () => {
+    if (!isConnected || selectedAgents.length < 2) return;
+    setDataLoading(true);
+    const pkgs: Record<string, PkgEntry[]> = {};
+    const svcs: Record<string, SvcEntry[]> = {};
+    const usrs: Record<string, UsrEntry[]> = {};
+    for (const id of selectedAgents) {
+      try {
+        const pkgRes = await utils.wazuh.agentPackages.fetch({ agentId: id, limit: 500, offset: 0 });
+        pkgs[id] = extractItems(pkgRes).map((p) => ({
+          name: String(p.name ?? ""),
+          version: String(p.version ?? "unknown"),
+        }));
+      } catch { pkgs[id] = []; }
+      try {
+        const svcRes = await utils.wazuh.agentServices.fetch({ agentId: id, limit: 500, offset: 0 });
+        svcs[id] = extractItems(svcRes).map((s) => ({
+          name: String(s.name ?? ""),
+          state: String(s.state ?? "unknown"),
+        }));
+      } catch { svcs[id] = []; }
+      try {
+        const usrRes = await utils.wazuh.agentUsers.fetch({ agentId: id, limit: 500, offset: 0 });
+        usrs[id] = extractItems(usrRes).map((u) => ({
+          name: String(u.name ?? ""),
+          shell: String(u.shell ?? "unknown"),
+        }));
+      } catch { usrs[id] = []; }
+    }
+    setAgentData({ packages: pkgs, services: svcs, users: usrs });
+    setDataLoading(false);
+  }, [isConnected, selectedAgents, utils]);
+
+  useEffect(() => { fetchAgentData(); }, [fetchAgentData]);
 
   const toggleAgent = (id: string) => {
     setSelectedAgents((prev) => {
@@ -532,16 +559,16 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
   };
 
   const packageDrift = useMemo(
-    () => (selectedAgents.length >= 2 ? computePackageDrift(selectedAgents, isConnected) : []),
-    [selectedAgents, isConnected]
+    () => (selectedAgents.length >= 2 ? computePackageDrift(selectedAgents, agentData.packages) : []),
+    [selectedAgents, agentData.packages]
   );
   const serviceDrift = useMemo(
-    () => (selectedAgents.length >= 2 ? computeServiceDrift(selectedAgents, isConnected) : []),
-    [selectedAgents, isConnected]
+    () => (selectedAgents.length >= 2 ? computeServiceDrift(selectedAgents, agentData.services) : []),
+    [selectedAgents, agentData.services]
   );
   const userDrift = useMemo(
-    () => (selectedAgents.length >= 2 ? computeUserDrift(selectedAgents, isConnected) : []),
-    [selectedAgents, isConnected]
+    () => (selectedAgents.length >= 2 ? computeUserDrift(selectedAgents, agentData.users) : []),
+    [selectedAgents, agentData.users]
   );
 
   const currentDrift = driftTab === "packages" ? packageDrift : driftTab === "services" ? serviceDrift : userDrift;
@@ -555,19 +582,19 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
 
   const agentNameMap = useMemo(() => {
     const m: Record<string, string> = {};
-    for (const a of MOCK_AGENTS.data.affected_items) {
-      m[a.id] = a.name;
+    for (const a of agentList) {
+      m[String(a.id ?? "")] = String(a.name ?? "");
     }
     return m;
-  }, []);
+  }, [agentList]);
 
   // Baseline drift computation
   const baselineDrifts = useMemo(() => {
     if (!baselineDetailQ.data?.baseline?.snapshotData) return [];
     const baseline = baselineDetailQ.data.baseline;
     const baselineAgentIds = baseline.agentIds as string[];
-    return computeBaselineDrift(baseline.snapshotData, baselineAgentIds, agentNameMap);
-  }, [baselineDetailQ.data, agentNameMap]);
+    return computeBaselineDrift(baseline.snapshotData, baselineAgentIds, agentNameMap, agentData);
+  }, [baselineDetailQ.data, agentNameMap, agentData]);
 
   const filteredBaselineDrifts = useMemo(() => {
     if (baselineCategoryFilter === "all") return baselineDrifts;
@@ -581,7 +608,7 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
   // Save baseline handler
   const handleSaveBaseline = () => {
     if (!baselineName.trim()) return;
-    const snapshot = collectAgentSnapshot(selectedAgents);
+    const snapshot = collectAgentSnapshot(agentData, selectedAgents);
     createBaselineMut.mutate({
       name: baselineName.trim(),
       description: baselineDescription.trim() || undefined,
@@ -611,16 +638,21 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
           </span>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
-          {activeAgents.map((agent) => {
-            const isSelected = selectedAgents.includes(agent.id);
+          {activeAgents.length === 0 ? (
+            <div className="col-span-full">
+              <DataEmpty title="No Agents" message="No active agents available for comparison." />
+            </div>
+          ) : activeAgents.map((agent) => {
+            const aid = String(agent.id ?? "");
+            const isSelected = selectedAgents.includes(aid);
             const isDisabledAdd = !isSelected && selectedAgents.length >= 5;
             const isDisabledRemove = isSelected && selectedAgents.length <= 2;
             const disabled = isDisabledAdd || isDisabledRemove;
 
             return (
               <button
-                key={agent.id}
-                onClick={() => !disabled && toggleAgent(agent.id)}
+                key={aid}
+                onClick={() => !disabled && toggleAgent(aid)}
                 disabled={disabled}
                 className={`glass-card p-3 text-left transition-all duration-200 flex items-center gap-3 ${
                   isSelected
@@ -637,10 +669,10 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
                 />
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-foreground truncate">
-                    {agent.name}
+                    {String(agent.name ?? "")}
                   </p>
                   <p className="text-[10px] text-muted-foreground font-mono">
-                    {agent.id} · {agent.ip}
+                    {aid} · {String(agent.ip ?? "")}
                   </p>
                 </div>
               </button>

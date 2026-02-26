@@ -4,12 +4,6 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { trpc } from "@/lib/trpc";
 import {
-  MOCK_RULES_EXTENDED,
-  MOCK_DECODERS,
-  MOCK_RULE_GROUPS,
-  useFallback,
-} from "@/lib/mockData";
-import {
   BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
 } from "recharts";
@@ -106,9 +100,9 @@ export default function RulesetExplorer() {
   });
 
   // ─── Data ────────────────────────────────────────────────────────────────
-  const rulesRaw = useFallback(rulesQ.data, MOCK_RULES_EXTENDED, isConfigured);
-  const decodersRaw = useFallback(decodersQ.data, MOCK_DECODERS, isConfigured);
-  const ruleGroupsRaw = useFallback(ruleGroupsQ.data, MOCK_RULE_GROUPS, isConfigured);
+  const rulesRaw = rulesQ.data;
+  const decodersRaw = decodersQ.data;
+  const ruleGroupsRaw = ruleGroupsQ.data;
 
   const rules: WazuhRule[] = (
     (rulesRaw as Record<string, unknown>)?.data as Record<string, unknown> | undefined

@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge, threatLevelFromNumber } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
-import { MOCK_RULES, MOCK_STATS_HOURLY, MOCK_MANAGER_LOGS } from "@/lib/mockData";
+
 import { ExportButton } from "@/components/shared/ExportButton";
 import { AddNoteDialog } from "@/components/shared/AddNoteDialog";
 import { EXPORT_COLUMNS } from "@/lib/exportUtils";
@@ -59,11 +59,10 @@ const SEVERITY_COLORS: Record<string, string> = {
   "11": COLORS.red, "12": COLORS.red, "13": COLORS.red, "14": COLORS.pink, "15": COLORS.pink,
 };
 
-function SourceBadge({ source }: { source: "indexer" | "server" | "mock" }) {
+function SourceBadge({ source }: { source: "indexer" | "server" }) {
   const styles = {
     indexer: { label: "Indexer", color: "text-threat-low bg-threat-low/10 border-threat-low/20" },
     server: { label: "Server API", color: "text-primary bg-primary/10 border-primary/20" },
-    mock: { label: "Mock", color: "text-muted-foreground bg-secondary/30 border-border/30" },
   };
   const s = styles[source];
   return <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${s.color}`}>{s.label}</span>;
@@ -83,76 +82,6 @@ function extractItems(raw: unknown): Array<Record<string, unknown>> {
   const d = (raw as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
   return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
 }
-
-// ── Mock alert data for when Indexer is not connected ───────────────────────
-function generateMockAlerts(): Array<Record<string, unknown>> {
-  const agents = ["web-server-01", "db-server-prod-01", "api-gateway-01", "k8s-worker-03", "mail-server-01"];
-  const rules = [
-    { id: "5710", level: 5, description: "sshd: Attempt to login using a non-existent user", groups: ["syslog", "sshd", "authentication_failed"], mitre: { id: ["T1110"], tactic: ["Credential Access"], technique: ["Brute Force"] } },
-    { id: "5503", level: 3, description: "PAM: Login session opened", groups: ["pam", "syslog", "authentication_success"], mitre: {} },
-    { id: "31104", level: 12, description: "Web server 400 error code", groups: ["web", "accesslog", "attack"], mitre: { id: ["T1190"], tactic: ["Initial Access"], technique: ["Exploit Public-Facing Application"] } },
-    { id: "550", level: 7, description: "Integrity checksum changed", groups: ["ossec", "syscheck", "syscheck_file"], mitre: { id: ["T1565"], tactic: ["Impact"], technique: ["Data Manipulation"] } },
-    { id: "5402", level: 10, description: "Successful sudo to ROOT executed", groups: ["syslog", "sudo"], mitre: { id: ["T1548"], tactic: ["Privilege Escalation"], technique: ["Abuse Elevation Control Mechanism"] } },
-    { id: "60103", level: 14, description: "Rootcheck: Trojan/rootkit detected", groups: ["ossec", "rootcheck"], mitre: { id: ["T1014"], tactic: ["Defense Evasion"], technique: ["Rootkit"] } },
-    { id: "87105", level: 8, description: "Vulnerability CVE-2024-1234 detected", groups: ["vulnerability-detector"], mitre: {} },
-    { id: "5716", level: 6, description: "sshd: authentication success", groups: ["syslog", "sshd", "authentication_success"], mitre: { id: ["T1078"], tactic: ["Initial Access"], technique: ["Valid Accounts"] } },
-    { id: "100002", level: 13, description: "CIS Benchmark: Ensure SSH root login is disabled — FAIL", groups: ["sca", "cis"], mitre: { id: ["T1078"], tactic: ["Persistence"], technique: ["Valid Accounts"] } },
-    { id: "651", level: 4, description: "File added to the system", groups: ["ossec", "syscheck", "syscheck_new_entry"], mitre: { id: ["T1105"], tactic: ["Command and Control"], technique: ["Ingress Tool Transfer"] } },
-  ];
-  const now = Date.now();
-  return Array.from({ length: 200 }, (_, i) => {
-    const rule = rules[i % rules.length];
-    const agent = agents[i % agents.length];
-    const ts = new Date(now - i * 120_000 - Math.random() * 60_000);
-    return {
-      _id: `alert-${i}`,
-      timestamp: ts.toISOString(),
-      agent: { id: String((i % 5) + 1).padStart(3, "0"), name: agent, ip: `10.0.${i % 5}.${10 + i % 20}` },
-      rule: { id: rule.id, level: rule.level, description: rule.description, groups: rule.groups, mitre: rule.mitre },
-      manager: { name: "wazuh-manager" },
-      decoder: { name: i % 3 === 0 ? "sshd" : i % 3 === 1 ? "web-accesslog" : "syscheck" },
-      location: i % 2 === 0 ? "/var/log/auth.log" : "/var/log/syslog",
-      full_log: `${ts.toISOString()} ${agent} ${rule.description}`,
-      data: { srcip: `192.168.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`, dstip: `10.0.${i % 5}.1` },
-    };
-  });
-}
-
-const MOCK_ALERTS = generateMockAlerts();
-
-// ── Mock aggregation data ──────────────────────────────────────────────────
-function generateMockTimeline(): Array<{ time: string; critical: number; high: number; medium: number; low: number; info: number }> {
-  const now = Date.now();
-  return Array.from({ length: 24 }, (_, i) => {
-    const t = new Date(now - (23 - i) * 3_600_000);
-    return {
-      time: `${String(t.getHours()).padStart(2, "0")}:00`,
-      critical: Math.floor(Math.random() * 5),
-      high: Math.floor(Math.random() * 15) + 2,
-      medium: Math.floor(Math.random() * 30) + 10,
-      low: Math.floor(Math.random() * 50) + 20,
-      info: Math.floor(Math.random() * 80) + 30,
-    };
-  });
-}
-
-function generateMockRuleDistribution(): Array<{ ruleId: string; description: string; count: number; level: number }> {
-  return [
-    { ruleId: "5710", description: "sshd: Attempt to login using a non-existent user", count: 1247, level: 5 },
-    { ruleId: "31104", description: "Web server 400 error code", count: 892, level: 12 },
-    { ruleId: "5402", description: "Successful sudo to ROOT executed", count: 634, level: 10 },
-    { ruleId: "550", description: "Integrity checksum changed", count: 521, level: 7 },
-    { ruleId: "60103", description: "Rootcheck: Trojan/rootkit detected", count: 312, level: 14 },
-    { ruleId: "87105", description: "Vulnerability CVE-2024-1234 detected", count: 287, level: 8 },
-    { ruleId: "5716", description: "sshd: authentication success", count: 256, level: 6 },
-    { ruleId: "100002", description: "CIS Benchmark: SSH root login — FAIL", count: 198, level: 13 },
-    { ruleId: "651", description: "File added to the system", count: 167, level: 4 },
-    { ruleId: "5503", description: "PAM: Login session opened", count: 143, level: 3 },
-  ];
-}
-
-const MOCK_TIMELINE = generateMockTimeline();
-const MOCK_RULE_DIST = generateMockRuleDistribution();
 
 export default function AlertsTimeline() {
   const utils = trpc.useUtils();
@@ -223,7 +152,7 @@ export default function AlertsTimeline() {
     utils.indexer.invalidate();
   }, [utils]);
 
-  // ── Alerts (Indexer or mock) ───────────────────────────────────────────
+  // ── Alerts (Indexer or empty) ───────────────────────────────────────────
   const { alerts, totalAlerts } = useMemo(() => {
     if (isIndexerConnected && alertsSearchQ.data?.data) {
       const resp = alertsSearchQ.data.data as unknown as Record<string, unknown>;
@@ -233,25 +162,12 @@ export default function AlertsTimeline() {
       const mapped = hitArr.map(h => ({ _id: String(h._id ?? ""), ...(h._source as Record<string, unknown> ?? {}) } as Record<string, unknown>));
       return { alerts: mapped, totalAlerts: total };
     }
-    // Mock fallback
-    let filtered = [...MOCK_ALERTS];
-    if (levelFilter !== "all") filtered = filtered.filter(a => Number((a.rule as Record<string, unknown>)?.level ?? 0) === Number(levelFilter));
-    if (agentFilter !== "all") filtered = filtered.filter(a => String((a.agent as Record<string, unknown>)?.id ?? "") === agentFilter);
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(a => {
-        const rule = a.rule as Record<string, unknown>;
-        return String(rule?.description ?? "").toLowerCase().includes(q) ||
-          String(rule?.id ?? "").includes(q) ||
-          String((a.agent as Record<string, unknown>)?.name ?? "").toLowerCase().includes(q);
-      });
-    }
-    return { alerts: filtered.slice(page * pageSize, (page + 1) * pageSize), totalAlerts: filtered.length };
-  }, [alertsSearchQ.data, isIndexerConnected, levelFilter, agentFilter, searchQuery, page]);
+    return { alerts: [] as Array<Record<string, unknown>>, totalAlerts: 0 };
+  }, [alertsSearchQ.data, isIndexerConnected]);
 
-  const alertsSource: "indexer" | "mock" = isIndexerConnected && alertsSearchQ.data?.data ? "indexer" : "mock";
+  const alertsSource: "indexer" | "server" = isIndexerConnected && alertsSearchQ.data?.data ? "indexer" : "server";
 
-  // ── Severity Timeline (Indexer or mock) ────────────────────────────────
+  // ── Severity Timeline (Indexer or empty) ────────────────────────────────
   const severityTimeline = useMemo(() => {
     if (isIndexerConnected && alertsAggByLevelQ.data?.data) {
       const resp = alertsAggByLevelQ.data.data as unknown as Record<string, unknown>;
@@ -275,12 +191,12 @@ export default function AlertsTimeline() {
         return { time: `${String(ts.getHours()).padStart(2, "0")}:${String(ts.getMinutes()).padStart(2, "0")}`, ...counts };
       });
     }
-    return MOCK_TIMELINE;
+    return [];
   }, [alertsAggByLevelQ.data, isIndexerConnected]);
 
-  const timelineSource: "indexer" | "mock" = isIndexerConnected && alertsAggByLevelQ.data?.data ? "indexer" : "mock";
+  const timelineSource: "indexer" | "server" = isIndexerConnected && alertsAggByLevelQ.data?.data ? "indexer" : "server";
 
-  // ── Rule Distribution (Indexer or mock) ────────────────────────────────
+  // ── Rule Distribution (Indexer or empty) ────────────────────────────────
   const ruleDistribution = useMemo(() => {
     if (isIndexerConnected && alertsAggByRuleQ.data?.data) {
       const resp = alertsAggByRuleQ.data.data as unknown as Record<string, unknown>;
@@ -294,10 +210,10 @@ export default function AlertsTimeline() {
         level: 0,
       }));
     }
-    return MOCK_RULE_DIST;
+    return [] as Array<{ ruleId: string; description: string; count: number; level: number }>;
   }, [alertsAggByRuleQ.data, isIndexerConnected]);
 
-  const ruleDistSource: "indexer" | "mock" = isIndexerConnected && alertsAggByRuleQ.data?.data ? "indexer" : "mock";
+  const ruleDistSource: "indexer" | "server" = isIndexerConnected && alertsAggByRuleQ.data?.data ? "indexer" : "server";
 
   // ── Agent list for filter ──────────────────────────────────────────────
   const agentOptions = useMemo(() => {
@@ -308,27 +224,16 @@ export default function AlertsTimeline() {
       const buckets = (topAgents.buckets as Array<Record<string, unknown>>) ?? [];
       return buckets.map(b => ({ id: String(b.key ?? ""), count: Number(b.doc_count ?? 0) }));
     }
-    return [
-      { id: "001", count: 42 }, { id: "002", count: 38 }, { id: "003", count: 31 },
-      { id: "004", count: 27 }, { id: "005", count: 19 },
-    ];
+    return [] as Array<{ id: string; count: number }>;
   }, [alertsAggByAgentQ.data, isIndexerConnected]);
 
-  // ── Weekly heatmap (Server API or mock) ────────────────────────────────
+  // ── Weekly heatmap (Server API or empty) ────────────────────────────────
   const weeklyHeatmap = useMemo(() => {
     if (isConnected && statsWeeklyQ.data) {
       const items = extractItems(statsWeeklyQ.data);
       return items.map((item, i) => ({ day: DAYS[Math.floor(i / 24)] ?? `Day ${Math.floor(i / 24)}`, hour: HOURS[i % 24] ?? `${i % 24}`, value: Number(item.totalItems ?? item.events ?? 0) }));
     }
-    const grid: Array<{ day: string; hour: string; value: number }> = [];
-    DAYS.forEach(day => {
-      MOCK_STATS_HOURLY.data.affected_items.forEach(item => {
-        const jitter = Math.floor(Math.random() * 200) - 100;
-        const dayMult = day === "Sat" || day === "Sun" ? 0.4 : 1.0;
-        grid.push({ day, hour: HOURS[item.hour] ?? `${item.hour}`, value: Math.max(0, Math.floor(item.events * dayMult + jitter)) });
-      });
-    });
-    return grid;
+    return [] as Array<{ day: string; hour: string; value: number }>;
   }, [statsWeeklyQ.data, isConnected]);
 
   const maxHeatVal = useMemo(() => Math.max(...weeklyHeatmap.map(h => h.value), 1), [weeklyHeatmap]);
@@ -448,7 +353,7 @@ export default function AlertsTimeline() {
         <GlassPanel>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /> Weekly Alert Heatmap</h3>
-            <SourceBadge source={isConnected ? "server" : "mock"} />
+            <SourceBadge source="server" />
           </div>
           <div className="overflow-x-auto">
             <div className="min-w-[700px]">

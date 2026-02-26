@@ -7,15 +7,6 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { WazuhGuard, useWazuhStatus } from "@/components/shared/WazuhGuard";
 import {
-  MOCK_AGENTS,
-  MOCK_RULES,
-  MOCK_VULNERABILITIES,
-  MOCK_SYSCHECK_FILES,
-  MOCK_MANAGER_LOGS,
-  MOCK_MITRE_TECHNIQUES,
-  useFallback,
-} from "@/lib/mockData";
-import {
   Search,
   Crosshair,
   Shield,
@@ -137,18 +128,18 @@ export default function ThreatHunting() {
     onError: (err) => toast.error(`Failed to delete: ${err.message}`),
   });
 
-  // ── API queries (always enabled, use fallback when not connected) ──────────
+  // ── API queries ─────────────────────────────────────────────────────────────
   const agentsQ = trpc.wazuh.agents.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 60_000 });
   const rulesQ = trpc.wazuh.rules.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 60_000 });
   const logsQ = trpc.wazuh.managerLogs.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 30_000 });
   const mitreQ = trpc.wazuh.mitreTechniques.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 60_000 });
 
-  const agents = useFallback(agentsQ.data, MOCK_AGENTS, isConnected);
-  const rules = useFallback(rulesQ.data, MOCK_RULES, isConnected);
-  const logs = useFallback(logsQ.data, MOCK_MANAGER_LOGS, isConnected);
-  const mitreTechniques = useFallback(mitreQ.data, MOCK_MITRE_TECHNIQUES, isConnected);
-  const vulns = MOCK_VULNERABILITIES; // Vulns require agentId, use mock for cross-search
-  const syscheck = MOCK_SYSCHECK_FILES; // Syscheck requires agentId, use mock for cross-search
+  const agents = agentsQ.data;
+  const rules = rulesQ.data;
+  const logs = logsQ.data;
+  const mitreTechniques = mitreQ.data;
+  const vulns: Record<string, unknown> = {}; // Vulns require agentId — no data without a specific agent query
+  const syscheck: Record<string, unknown> = {}; // Syscheck requires agentId — no data without a specific agent query
 
   // ── Correlation engine ────────────────────────────────────────────────────
   const correlationResults = useMemo<CorrelationHit[]>(() => {

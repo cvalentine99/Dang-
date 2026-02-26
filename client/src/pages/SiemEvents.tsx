@@ -3,7 +3,6 @@ import { GlassPanel, StatCard, ThreatBadge, RawJsonViewer, RefreshControl } from
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { trpc } from "@/lib/trpc";
-import { MOCK_SIEM_EVENTS, MOCK_LOG_SOURCES, MOCK_RULES, MOCK_AGENTS, useFallback } from "@/lib/mockData";
 import { ExportButton } from "@/components/shared/ExportButton";
 import { EXPORT_COLUMNS } from "@/lib/exportUtils";
 import {
@@ -22,7 +21,26 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-type SiemEvent = (typeof MOCK_SIEM_EVENTS)[number];
+type SiemEvent = {
+  id: string;
+  timestamp: string;
+  full_log: string;
+  location: string;
+  agent: { id: string; name: string; ip: string };
+  rule: {
+    id: number;
+    level: number;
+    description: string;
+    firedtimes: number;
+    groups: string[];
+    pci_dss: string[];
+    gdpr: string[];
+    hipaa: string[];
+    mitre: { id: string[]; tactic: string[]; technique: string[] };
+  };
+  decoder: { name: string; parent: string };
+  data: Record<string, unknown>;
+};
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const SEVERITY_COLORS: Record<string, string> = {
@@ -129,10 +147,10 @@ export default function SiemEvents() {
   });
 
   // ─── Data ────────────────────────────────────────────────────────────────
-  const events: SiemEvent[] = MOCK_SIEM_EVENTS;
-  const logSources = MOCK_LOG_SOURCES;
-  const rules = useFallback(rulesQ.data, MOCK_RULES, isConfigured);
-  const agents = useFallback(agentsQ.data, MOCK_AGENTS, isConfigured);
+  const events: SiemEvent[] = [];
+  const logSources: { name: string; category: string; count: number }[] = [];
+  const rules = rulesQ.data;
+  const agents = agentsQ.data;
 
   const agentList = (agents as Record<string, unknown>)?.data
     ? ((agents as Record<string, { affected_items: Array<{ id: string; name: string }> }>).data.affected_items || [])

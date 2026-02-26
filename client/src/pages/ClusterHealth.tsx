@@ -6,11 +6,6 @@ import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import {
-  MOCK_MANAGER_STATUS, MOCK_MANAGER_INFO, MOCK_MANAGER_STATS,
-  MOCK_DAEMON_STATS, MOCK_CONFIG_VALIDATION, MOCK_CLUSTER_STATUS,
-  MOCK_CLUSTER_NODES,
-} from "@/lib/mockData";
-import {
   Server, Activity, CheckCircle2,
   XCircle, AlertTriangle, Network, Gauge, BarChart3,
 } from "lucide-react";
@@ -80,10 +75,10 @@ export default function ClusterHealth() {
 
   const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); }, [utils]);
 
-  // ── Daemon status (real or fallback) ──────────────────────────────────
+  // ── Daemon status ──────────────────────────────────────────────────────
   const daemonStatuses = useMemo(() => {
-    const src = isConnected && managerStatusQ.data ? managerStatusQ.data : MOCK_MANAGER_STATUS;
-    const d = (src as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    if (!managerStatusQ.data) return {};
+    const d = (managerStatusQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
     const items = (d?.affected_items as Array<Record<string, unknown>>) ?? [];
     if (items.length > 0) return items[0];
     if (d && typeof d === "object" && !Array.isArray(d)) {
@@ -91,19 +86,19 @@ export default function ClusterHealth() {
       if (keys.length > 0) return d;
     }
     return {};
-  }, [managerStatusQ.data, isConnected]);
+  }, [managerStatusQ.data]);
 
-  // ── Manager info (real or fallback) ───────────────────────────────────
+  // ── Manager info ─────────────────────────────────────────────────────
   const managerInfo = useMemo(() => {
-    const src = isConnected && managerInfoQ.data ? managerInfoQ.data : MOCK_MANAGER_INFO;
-    const items = extractItems(src);
+    if (!managerInfoQ.data) return {};
+    const items = extractItems(managerInfoQ.data);
     return items[0] ?? {};
-  }, [managerInfoQ.data, isConnected]);
+  }, [managerInfoQ.data]);
 
-  // ── Hourly stats (real or fallback) ───────────────────────────────────
+  // ── Hourly stats ─────────────────────────────────────────────────────
   const hourlyData = useMemo(() => {
-    const src = isConnected && managerStatsHourlyQ.data ? managerStatsHourlyQ.data : MOCK_MANAGER_STATS;
-    const items = extractItems(src);
+    if (!managerStatsHourlyQ.data) return [];
+    const items = extractItems(managerStatsHourlyQ.data);
     return items.map((item, i) => ({
       hour: `${String(item.hour ?? i).toString().padStart(2, "0")}:00`,
       totalall: Number(item.totalall ?? 0),
@@ -111,33 +106,33 @@ export default function ClusterHealth() {
       syscheck: Number(item.syscheck ?? 0),
       firewall: Number(item.firewall ?? 0),
     }));
-  }, [managerStatsHourlyQ.data, isConnected]);
+  }, [managerStatsHourlyQ.data]);
 
-  // ── Daemon metrics (real or fallback) ─────────────────────────────────
+  // ── Daemon metrics ───────────────────────────────────────────────────
   const daemonMetrics = useMemo(() => {
-    const src = isConnected && daemonStatsQ.data ? daemonStatsQ.data : MOCK_DAEMON_STATS;
-    return extractItems(src);
-  }, [daemonStatsQ.data, isConnected]);
+    if (!daemonStatsQ.data) return [];
+    return extractItems(daemonStatsQ.data);
+  }, [daemonStatsQ.data]);
 
-  // ── Config validation (real or fallback) ──────────────────────────────
+  // ── Config validation ────────────────────────────────────────────────
   const configValid = useMemo(() => {
-    const src = isConnected && configValidQ.data ? configValidQ.data : MOCK_CONFIG_VALIDATION;
-    const items = extractItems(src);
+    if (!configValidQ.data) return {};
+    const items = extractItems(configValidQ.data);
     return items[0] ?? {};
-  }, [configValidQ.data, isConnected]);
+  }, [configValidQ.data]);
 
-  // ── Cluster status (real or fallback) ─────────────────────────────────
+  // ── Cluster status ───────────────────────────────────────────────────
   const clusterStatus = useMemo(() => {
-    const src = isConnected && clusterStatusQ.data ? clusterStatusQ.data : MOCK_CLUSTER_STATUS;
-    const d = (src as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    if (!clusterStatusQ.data) return {};
+    const d = (clusterStatusQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
     return d ?? {};
-  }, [clusterStatusQ.data, isConnected]);
+  }, [clusterStatusQ.data]);
 
-  // ── Cluster nodes (real or fallback) ──────────────────────────────────
+  // ── Cluster nodes ────────────────────────────────────────────────────
   const clusterNodes = useMemo(() => {
-    const src = isConnected && clusterNodesQ.data ? clusterNodesQ.data : MOCK_CLUSTER_NODES;
-    return extractItems(src);
-  }, [clusterNodesQ.data, isConnected]);
+    if (!clusterNodesQ.data) return [];
+    return extractItems(clusterNodesQ.data);
+  }, [clusterNodesQ.data]);
 
   // Count running/stopped daemons
   const daemonEntries = Object.entries(daemonStatuses).filter(([k]) => !["affected_items", "total_affected_items", "total_failed_items", "failed_items"].includes(k));
