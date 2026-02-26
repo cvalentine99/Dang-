@@ -1234,3 +1234,16 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Write vitest tests for notification logic (20 new tests)
 - [x] Verify TypeScript clean (0 errors), 328/328 tests all passing
 - [x] Save checkpoint
+
+## Phase: Deployment Readiness Check (Wazuh Spec v4.14.3)
+- [x] Review Wazuh API spec v4.14.3 — cataloged all 150 spec paths
+- [x] Audit wazuhRouter.ts — 65+ GET endpoints verified against spec
+- [x] Audit indexerRouter — 5 index patterns verified (alerts, vulns, monitoring, statistics, archives)
+- [x] Audit agenticPipeline.ts — uses invokeLLMWithFallback, no direct Wazuh calls
+- [x] Verify all 25 database tables exist and match drizzle schema
+- [x] Verify connection settings env mapping for all 6 integrations
+- [x] Verify all 16 tRPC routers registered in routers.ts
+- [x] Verify all 27 frontend routes registered in App.tsx
+- [x] Identified 6 minor gaps (non-blocking): netproto, decoders/parents, file content viewers
+- [x] TypeScript clean (0 errors), 328+ tests passing
+- [x] Produced DEPLOYMENT_READINESS_REPORT.md — comprehensive audit document
