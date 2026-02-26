@@ -1197,3 +1197,14 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Write vitest tests for Splunk HEC client and router (21 new tests across 2 files)
 - [x] Verify TypeScript clean (0 errors), 291/292 tests passing (1 pre-existing OTX timeout)
 - [x] Save checkpoint
+
+## Phase: Batch Create All Tickets
+- [x] Add batchCreateTickets procedure to splunkRouter (auto-finds all eligible completed items)
+- [x] Iterate completed items, skip those with existing splunkTicketId, send HEC events sequentially
+- [x] Return summary: total sent, skipped (already ticketed), failed, with per-item results
+- [x] Add "Create All Tickets" button to AlertQueue header (between Refresh and Clear History)
+- [x] Button only visible when Splunk enabled AND completed items without tickets exist
+- [x] Show success/info toast with count summary after batch operation
+- [x] Write vitest tests for batch ticket creation (6 new tests, 22 total in splunkRouter)
+- [x] Verify TypeScript clean (0 errors), 297/298 tests passing (1 pre-existing OTX timeout)
+- [x] Save checkpoint

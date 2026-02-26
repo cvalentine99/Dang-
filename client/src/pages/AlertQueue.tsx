@@ -352,6 +352,24 @@ export default function AlertQueue() {
     },
   });
 
+  // Splunk batch ticket creation
+  const splunkEnabled = trpc.splunk.isEnabled.useQuery(undefined, { staleTime: 60_000 });
+  const batchCreateMutation = trpc.splunk.batchCreateTickets.useMutation({
+    onSuccess: (result) => {
+      if (result.sent > 0) {
+        toast.success(`${result.sent} Splunk ticket${result.sent > 1 ? "s" : ""} created`, {
+          description: result.message,
+        });
+      } else {
+        toast.info("No new tickets to create", { description: result.message });
+      }
+      utils.alertQueue.list.invalidate();
+    },
+    onError: (err) => {
+      toast.error("Batch ticket creation failed", { description: err.message });
+    },
+  });
+
   const handleAnalyze = useCallback((id: number) => {
     processMutation.mutate({ id });
   }, [processMutation]);
@@ -364,6 +382,15 @@ export default function AlertQueue() {
   const activeCount = listQuery.data?.total ?? 0;
   const queuedItems = items.filter(i => i.status === "queued" || i.status === "processing");
   const completedItems = items.filter(i => i.status === "completed" || i.status === "failed" || i.status === "dismissed");
+
+  // Count completed items eligible for ticketing (no existing splunkTicketId)
+  const ticketEligibleCount = items.filter(i => {
+    if (i.status !== "completed") return false;
+    const triage = i.triageResult as Record<string, unknown> | null;
+    if (!triage || !triage.answer) return false;
+    if (triage.splunkTicketId) return false;
+    return true;
+  }).length;
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
@@ -389,6 +416,24 @@ export default function AlertQueue() {
               <RefreshCw className={`h-3.5 w-3.5 ${listQuery.isFetching ? "animate-spin" : ""}`} />
               Refresh
             </button>
+            {/* Batch Create All Tickets — only when Splunk enabled and eligible items exist */}
+            {splunkEnabled.data?.enabled && ticketEligibleCount > 0 && (
+              <button
+                onClick={() => batchCreateMutation.mutate()}
+                disabled={batchCreateMutation.isPending}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-medium hover:bg-emerald-500/20 transition-all disabled:opacity-50"
+                title={`Create Splunk tickets for ${ticketEligibleCount} completed triage report${ticketEligibleCount > 1 ? "s" : ""}`}
+              >
+                {batchCreateMutation.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Ticket className="h-3.5 w-3.5" />
+                )}
+                {batchCreateMutation.isPending
+                  ? "Creating Tickets..."
+                  : `Create All Tickets (${ticketEligibleCount})`}
+              </button>
+            )}
             {completedItems.length > 0 && (
               <button
                 onClick={() => clearHistoryMutation.mutate()}

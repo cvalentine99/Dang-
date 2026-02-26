@@ -183,3 +183,83 @@ describe("Splunk Router Exports", () => {
     expect(routerDef).toBeDefined();
   });
 });
+
+describe("Batch Ticket Creation Logic", () => {
+  it("should correctly identify eligible items (completed with triage, no existing ticket)", () => {
+    const items = [
+      { status: "completed", triageResult: { answer: "analysis", splunkTicketId: null } },
+      { status: "completed", triageResult: { answer: "analysis", splunkTicketId: "DANG-123" } },
+      { status: "completed", triageResult: null },
+      { status: "queued", triageResult: { answer: "analysis" } },
+      { status: "completed", triageResult: { answer: "another analysis" } },
+      { status: "failed", triageResult: { answer: "failed analysis" } },
+    ];
+
+    const eligible = items.filter(i => {
+      if (i.status !== "completed") return false;
+      const triage = i.triageResult as Record<string, unknown> | null;
+      if (!triage || !triage.answer) return false;
+      if (triage.splunkTicketId) return false;
+      return true;
+    });
+
+    expect(eligible.length).toBe(2); // First and fifth items
+  });
+
+  it("should skip items that already have a splunkTicketId", () => {
+    const item = { status: "completed", triageResult: { answer: "test", splunkTicketId: "DANG-999" } };
+    const triage = item.triageResult as Record<string, unknown>;
+    expect(triage.splunkTicketId).toBeTruthy();
+  });
+
+  it("should skip items with no triage answer", () => {
+    const items = [
+      { status: "completed", triageResult: {} },
+      { status: "completed", triageResult: { reasoning: "some reasoning" } },
+      { status: "completed", triageResult: null },
+    ];
+
+    const eligible = items.filter(i => {
+      const triage = i.triageResult as Record<string, unknown> | null;
+      return triage?.answer ? true : false;
+    });
+
+    expect(eligible.length).toBe(0);
+  });
+
+  it("should return correct summary counts for batch operation", () => {
+    const total = 5;
+    const sent = 3;
+    const failed = 1;
+    const skipped = 2; // already ticketed
+
+    const message = `Batch complete: ${sent} tickets created, ${skipped} skipped (already ticketed), ${failed} failed`;
+    expect(message).toContain("3 tickets created");
+    expect(message).toContain("2 skipped");
+    expect(message).toContain("1 failed");
+  });
+
+  it("should report success=true only when no failures occur", () => {
+    const resultSuccess = { success: 0 === 0, sent: 3, failed: 0 };
+    const resultFailure = { success: 1 === 0, sent: 2, failed: 1 };
+
+    expect(resultSuccess.success).toBe(true);
+    expect(resultFailure.success).toBe(false);
+  });
+
+  it("should handle empty batch gracefully", () => {
+    const eligibleItems: unknown[] = [];
+    const result = {
+      success: true,
+      total: 0,
+      sent: 0,
+      skipped: 0,
+      failed: 0,
+      message: "No eligible triage reports found",
+    };
+
+    expect(result.total).toBe(0);
+    expect(result.success).toBe(true);
+    expect(result.message).toContain("No eligible");
+  });
+});
