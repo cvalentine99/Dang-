@@ -1,0 +1,19 @@
+# ============================================================================
+# Dang! SIEM — Standalone Override (no Wazuh Docker network)
+#
+# Use this override when Wazuh is NOT running in Docker on this server
+# (e.g., Wazuh installed via packages, or Dang! running without Wazuh).
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.standalone.yml up -d
+#
+# Or via deploy.sh:
+#   ./deploy.sh --wazuh-host
+#
+# Set WAZUH_HOST=host.docker.internal in .env to reach host-installed Wazuh.
+# ============================================================================
+
+networks:
+  wazuh:
+    external: false
+    driver: bridge

@@ -1,11 +1,18 @@
 # ============================================================================
-# Dang! SIEM — Docker Compose
+# Dang! SIEM — Docker Compose (Co-located with Wazuh)
 # Target: Linux x86_64 (Ubuntu 22.04+)
+#
+# Default mode: runs alongside a Wazuh Docker stack on the same server.
+# The app container joins the Wazuh Docker network to reach wazuh.manager
+# and wazuh.indexer by container name.
 #
 # Usage:
 #   cp env.docker.template .env   # Edit with your credentials
-#   docker compose up -d   # Start all services
-#   docker compose logs -f # Follow logs
+#   docker compose up -d          # Wazuh Docker on same server (default)
+#   docker compose -f docker-compose.yml -f docker-compose.standalone.yml up -d
+#                                 # Package-based Wazuh / no Wazuh network
+#
+# See also: ./deploy.sh for guided deployment
 # ============================================================================
 
 services:
@@ -31,7 +38,7 @@ services:
       retries: 10
       start_period: 30s
     networks:
-      - dang-net
+      - dang-internal
 
   # ── Dang! Application ─────────────────────────────────────────────────────
   app:
@@ -45,6 +52,9 @@ services:
         condition: service_healthy
     ports:
       - "${APP_PORT:-3000}:3000"
+    # Allows reaching host-installed services (e.g., package-based Wazuh)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -96,12 +106,19 @@ services:
       VITE_APP_TITLE: ${VITE_APP_TITLE:-Dang! SIEM}
       VITE_APP_LOGO: ${VITE_APP_LOGO:-}
     networks:
-      - dang-net
+      - dang-internal
+      - wazuh
 
 volumes:
   dang-db-data:
     driver: local
 
 networks:
-  dang-net:
+  # Internal network for MySQL <-> App communication
+  dang-internal:
     driver: bridge
+  # External Wazuh Docker network — join the running Wazuh stack's network.
+  # Override with docker-compose.standalone.yml if Wazuh is not in Docker.
+  wazuh:
+    external: true
+    name: ${WAZUH_NETWORK:-single-node_default}

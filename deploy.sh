@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Dang! SIEM — Deployment Script
+# Dang! SIEM — Deployment Script (Co-located with Wazuh)
 # Target: Linux x86_64 (Ubuntu 22.04+, kernel 6.8+)
 #
 # Usage:
 #   chmod +x deploy.sh
-#   ./deploy.sh                     # HTTP only on port 3000
-#   ./deploy.sh --proxy caddy       # HTTPS via Caddy (auto Let's Encrypt)
-#   ./deploy.sh --proxy nginx       # HTTPS via Nginx (bring your own certs)
+#   ./deploy.sh                     # Co-located with Wazuh Docker (default)
+#   ./deploy.sh --wazuh-host        # Wazuh installed via packages (no Docker)
+#   ./deploy.sh --proxy caddy       # Add HTTPS via Caddy (auto Let's Encrypt)
+#   ./deploy.sh --proxy nginx       # Add HTTPS via Nginx (bring your own certs)
 #   ./deploy.sh --rebuild           # Force rebuild without cache
 #   ./deploy.sh --stop              # Stop all services
 #   ./deploy.sh --logs              # Follow logs
@@ -34,6 +35,7 @@ err()   { echo -e "${RED}[✗]${NC} $1"; }
 info()  { echo -e "${CYAN}[i]${NC} $1"; }
 
 PROXY_MODE=""
+WAZUH_HOST_MODE=false
 COMPOSE_FILES="-f docker-compose.yml"
 
 # ── Parse arguments ─────────────────────────────────────────────────────────
@@ -48,6 +50,10 @@ parse_args() {
         fi
         shift 2
         ;;
+      --wazuh-host)
+        WAZUH_HOST_MODE=true
+        shift
+        ;;
       --rebuild|--stop|--logs|--status|--generate-certs)
         # These are handled by the case statement in main
         break
@@ -59,10 +65,17 @@ parse_args() {
   done
 }
 
-# ── Build compose file list based on proxy mode ────────────────────────────
+# ── Build compose file list based on deployment mode ─────────────────────
 setup_compose_files() {
+  COMPOSE_FILES="-f docker-compose.yml"
+  if [ "$WAZUH_HOST_MODE" = "true" ]; then
+    COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.standalone.yml"
+    log "Wazuh mode: ${CYAN}package-based (host network)${NC}"
+  else
+    log "Wazuh mode: ${CYAN}Docker co-located${NC}"
+  fi
   if [ -n "$PROXY_MODE" ]; then
-    COMPOSE_FILES="-f docker-compose.yml -f docker-compose.${PROXY_MODE}.yml"
+    COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.${PROXY_MODE}.yml"
     log "Proxy mode: ${CYAN}${PROXY_MODE}${NC}"
   fi
 }
@@ -132,6 +145,45 @@ preflight() {
   local admin_pass=$(grep "^LOCAL_ADMIN_PASS=" .env 2>/dev/null | cut -d'=' -f2-)
   if [ -n "$admin_pass" ] && [[ "$admin_pass" == *"CHANGE_ME"* ]]; then
     warn "LOCAL_ADMIN_PASS still has placeholder value — change it or remove it"
+  fi
+
+  # ── Wazuh co-located checks ──────────────────────────────────────────────
+  if [ "$WAZUH_HOST_MODE" = "true" ]; then
+    info "Package-based Wazuh mode — using standalone network override"
+    if [ -n "$wazuh_host" ] && [ "$wazuh_host" != "host.docker.internal" ]; then
+      warn "WAZUH_HOST='${wazuh_host}' — for package-based Wazuh, consider using 'host.docker.internal'"
+    fi
+  else
+    # Docker co-located mode — verify Wazuh Docker network exists
+    local wazuh_net=$(grep "^WAZUH_NETWORK=" .env 2>/dev/null | cut -d'=' -f2-)
+    wazuh_net=${wazuh_net:-single-node_default}
+
+    if docker network inspect "$wazuh_net" > /dev/null 2>&1; then
+      ok "Wazuh Docker network found: ${wazuh_net}"
+    else
+      err "Wazuh Docker network '${wazuh_net}' not found."
+      info "Ensure the Wazuh Docker stack is running on this server."
+      info "Find your network with: docker network ls | grep -i wazuh"
+      info "Then set WAZUH_NETWORK=<name> in .env"
+      info "If Wazuh is installed via packages (not Docker), use: ./deploy.sh --wazuh-host"
+      exit 1
+    fi
+
+    # Check if Wazuh containers are running
+    local wazuh_containers=$(docker ps --format '{{.Names}}' | grep -ci 'wazuh' 2>/dev/null || echo "0")
+    if [ "$wazuh_containers" -gt 0 ]; then
+      ok "Found ${wazuh_containers} running Wazuh container(s)"
+    else
+      warn "No running Wazuh containers detected — Dang! may fail to connect"
+    fi
+  fi
+
+  # ── Port conflict checks ─────────────────────────────────────────────────
+  if [ -n "$PROXY_MODE" ]; then
+    if ss -tlnp 2>/dev/null | grep -q ':443 ' || docker ps --format '{{.Ports}}' 2>/dev/null | grep -q '0.0.0.0:443'; then
+      warn "Port 443 is already in use (likely by Wazuh Dashboard)."
+      info "Set DANG_HTTPS_PORT=8443 in .env to use an alternate port."
+    fi
   fi
 
   # Proxy-specific checks
@@ -240,6 +292,14 @@ cmd_start() {
     echo -e "${PURPLE}║${NC}  Proxy:   ${YELLOW}None (HTTP only)${NC}                               ${PURPLE}║${NC}"
   fi
 
+  if [ "$WAZUH_HOST_MODE" = "true" ]; then
+    echo -e "${PURPLE}║${NC}  Wazuh:   ${CYAN}Package-based (host network)${NC}                   ${PURPLE}║${NC}"
+  else
+    local wnet=$(grep "^WAZUH_NETWORK=" .env 2>/dev/null | cut -d'=' -f2-)
+    wnet=${wnet:-single-node_default}
+    echo -e "${PURPLE}║${NC}  Wazuh:   ${CYAN}Docker network (${wnet})${NC}         ${PURPLE}║${NC}"
+  fi
+
   echo -e "${PURPLE}║${NC}  Health:  ${GREEN}http://localhost:3000/api/health${NC} (internal)     ${PURPLE}║${NC}"
   echo -e "${PURPLE}╚══════════════════════════════════════════════════════════════╝${NC}"
 
@@ -294,7 +354,7 @@ parse_args "$@"
 CMD=""
 for arg in "${ALL_ARGS[@]}"; do
   case "$arg" in
-    --proxy|caddy|nginx) continue ;;
+    --proxy|caddy|nginx|--wazuh-host) continue ;;
     --*) CMD="$arg"; break ;;
   esac
 done

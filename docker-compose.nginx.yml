@@ -34,8 +34,8 @@ services:
       app:
         condition: service_healthy
     ports:
-      - "80:80"
-      - "443:443"
+      - "${DANG_HTTP_PORT:-80}:80"
+      - "${DANG_HTTPS_PORT:-443}:443"
     volumes:
       - ./proxy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./proxy/nginx/ssl:/etc/nginx/ssl:ro
@@ -47,7 +47,7 @@ services:
       retries: 3
       start_period: 10s
     networks:
-      - dang-net
+      - dang-internal
 
 volumes:
   nginx-logs:

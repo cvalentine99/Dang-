@@ -45,6 +45,16 @@ if [ "$RUN_MIGRATIONS" = "true" ] && [ -n "$DATABASE_URL" ]; then
   echo "[entrypoint] Migrations complete."
 fi
 
+# ── Check Wazuh Manager connectivity (non-blocking) ─────────────────────────
+if [ -n "$WAZUH_HOST" ]; then
+  WAZUH_URL="https://${WAZUH_HOST}:${WAZUH_PORT:-55000}"
+  if curl -sk --connect-timeout 5 "${WAZUH_URL}/" > /dev/null 2>&1; then
+    echo "[entrypoint] Wazuh Manager reachable at ${WAZUH_HOST}:${WAZUH_PORT:-55000}"
+  else
+    echo "[entrypoint] WARNING: Wazuh Manager not reachable at ${WAZUH_HOST}:${WAZUH_PORT:-55000} — features may be limited"
+  fi
+fi
+
 # ── Start the production server ──────────────────────────────────────────────
 echo "[entrypoint] Starting Node.js server on port ${PORT:-3000}..."
 exec node dist/index.js

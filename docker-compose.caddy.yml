@@ -27,9 +27,9 @@ services:
       app:
         condition: service_healthy
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      - "${DANG_HTTP_PORT:-80}:80"
+      - "${DANG_HTTPS_PORT:-443}:443"
+      - "${DANG_HTTPS_PORT:-443}:443/udp"
     environment:
       DANG_DOMAIN: ${DANG_DOMAIN:-localhost}
       ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
@@ -38,7 +38,7 @@ services:
       - caddy-data:/data
       - caddy-config:/config
     networks:
-      - dang-net
+      - dang-internal
 
 volumes:
   caddy-data:
