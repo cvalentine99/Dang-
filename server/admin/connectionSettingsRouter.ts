@@ -94,10 +94,20 @@ export const connectionSettingsRouter = router({
     )
     .mutation(async ({ input }) => {
       const { category, settings } = input;
-      const host = settings.host;
-      const port = settings.port;
-      const user = settings.user;
-      const pass = settings.pass;
+
+      // Merge form values with effective settings (DB → env → defaults)
+      // so that empty fields fall back to stored/env values.
+      // Passwords are never sent to the client, so we always need this merge.
+      const effective = await getEffectiveSettings(category);
+      const merged: Record<string, string> = { ...effective.values };
+      for (const [key, value] of Object.entries(settings)) {
+        if (value) merged[key] = value;
+      }
+
+      const host = merged.host;
+      const port = merged.port;
+      const user = merged.user;
+      const pass = merged.pass;
 
       if (!host || !user || !pass) {
         return {
@@ -145,7 +155,7 @@ export const connectionSettingsRouter = router({
           }
         } else if (category === "wazuh_indexer") {
           // Test Wazuh Indexer: GET /_cluster/health
-          const protocol = settings.protocol || "https";
+          const protocol = merged.protocol || "https";
           const baseURL = `${protocol}://${host}:${port || "9200"}`;
           const instance = axios.create({
             baseURL,
