@@ -1175,3 +1175,12 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Write vitest tests for queue logic — 13 new tests
 - [x] Verify TypeScript clean (0 errors), 264/265 tests passing (1 pre-existing OTX timeout)
 - [x] Save checkpoint
+
+## Phase: Walter Queue Severity Priority Ordering
+- [x] Backend: Change list query ORDER BY from queuedAt ASC to ruleLevel DESC, queuedAt ASC
+- [x] Backend: Change eviction logic from oldest-queued to lowest-severity-queued (evict least critical first)
+- [x] Frontend: Add severity priority indicator/label to queue page header
+- [x] Frontend: Queue depth bar segments color-coded by severity (critical=red, high=orange, medium=yellow, low=blue) with legend
+- [x] Update vitest tests for new priority ordering (6 new tests, 19 total in alertQueue)
+- [x] Verify TypeScript clean (0 errors), 270/271 tests passing (1 pre-existing OTX timeout)
+- [x] Save checkpoint

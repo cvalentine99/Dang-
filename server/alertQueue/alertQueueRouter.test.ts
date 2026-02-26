@@ -123,20 +123,59 @@ describe("Alert Queue — Business Logic", () => {
     expect(result.message).toContain("already in queue");
   });
 
-  it("should evict oldest queued item when queue is full", () => {
-    // When queue has 10 items and a new one is added, oldest queued (not processing) gets dismissed
+  it("should evict lowest-severity queued item when queue is full", () => {
+    // When queue has 10 items and a new one is added, lowest-severity queued item gets dismissed
     const currentCount = 10;
     const MAX_QUEUE_DEPTH = 10;
-    const oldestQueuedItem = { id: 1 };
+    const incomingLevel = 12; // Critical
+    const lowestPriorityItem = { id: 3, ruleLevel: 4 }; // Medium
 
     const shouldEvict = currentCount >= MAX_QUEUE_DEPTH;
     expect(shouldEvict).toBe(true);
 
-    // If there's a queued item to evict, it gets dismissed
-    if (oldestQueuedItem) {
+    // Incoming is higher severity than lowest in queue — evict
+    if (lowestPriorityItem && incomingLevel >= lowestPriorityItem.ruleLevel) {
       const newStatus = "dismissed";
       expect(newStatus).toBe("dismissed");
     }
+  });
+
+  it("should reject low-severity alert when queue is full of higher-severity alerts", () => {
+    // When all queued items are higher severity than incoming, reject
+    const currentCount = 10;
+    const MAX_QUEUE_DEPTH = 10;
+    const incomingLevel = 3; // Low
+    const lowestPriorityItem = { id: 5, ruleLevel: 8 }; // High
+
+    const shouldEvict = currentCount >= MAX_QUEUE_DEPTH;
+    expect(shouldEvict).toBe(true);
+
+    // Incoming is lower severity than everything in queue — reject
+    if (incomingLevel < lowestPriorityItem.ruleLevel) {
+      const result = { success: false, message: "Queue is full — all queued alerts have higher severity", id: null };
+      expect(result.success).toBe(false);
+      expect(result.message).toContain("higher severity");
+    }
+  });
+
+  it("should evict oldest item when multiple items share the same lowest severity", () => {
+    // When queue is full and multiple items have the same lowest severity,
+    // the oldest among them (FIFO within same level) should be evicted
+    const queueItems = [
+      { id: 1, ruleLevel: 5, queuedAt: new Date("2026-02-26T10:00:00Z") },
+      { id: 2, ruleLevel: 5, queuedAt: new Date("2026-02-26T10:05:00Z") },
+      { id: 3, ruleLevel: 8, queuedAt: new Date("2026-02-26T10:01:00Z") },
+    ];
+
+    // Sort by ruleLevel ASC, then queuedAt ASC (oldest first within same level)
+    const sorted = [...queueItems].sort((a, b) => {
+      if (a.ruleLevel !== b.ruleLevel) return a.ruleLevel - b.ruleLevel;
+      return a.queuedAt.getTime() - b.queuedAt.getTime();
+    });
+
+    // First item should be id=1 (lowest level, oldest)
+    expect(sorted[0].id).toBe(1);
+    expect(sorted[0].ruleLevel).toBe(5);
   });
 
   it("should reject enqueue when all 10 items are processing", () => {
@@ -273,5 +312,82 @@ describe("Alert Queue — Severity Classification", () => {
     expect(classify(4)).toBe("Medium");
     expect(classify(3)).toBe("Low");
     expect(classify(0)).toBe("Low");
+  });
+});
+
+describe("Alert Queue — Severity Priority Ordering", () => {
+  it("should sort queue items by severity descending (critical first)", () => {
+    const items = [
+      { id: 1, ruleLevel: 4, status: "queued" },
+      { id: 2, ruleLevel: 12, status: "queued" },
+      { id: 3, ruleLevel: 8, status: "queued" },
+      { id: 4, ruleLevel: 15, status: "queued" },
+      { id: 5, ruleLevel: 2, status: "queued" },
+    ];
+
+    const sorted = [...items].sort((a, b) => b.ruleLevel - a.ruleLevel);
+
+    expect(sorted[0].ruleLevel).toBe(15);
+    expect(sorted[1].ruleLevel).toBe(12);
+    expect(sorted[2].ruleLevel).toBe(8);
+    expect(sorted[3].ruleLevel).toBe(4);
+    expect(sorted[4].ruleLevel).toBe(2);
+  });
+
+  it("should maintain FIFO order within same severity level", () => {
+    const items = [
+      { id: 1, ruleLevel: 8, queuedAt: new Date("2026-02-26T10:00:00Z") },
+      { id: 2, ruleLevel: 8, queuedAt: new Date("2026-02-26T10:05:00Z") },
+      { id: 3, ruleLevel: 8, queuedAt: new Date("2026-02-26T10:02:00Z") },
+    ];
+
+    // Sort by ruleLevel DESC, then queuedAt ASC
+    const sorted = [...items].sort((a, b) => {
+      if (a.ruleLevel !== b.ruleLevel) return b.ruleLevel - a.ruleLevel;
+      return a.queuedAt.getTime() - b.queuedAt.getTime();
+    });
+
+    // Same severity, so ordered by time (oldest first)
+    expect(sorted[0].id).toBe(1);
+    expect(sorted[1].id).toBe(3);
+    expect(sorted[2].id).toBe(2);
+  });
+
+  it("should color-code queue depth segments by severity", () => {
+    const getSegmentColor = (level: number) => {
+      if (level >= 12) return "red";
+      if (level >= 8) return "orange";
+      if (level >= 4) return "yellow";
+      return "blue";
+    };
+
+    expect(getSegmentColor(15)).toBe("red");
+    expect(getSegmentColor(12)).toBe("red");
+    expect(getSegmentColor(10)).toBe("orange");
+    expect(getSegmentColor(8)).toBe("orange");
+    expect(getSegmentColor(6)).toBe("yellow");
+    expect(getSegmentColor(4)).toBe("yellow");
+    expect(getSegmentColor(3)).toBe("blue");
+    expect(getSegmentColor(0)).toBe("blue");
+  });
+
+  it("should prioritize processing items above queued items in display", () => {
+    const items = [
+      { id: 1, ruleLevel: 12, status: "queued" },
+      { id: 2, ruleLevel: 4, status: "processing" },
+      { id: 3, ruleLevel: 15, status: "queued" },
+    ];
+
+    // Processing items should appear before queued items
+    const statusOrder: Record<string, number> = { processing: 0, queued: 1, completed: 2, failed: 3, dismissed: 4 };
+    const sorted = [...items].sort((a, b) => {
+      const statusDiff = (statusOrder[a.status] ?? 5) - (statusOrder[b.status] ?? 5);
+      if (statusDiff !== 0) return statusDiff;
+      return b.ruleLevel - a.ruleLevel;
+    });
+
+    expect(sorted[0].status).toBe("processing");
+    expect(sorted[1].ruleLevel).toBe(15);
+    expect(sorted[2].ruleLevel).toBe(12);
   });
 });

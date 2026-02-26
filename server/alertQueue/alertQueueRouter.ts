@@ -2,8 +2,8 @@
  * Alert Queue Router — tRPC procedures for the 10-deep alert-to-Walter queue.
  *
  * Provides:
- * - list: Get all queued/completed items (ordered by queuedAt desc)
- * - enqueue: Add an alert to the queue (FIFO, max 10, oldest evicted)
+ * - list: Get all queued/completed items (ordered by severity desc within status groups)
+ * - enqueue: Add an alert to the queue (max 10, lowest-severity evicted)
  * - remove: Remove/dismiss an item from the queue
  * - process: Trigger Walter analysis on a queued item (human-initiated)
  * - getTriageResult: Get the triage result for a completed item
@@ -32,7 +32,8 @@ export const alertQueueRouter = router({
       .from(alertQueue)
       .orderBy(
         sql`FIELD(${alertQueue.status}, 'processing', 'queued', 'completed', 'failed', 'dismissed')`,
-        desc(alertQueue.queuedAt)
+        desc(alertQueue.ruleLevel),
+        asc(alertQueue.queuedAt)
       )
       .limit(20);
 
@@ -64,8 +65,9 @@ export const alertQueueRouter = router({
 
   /**
    * Enqueue an alert for Walter analysis.
-   * Max 10 items — oldest queued item is evicted (dismissed) when full.
+   * Max 10 items — lowest-severity queued item is evicted (dismissed) when full.
    * Prevents duplicate alertId from being queued.
+   * Priority: higher ruleLevel = higher priority in the queue.
    */
   enqueue: protectedProcedure
     .input(z.object({
@@ -107,19 +109,26 @@ export const alertQueueRouter = router({
       const currentCount = countResult?.count ?? 0;
 
       if (currentCount >= MAX_QUEUE_DEPTH) {
-        // Find the oldest queued item (not processing) and dismiss it
-        const [oldest] = await db
-          .select({ id: alertQueue.id })
+        // Find the lowest-severity queued item (not processing) and dismiss it.
+        // If same severity, evict the oldest (FIFO within same level).
+        const [lowestPriority] = await db
+          .select({ id: alertQueue.id, ruleLevel: alertQueue.ruleLevel })
           .from(alertQueue)
           .where(eq(alertQueue.status, "queued"))
-          .orderBy(asc(alertQueue.queuedAt))
+          .orderBy(asc(alertQueue.ruleLevel), asc(alertQueue.queuedAt))
           .limit(1);
 
-        if (oldest) {
-          await db
-            .update(alertQueue)
-            .set({ status: "dismissed" })
-            .where(eq(alertQueue.id, oldest.id));
+        if (lowestPriority) {
+          // Only evict if the incoming alert is higher or equal severity
+          if (input.ruleLevel >= lowestPriority.ruleLevel) {
+            await db
+              .update(alertQueue)
+              .set({ status: "dismissed" })
+              .where(eq(alertQueue.id, lowestPriority.id));
+          } else {
+            // Incoming alert is lower severity than everything in queue — reject
+            return { success: false, message: "Queue is full — all queued alerts have higher severity", id: null };
+          }
         } else {
           // All 10 are processing — reject
           return { success: false, message: "Queue is full (all items are being processed)", id: null };

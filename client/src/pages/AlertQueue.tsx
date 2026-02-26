@@ -333,7 +333,7 @@ export default function AlertQueue() {
             <div>
               <h1 className="text-lg font-display font-bold text-foreground">Walter Queue</h1>
               <p className="text-xs text-muted-foreground">
-                {activeCount}/10 alerts queued · Click "Analyze" to trigger Walter's pipeline
+                {activeCount}/10 alerts queued · Sorted by severity (critical first) · Click "Analyze" to trigger Walter's pipeline
               </p>
             </div>
           </div>
@@ -364,20 +364,37 @@ export default function AlertQueue() {
           </div>
         </div>
 
-        {/* Queue depth indicator */}
+        {/* Queue depth indicator — color-coded by severity of each slot */}
         <div className="mt-3 flex items-center gap-2">
-          {Array.from({ length: 10 }, (_, i) => (
-            <div
-              key={i}
-              className={`h-1.5 flex-1 rounded-full transition-all ${
-                i < activeCount
-                  ? "bg-purple-500/60 shadow-[0_0_4px_rgba(168,85,247,0.3)]"
-                  : "bg-white/5"
-              }`}
-            />
-          ))}
+          {Array.from({ length: 10 }, (_, i) => {
+            const slotItem = queuedItems[i];
+            let segmentColor = "bg-white/5";
+            if (slotItem) {
+              const lvl = slotItem.ruleLevel;
+              if (lvl >= 12) segmentColor = "bg-red-500/70 shadow-[0_0_4px_rgba(239,68,68,0.4)]";
+              else if (lvl >= 8) segmentColor = "bg-orange-500/60 shadow-[0_0_4px_rgba(249,115,22,0.3)]";
+              else if (lvl >= 4) segmentColor = "bg-yellow-500/50 shadow-[0_0_4px_rgba(234,179,8,0.3)]";
+              else segmentColor = "bg-blue-500/50 shadow-[0_0_4px_rgba(59,130,246,0.3)]";
+            }
+            return (
+              <div
+                key={i}
+                className={`h-1.5 flex-1 rounded-full transition-all ${segmentColor}`}
+                title={slotItem ? `Level ${slotItem.ruleLevel}: ${slotItem.ruleDescription ?? slotItem.ruleId}` : "Empty slot"}
+              />
+            );
+          })}
           <span className="text-[10px] font-mono text-muted-foreground ml-1">{activeCount}/10</span>
         </div>
+        {/* Severity legend */}
+        {activeCount > 0 && (
+          <div className="mt-1.5 flex items-center gap-3 text-[9px] text-muted-foreground">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500/70" />Critical (12+)</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500/60" />High (8-11)</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500/50" />Medium (4-7)</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500/50" />Low (0-3)</span>
+          </div>
+        )}
       </div>
 
       {/* Queue content */}
@@ -417,6 +434,7 @@ export default function AlertQueue() {
                 <Activity className="h-4 w-4 text-purple-400" />
                 <h2 className="text-sm font-medium text-foreground">Active Queue</h2>
                 <span className="text-[10px] font-mono text-muted-foreground">({queuedItems.length})</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded border border-purple-500/20 bg-purple-500/5 text-purple-300 font-mono">severity priority</span>
               </div>
               <div className="space-y-2">
                 {queuedItems.map(item => (
