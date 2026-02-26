@@ -935,3 +935,11 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Removed all ?? [] and ?? "" fallbacks from JSX — no longer needed since normalization guarantees types
 - [x] Chart data filtered for Number.isFinite values to prevent NaN in Recharts
 - [x] All 208 tests passing, TypeScript clean (0 errors)
+
+## Phase 59: Bug Fix — /rules page crash (real API confirmed working)
+
+- [ ] Fix frontend rendering crash on /rules page — backend APIs confirmed returning data
+- [ ] Debug exact field shape mismatch causing the crash with real Wazuh responses
+- [ ] Add error boundary to catch and display render errors gracefully
+
+- [x] Rename "SecondSight Analyst" to "Walter" on the Security Analyst page

@@ -249,7 +249,7 @@ function WelcomeScreen(): React.JSX.Element {
       <div className="w-16 h-16 rounded-2xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center mb-6">
         <Sparkles className="w-8 h-8 text-purple-400" />
       </div>
-      <h2 className="text-2xl font-display font-bold text-foreground mb-2">SecondSight Analyst</h2>
+      <h2 className="text-2xl font-display font-bold text-foreground mb-2">Walter</h2>
       <p className="text-muted-foreground text-sm text-center max-w-lg mb-8">
         AI-powered security analysis using HybridRAG — combining Knowledge Graph traversals with Wazuh Indexer search for evidence-based threat intelligence.
       </p>
@@ -382,7 +382,7 @@ export default function AnalystChat(): React.JSX.Element {
               <Sparkles className="w-5 h-5 text-purple-400" />
             </div>
             <div>
-              <h1 className="text-lg font-display font-bold text-foreground">SecondSight Analyst</h1>
+              <h1 className="text-lg font-display font-bold text-foreground">Walter</h1>
               <p className="text-xs text-muted-foreground">HybridRAG Security Analysis Engine</p>
             </div>
           </div>
@@ -443,7 +443,7 @@ export default function AnalystChat(): React.JSX.Element {
             </button>
           </div>
           <p className="text-[10px] text-muted-foreground mt-1.5 text-center">
-            SecondSight grounds analysis in Wazuh telemetry. Verify critical findings independently.
+            Walter grounds analysis in Wazuh telemetry. Verify critical findings independently.
           </p>
         </div>
       </div>

@@ -70,7 +70,7 @@ const menuItems = [
   { icon: Monitor, label: "IT Hygiene", path: "/hygiene", group: "Posture" },
   { icon: Server, label: "Cluster Health", path: "/cluster", group: "System" },
   { icon: HeartPulse, label: "System Status", path: "/status", group: "System" },
-  { icon: Brain, label: "Security Analyst", path: "/analyst", group: "Intelligence" },
+  { icon: Brain, label: "Walter", path: "/analyst", group: "Intelligence" },
   { icon: Network, label: "Knowledge Graph", path: "/graph", group: "Intelligence" },
   { icon: FolderSearch, label: "Investigations", path: "/investigations", group: "Intelligence" },
   { icon: Database, label: "Data Pipeline", path: "/pipeline", group: "Intelligence" },
