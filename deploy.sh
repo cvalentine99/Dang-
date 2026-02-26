@@ -80,6 +80,251 @@ setup_compose_files() {
   fi
 }
 
+# ── Helper: set a value in .env ────────────────────────────────────────────
+set_env() {
+  local key="$1" val="$2"
+  if grep -q "^${key}=" .env 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${val}|" .env
+  else
+    echo "${key}=${val}" >> .env
+  fi
+}
+
+# ── Helper: read a value from .env ────────────────────────────────────────
+get_env() {
+  grep "^${1}=" .env 2>/dev/null | cut -d'=' -f2-
+}
+
+# ── Helper: prompt with default ───────────────────────────────────────────
+prompt() {
+  local varname="$1" prompt_text="$2" default="$3"
+  local input
+  if [ -n "$default" ]; then
+    echo -en "  ${CYAN}${prompt_text}${NC} [${GREEN}${default}${NC}]: "
+  else
+    echo -en "  ${CYAN}${prompt_text}${NC}: "
+  fi
+  read -r input
+  echo "${input:-$default}"
+}
+
+# ── Helper: prompt for password (hidden input) ────────────────────────────
+prompt_secret() {
+  local prompt_text="$1" default="$2"
+  local input
+  if [ -n "$default" ]; then
+    echo -en "  ${CYAN}${prompt_text}${NC} [${YELLOW}press Enter to keep current${NC}]: "
+  else
+    echo -en "  ${CYAN}${prompt_text}${NC}: "
+  fi
+  read -rs input
+  echo ""
+  echo "${input:-$default}"
+}
+
+# ── Interactive first-run setup ───────────────────────────────────────────
+first_run_setup() {
+  echo -e "${PURPLE}╔══════════════════════════════════════════════════════════════╗${NC}"
+  echo -e "${PURPLE}║${NC}  ${GREEN}Dang! SIEM — First-Run Setup${NC}                                ${PURPLE}║${NC}"
+  echo -e "${PURPLE}╚══════════════════════════════════════════════════════════════╝${NC}"
+  echo ""
+
+  # Start from template
+  cp env.docker.template .env
+
+  # ── 1. Auto-generate JWT_SECRET ────────────────────────────────────────
+  local jwt_secret
+  if command -v openssl &> /dev/null; then
+    jwt_secret=$(openssl rand -hex 32)
+  else
+    jwt_secret=$(head -c 64 /dev/urandom | od -An -tx1 | tr -d ' \n' | head -c 64)
+  fi
+  set_env "JWT_SECRET" "$jwt_secret"
+  ok "JWT_SECRET auto-generated"
+
+  # ── 2. Auto-generate DB passwords ─────────────────────────────────────
+  local db_root_pw db_user_pw
+  if command -v openssl &> /dev/null; then
+    db_root_pw=$(openssl rand -hex 16)
+    db_user_pw=$(openssl rand -hex 16)
+  else
+    db_root_pw=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' | head -c 32)
+    db_user_pw=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' | head -c 32)
+  fi
+  set_env "MYSQL_ROOT_PASSWORD" "$db_root_pw"
+  set_env "MYSQL_PASSWORD" "$db_user_pw"
+  ok "MySQL passwords auto-generated"
+
+  # ── 3. Admin account ──────────────────────────────────────────────────
+  echo ""
+  log "Admin Account"
+  info "This is the login for the Dang! SIEM web UI."
+  local admin_user admin_pass
+  admin_user=$(prompt "admin_user" "Admin username" "admin")
+  admin_pass=$(prompt_secret "Admin password")
+  while [ -z "$admin_pass" ]; do
+    warn "Password cannot be empty."
+    admin_pass=$(prompt_secret "Admin password")
+  done
+  set_env "LOCAL_ADMIN_USER" "$admin_user"
+  set_env "LOCAL_ADMIN_PASS" "$admin_pass"
+  ok "Admin account configured"
+
+  # ── 4. Wazuh connection ───────────────────────────────────────────────
+  echo ""
+  log "Wazuh Connection"
+  if [ "$WAZUH_HOST_MODE" = "true" ]; then
+    info "Package-based mode: connecting to Wazuh on this host via Docker bridge"
+    set_env "WAZUH_HOST" "host.docker.internal"
+    set_env "WAZUH_INDEXER_HOST" "host.docker.internal"
+    ok "WAZUH_HOST set to host.docker.internal"
+  else
+    info "Docker mode: connecting to Wazuh containers on shared network"
+    # Auto-detect Wazuh network
+    local detected_net=""
+    detected_net=$(docker network ls --format '{{.Name}}' 2>/dev/null | grep -i 'wazuh\|single-node' | head -1 || true)
+    if [ -n "$detected_net" ]; then
+      ok "Auto-detected Wazuh network: ${detected_net}"
+      set_env "WAZUH_NETWORK" "$detected_net"
+    else
+      local wazuh_net
+      wazuh_net=$(prompt "wazuh_net" "Wazuh Docker network name" "single-node_default")
+      set_env "WAZUH_NETWORK" "$wazuh_net"
+    fi
+
+    # Auto-detect Wazuh manager container name
+    local detected_mgr=""
+    detected_mgr=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -i 'wazuh.*manager\|wazuh\.manager' | head -1 || true)
+    if [ -n "$detected_mgr" ]; then
+      ok "Auto-detected Wazuh Manager container: ${detected_mgr}"
+      set_env "WAZUH_HOST" "$detected_mgr"
+    else
+      local wazuh_host
+      wazuh_host=$(prompt "wazuh_host" "Wazuh Manager hostname" "wazuh.manager")
+      set_env "WAZUH_HOST" "$wazuh_host"
+    fi
+
+    # Auto-detect Wazuh indexer container name
+    local detected_idx=""
+    detected_idx=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -i 'wazuh.*indexer\|wazuh\.indexer' | head -1 || true)
+    if [ -n "$detected_idx" ]; then
+      ok "Auto-detected Wazuh Indexer container: ${detected_idx}"
+      set_env "WAZUH_INDEXER_HOST" "$detected_idx"
+    else
+      local wazuh_idx_host
+      wazuh_idx_host=$(prompt "wazuh_idx" "Wazuh Indexer hostname" "wazuh.indexer")
+      set_env "WAZUH_INDEXER_HOST" "$wazuh_idx_host"
+    fi
+  fi
+
+  echo ""
+  log "Wazuh API Credentials"
+  info "These are the credentials for the Wazuh Manager API (port 55000)."
+  local wazuh_user wazuh_pass
+  wazuh_user=$(prompt "wazuh_user" "Wazuh API username" "wazuh-wui")
+  wazuh_pass=$(prompt_secret "Wazuh API password")
+  if [ -n "$wazuh_pass" ]; then
+    set_env "WAZUH_USER" "$wazuh_user"
+    set_env "WAZUH_PASS" "$wazuh_pass"
+    ok "Wazuh Manager credentials set"
+  else
+    warn "No Wazuh password provided — you can set WAZUH_PASS in .env later"
+  fi
+
+  echo ""
+  log "Wazuh Indexer Credentials"
+  info "These are the credentials for the Wazuh Indexer / OpenSearch (port 9200)."
+  local idx_user idx_pass
+  idx_user=$(prompt "idx_user" "Indexer username" "admin")
+  idx_pass=$(prompt_secret "Indexer password")
+  if [ -n "$idx_pass" ]; then
+    set_env "WAZUH_INDEXER_USER" "$idx_user"
+    set_env "WAZUH_INDEXER_PASS" "$idx_pass"
+    ok "Wazuh Indexer credentials set"
+  else
+    warn "No Indexer password provided — you can set WAZUH_INDEXER_PASS in .env later"
+  fi
+
+  echo ""
+  ok "Setup complete! Configuration saved to .env"
+}
+
+# ── Fix placeholder values in existing .env ───────────────────────────────
+fix_placeholders() {
+  log "Fixing placeholder values..."
+
+  # Auto-fix JWT_SECRET
+  local jwt_val=$(get_env "JWT_SECRET")
+  if [ -z "$jwt_val" ] || [[ "$jwt_val" == *"CHANGE_ME"* ]]; then
+    local jwt_secret
+    if command -v openssl &> /dev/null; then
+      jwt_secret=$(openssl rand -hex 32)
+    else
+      jwt_secret=$(head -c 64 /dev/urandom | od -An -tx1 | tr -d ' \n' | head -c 64)
+    fi
+    set_env "JWT_SECRET" "$jwt_secret"
+    ok "JWT_SECRET auto-generated"
+  fi
+
+  # Auto-fix MySQL passwords
+  local db_root=$(get_env "MYSQL_ROOT_PASSWORD")
+  if [[ "$db_root" == *"change_me"* ]]; then
+    local pw
+    if command -v openssl &> /dev/null; then pw=$(openssl rand -hex 16); else pw=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' | head -c 32); fi
+    set_env "MYSQL_ROOT_PASSWORD" "$pw"
+    ok "MYSQL_ROOT_PASSWORD auto-generated"
+  fi
+
+  local db_user=$(get_env "MYSQL_PASSWORD")
+  if [[ "$db_user" == *"change_me"* ]]; then
+    local pw
+    if command -v openssl &> /dev/null; then pw=$(openssl rand -hex 16); else pw=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' | head -c 32); fi
+    set_env "MYSQL_PASSWORD" "$pw"
+    ok "MYSQL_PASSWORD auto-generated"
+  fi
+
+  # Prompt for Wazuh/admin passwords that are still CHANGE_ME
+  local wazuh_pass=$(get_env "WAZUH_PASS")
+  if [[ "$wazuh_pass" == *"CHANGE_ME"* ]]; then
+    echo ""
+    info "Wazuh Manager API password is still a placeholder."
+    local new_pass
+    new_pass=$(prompt_secret "Wazuh API password (WAZUH_PASS)")
+    if [ -n "$new_pass" ]; then
+      set_env "WAZUH_PASS" "$new_pass"
+      ok "WAZUH_PASS updated"
+    else
+      warn "Skipped — WAZUH_PASS left as placeholder"
+    fi
+  fi
+
+  local idx_pass=$(get_env "WAZUH_INDEXER_PASS")
+  if [[ "$idx_pass" == *"CHANGE_ME"* ]]; then
+    info "Wazuh Indexer password is still a placeholder."
+    local new_pass
+    new_pass=$(prompt_secret "Wazuh Indexer password (WAZUH_INDEXER_PASS)")
+    if [ -n "$new_pass" ]; then
+      set_env "WAZUH_INDEXER_PASS" "$new_pass"
+      ok "WAZUH_INDEXER_PASS updated"
+    else
+      warn "Skipped — WAZUH_INDEXER_PASS left as placeholder"
+    fi
+  fi
+
+  local admin_pass=$(get_env "LOCAL_ADMIN_PASS")
+  if [[ "$admin_pass" == *"CHANGE_ME"* ]]; then
+    info "Admin UI password is still a placeholder."
+    local new_pass
+    new_pass=$(prompt_secret "Admin password (LOCAL_ADMIN_PASS)")
+    if [ -n "$new_pass" ]; then
+      set_env "LOCAL_ADMIN_PASS" "$new_pass"
+      ok "LOCAL_ADMIN_PASS updated"
+    else
+      warn "Skipped — LOCAL_ADMIN_PASS left as placeholder"
+    fi
+  fi
+}
+
 # ── Pre-flight checks ──────────────────────────────────────────────────────
 preflight() {
   log "Running pre-flight checks..."
@@ -103,33 +348,41 @@ preflight() {
   fi
   ok "Docker daemon is running"
 
+  # ── First-run interactive setup ─────────────────────────────────────────
   if [ ! -f ".env" ]; then
-    if [ -f "env.docker.template" ]; then
-      warn "No .env file found. Creating from template..."
-      cp env.docker.template .env
-      warn "IMPORTANT: Edit .env with your actual credentials before starting!"
-      warn "  Required: JWT_SECRET, WAZUH_HOST, WAZUH_USER, WAZUH_PASS"
-      warn "  Generate JWT_SECRET with: openssl rand -hex 32"
-      exit 1
-    else
+    if [ ! -f "env.docker.template" ]; then
       err "No .env file and no env.docker.template found."
       exit 1
     fi
+    log "No .env file found — starting interactive setup..."
+    echo ""
+    first_run_setup
+    echo ""
   fi
   ok ".env file found"
 
-  # Validate required variables
-  local missing=0
-  for var in JWT_SECRET; do
-    val=$(grep "^${var}=" .env 2>/dev/null | cut -d'=' -f2-)
-    if [ -z "$val" ] || [[ "$val" == *"CHANGE_ME"* ]]; then
-      err "Required variable ${var} is not set or still has placeholder value"
-      missing=1
-    fi
-  done
+  # ── Fix any remaining placeholder values interactively ─────────────────
+  local needs_fix=false
 
-  if [ $missing -eq 1 ]; then
-    err "Please update .env with your actual credentials."
+  local jwt_val=$(grep "^JWT_SECRET=" .env 2>/dev/null | cut -d'=' -f2-)
+  if [ -z "$jwt_val" ] || [[ "$jwt_val" == *"CHANGE_ME"* ]]; then
+    needs_fix=true
+  fi
+
+  local wazuh_pass_val=$(grep "^WAZUH_PASS=" .env 2>/dev/null | cut -d'=' -f2-)
+  local admin_pass_val=$(grep "^LOCAL_ADMIN_PASS=" .env 2>/dev/null | cut -d'=' -f2-)
+
+  if [ "$needs_fix" = "true" ]; then
+    warn "Some credentials still have placeholder values."
+    echo ""
+    fix_placeholders
+    echo ""
+  fi
+
+  # Re-validate after fixes
+  jwt_val=$(grep "^JWT_SECRET=" .env 2>/dev/null | cut -d'=' -f2-)
+  if [ -z "$jwt_val" ] || [[ "$jwt_val" == *"CHANGE_ME"* ]]; then
+    err "JWT_SECRET is still not set. Cannot continue."
     exit 1
   fi
   ok "Required environment variables are set"
