@@ -30,6 +30,7 @@ import Investigations from "./pages/Investigations";
 import DataPipeline from "./pages/DataPipeline";
 import AdminSettings from "./pages/AdminSettings";
 import TokenUsage from "./pages/TokenUsage";
+import AlertQueue from "./pages/AlertQueue";
 
 function Router() {
   return (
@@ -65,6 +66,7 @@ function Router() {
             <Route path="/graph" component={KnowledgeGraph} />
             <Route path="/investigations" component={Investigations} />
             <Route path="/pipeline" component={DataPipeline} />
+            <Route path="/alert-queue" component={AlertQueue} />
             <Route path="/404" component={NotFound} />
             <Route component={NotFound} />
           </Switch>

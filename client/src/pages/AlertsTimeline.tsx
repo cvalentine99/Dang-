@@ -21,8 +21,9 @@ import {
   AlertTriangle, Shield, Search, ChevronLeft, ChevronRight,
   BarChart3, Clock, Layers, TrendingUp, FileWarning,
   Zap, Target, Eye, ExternalLink, Filter, RefreshCw,
-  Database, Radio,
+  Database, Radio, Brain,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useSearch } from "wouter";
 import {
@@ -83,7 +84,58 @@ function extractItems(raw: unknown): Array<Record<string, unknown>> {
   return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
 }
 
+/**
+ * Send to Walter button — queues an alert for Walter's agentic analysis.
+ * Shows on each alert row in the table.
+ */
+function SendToWalterButton({ alert }: { alert: Record<string, unknown> }) {
+  const utils = trpc.useUtils();
+  const enqueueMutation = trpc.alertQueue.enqueue.useMutation({
+    onSuccess: (result) => {
+      if (result.success) {
+        toast.success("Alert queued for Walter", {
+          description: "Click the queue badge in the sidebar to start analysis",
+        });
+        utils.alertQueue.count.invalidate();
+        utils.alertQueue.list.invalidate();
+      } else {
+        toast.info(result.message);
+      }
+    },
+    onError: (err) => {
+      toast.error("Failed to queue alert", { description: err.message });
+    },
+  });
 
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Don't open alert detail dialog
+    const rule = (alert.rule as Record<string, unknown>) ?? {};
+    const agent = (alert.agent as Record<string, unknown>) ?? {};
+
+    enqueueMutation.mutate({
+      alertId: String(alert._id ?? alert.id ?? `alert-${Date.now()}`),
+      ruleId: String(rule.id ?? "unknown"),
+      ruleDescription: rule.description ? String(rule.description) : undefined,
+      ruleLevel: Number(rule.level ?? 0),
+      agentId: agent.id ? String(agent.id) : undefined,
+      agentName: agent.name ? String(agent.name) : undefined,
+      alertTimestamp: alert.timestamp ? String(alert.timestamp) : undefined,
+      rawJson: alert,
+    });
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={enqueueMutation.isPending}
+      className="group flex items-center gap-1 px-1.5 py-0.5 rounded border border-purple-500/20 bg-purple-500/5 text-purple-300 hover:bg-purple-500/15 hover:border-purple-500/40 transition-all disabled:opacity-50"
+      title="Send to Walter for analysis"
+    >
+      <Brain className={`h-3 w-3 ${enqueueMutation.isPending ? "animate-spin" : "group-hover:animate-pulse"}`} />
+      <span className="text-[9px] font-medium hidden xl:inline">Walter</span>
+    </button>
+  );
+}
 
 export default function AlertsTimeline() {
   const utils = trpc.useUtils();
@@ -458,8 +510,8 @@ export default function AlertsTimeline() {
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead><tr className="border-b border-border/30">
-                {["Timestamp", "Level", "Rule ID", "Description", "Agent", "MITRE", "Source", ""].map(h => (
-                  <th key={h} className="text-left py-2 px-2 text-muted-foreground font-medium whitespace-nowrap">{h}</th>
+                {["Timestamp", "Level", "Rule ID", "Description", "Agent", "MITRE", "Source", "", ""].map((h, idx) => (
+                  <th key={`${h}-${idx}`} className="text-left py-2 px-2 text-muted-foreground font-medium whitespace-nowrap">{h}</th>
                 ))}
               </tr></thead>
               <tbody>
@@ -499,11 +551,14 @@ export default function AlertsTimeline() {
                       <td className="py-1.5 px-2">
                         <Eye className="h-3 w-3 text-muted-foreground hover:text-primary transition-colors" />
                       </td>
+                      <td className="py-1.5 px-2">
+                        <SendToWalterButton alert={a} />
+                      </td>
                     </tr>
                   );
                 })}
                 {alerts.length === 0 && (
-                  <tr><td colSpan={8} className="py-12 text-center text-muted-foreground">
+                  <tr><td colSpan={9} className="py-12 text-center text-muted-foreground">
                     {alertsSearchQ.isLoading ? "Loading alerts..." : "No alerts found for the selected filters"}
                   </td></tr>
                 )}

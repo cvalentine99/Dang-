@@ -1,0 +1,460 @@
+/**
+ * Alert Queue — 10-deep FIFO queue for alerts awaiting Walter analysis.
+ *
+ * Analysts queue alerts from the Alerts Timeline, then click "Analyze" to
+ * trigger Walter's full agentic pipeline on demand. Results are displayed
+ * inline with the queue item.
+ */
+
+import { trpc } from "@/lib/trpc";
+import { useState, useCallback } from "react";
+import { useLocation } from "wouter";
+import { toast } from "sonner";
+import { Streamdown } from "streamdown";
+import {
+  Brain,
+  AlertTriangle,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Trash2,
+  Play,
+  ChevronDown,
+  ChevronRight,
+  Shield,
+  Activity,
+  Eye,
+  FileJson,
+  Inbox,
+  ArrowRight,
+  Sparkles,
+  RefreshCw,
+} from "lucide-react";
+
+// Severity color mapping
+function severityColor(level: number): string {
+  if (level >= 12) return "text-red-400 bg-red-500/10 border-red-500/20";
+  if (level >= 8) return "text-orange-400 bg-orange-500/10 border-orange-500/20";
+  if (level >= 4) return "text-yellow-400 bg-yellow-500/10 border-yellow-500/20";
+  return "text-blue-400 bg-blue-500/10 border-blue-500/20";
+}
+
+function severityLabel(level: number): string {
+  if (level >= 12) return "Critical";
+  if (level >= 8) return "High";
+  if (level >= 4) return "Medium";
+  return "Low";
+}
+
+// Status badge component
+function StatusBadge({ status }: { status: string }) {
+  const config: Record<string, { icon: typeof Clock; color: string; label: string }> = {
+    queued: { icon: Clock, color: "text-amber-400 bg-amber-500/10 border-amber-500/20", label: "Queued" },
+    processing: { icon: Loader2, color: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20", label: "Analyzing" },
+    completed: { icon: CheckCircle2, color: "text-green-400 bg-green-500/10 border-green-500/20", label: "Completed" },
+    failed: { icon: XCircle, color: "text-red-400 bg-red-500/10 border-red-500/20", label: "Failed" },
+    dismissed: { icon: Trash2, color: "text-muted-foreground bg-white/5 border-white/10", label: "Dismissed" },
+  };
+
+  const c = config[status] ?? config.queued;
+  const Icon = c.icon;
+
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-mono ${c.color}`}>
+      <Icon className={`h-2.5 w-2.5 ${status === "processing" ? "animate-spin" : ""}`} />
+      {c.label}
+    </span>
+  );
+}
+
+// Queue item card
+function QueueItemCard({
+  item,
+  onAnalyze,
+  onDismiss,
+  isProcessing,
+}: {
+  item: {
+    id: number;
+    alertId: string;
+    ruleId: string;
+    ruleDescription: string | null;
+    ruleLevel: number;
+    agentId: string | null;
+    agentName: string | null;
+    alertTimestamp: string | null;
+    rawJson: Record<string, unknown> | null;
+    status: string;
+    triageResult: Record<string, unknown> | null;
+    queuedAt: Date;
+    processedAt: Date | null;
+    completedAt: Date | null;
+  };
+  onAnalyze: (id: number) => void;
+  onDismiss: (id: number) => void;
+  isProcessing: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [showRaw, setShowRaw] = useState(false);
+  const [, navigate] = useLocation();
+
+  const triage = item.triageResult as {
+    answer?: string;
+    reasoning?: string;
+    trustScore?: number;
+    confidence?: number;
+    safetyStatus?: string;
+    suggestedFollowUps?: string[];
+  } | null;
+
+  const handleAnalyzeInWalter = () => {
+    // Navigate to Walter with the alert context pre-loaded
+    const alertSummary = `Triage alert ${item.alertId}: Rule ${item.ruleId} (Level ${item.ruleLevel}) - ${item.ruleDescription ?? "Unknown"} on agent ${item.agentId ?? "unknown"} (${item.agentName ?? "unknown"})`;
+    navigate(`/analyst?q=${encodeURIComponent(alertSummary)}`);
+  };
+
+  return (
+    <div className={`glass-panel rounded-xl overflow-hidden transition-all ${
+      item.status === "processing" ? "ring-1 ring-cyan-500/30 shadow-[0_0_20px_rgba(34,211,238,0.1)]" : ""
+    }`}>
+      {/* Header */}
+      <div className="px-4 py-3 flex items-center gap-3">
+        {/* Severity indicator */}
+        <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center border ${severityColor(item.ruleLevel)}`}>
+          <span className="text-sm font-mono font-bold">{item.ruleLevel}</span>
+        </div>
+
+        {/* Alert info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-foreground font-medium truncate max-w-md">
+              {item.ruleDescription ?? `Rule ${item.ruleId}`}
+            </span>
+            <StatusBadge status={item.status} />
+          </div>
+          <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground font-mono">
+            <span>Rule {item.ruleId}</span>
+            <span className="w-1 h-1 rounded-full bg-white/20" />
+            <span>Agent {item.agentId ?? "—"} ({item.agentName ?? "—"})</span>
+            <span className="w-1 h-1 rounded-full bg-white/20" />
+            <span>{item.alertTimestamp ? new Date(item.alertTimestamp).toLocaleString() : "—"}</span>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {item.status === "queued" && (
+            <>
+              <button
+                onClick={() => onAnalyze(item.id)}
+                disabled={isProcessing}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-300 text-xs font-medium hover:bg-purple-500/25 transition-all disabled:opacity-50"
+              >
+                {isProcessing ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Play className="h-3.5 w-3.5" />
+                )}
+                Analyze
+              </button>
+              <button
+                onClick={() => onDismiss(item.id)}
+                className="p-1.5 rounded-lg border border-white/10 text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all"
+                title="Dismiss"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
+          {(item.status === "completed" || item.status === "failed") && (
+            <button
+              onClick={handleAnalyzeInWalter}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs font-medium hover:bg-cyan-500/20 transition-all"
+            >
+              <ArrowRight className="h-3.5 w-3.5" />
+              Open in Walter
+            </button>
+          )}
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="p-1.5 rounded-lg border border-white/10 text-muted-foreground hover:bg-white/5 transition-all"
+          >
+            {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Processing indicator */}
+      {item.status === "processing" && (
+        <div className="px-4 pb-2">
+          <div className="h-1 rounded-full bg-white/5 overflow-hidden">
+            <div className="h-full rounded-full bg-gradient-to-r from-purple-500 via-cyan-500 to-amber-500 animate-shimmer-slide" style={{ width: "60%", backgroundSize: "200% 100%" }} />
+          </div>
+          <p className="text-[10px] text-cyan-400 font-mono mt-1 animate-pulse">Walter is analyzing this alert...</p>
+        </div>
+      )}
+
+      {/* Expanded content */}
+      {expanded && (
+        <div className="border-t border-white/5 px-4 py-3 space-y-3">
+          {/* Triage result */}
+          {triage?.answer && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-3.5 w-3.5 text-purple-400" />
+                <span className="text-xs font-medium text-foreground">Walter's Triage Report</span>
+                {triage.trustScore != null && (
+                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full border ${
+                    triage.trustScore >= 0.7 ? "text-green-400 bg-green-500/10 border-green-500/20" :
+                    triage.trustScore >= 0.4 ? "text-yellow-400 bg-yellow-500/10 border-yellow-500/20" :
+                    "text-red-400 bg-red-500/10 border-red-500/20"
+                  }`}>
+                    Trust {(triage.trustScore * 100).toFixed(0)}%
+                  </span>
+                )}
+                {triage.confidence != null && (
+                  <span className="text-[10px] font-mono text-muted-foreground">
+                    Conf {(triage.confidence * 100).toFixed(0)}%
+                  </span>
+                )}
+              </div>
+              <div className="rounded-lg bg-black/30 border border-white/5 px-3 py-2 text-sm text-foreground prose prose-invert prose-sm max-w-none prose-headings:text-purple-200 prose-strong:text-foreground prose-code:text-cyan-300 prose-code:bg-black/30 prose-code:px-1 prose-code:py-0.5 prose-code:rounded">
+                <Streamdown>{triage.answer}</Streamdown>
+              </div>
+              {triage.suggestedFollowUps && triage.suggestedFollowUps.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {triage.suggestedFollowUps.map((q, i) => (
+                    <button
+                      key={i}
+                      onClick={() => navigate(`/analyst?q=${encodeURIComponent(q)}`)}
+                      className="text-[10px] px-2 py-1 rounded-lg border border-purple-500/20 bg-purple-500/5 text-purple-300 hover:bg-purple-500/15 transition-all"
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Raw JSON toggle */}
+          <div>
+            <button
+              onClick={() => setShowRaw(!showRaw)}
+              className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <FileJson className="h-3 w-3" />
+              {showRaw ? "Hide" : "Show"} Raw Alert JSON
+            </button>
+            {showRaw && item.rawJson && (
+              <pre className="mt-2 rounded-lg bg-black/40 border border-white/5 p-3 text-[10px] font-mono text-muted-foreground overflow-x-auto max-h-64 overflow-y-auto">
+                {JSON.stringify(item.rawJson, null, 2)}
+              </pre>
+            )}
+          </div>
+
+          {/* Timing info */}
+          <div className="flex items-center gap-4 text-[10px] text-muted-foreground font-mono">
+            <span>Queued: {new Date(item.queuedAt).toLocaleString()}</span>
+            {item.processedAt && <span>Started: {new Date(item.processedAt).toLocaleString()}</span>}
+            {item.completedAt && <span>Completed: {new Date(item.completedAt).toLocaleString()}</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Main page
+export default function AlertQueue() {
+  const utils = trpc.useUtils();
+  const [processingId, setProcessingId] = useState<number | null>(null);
+  const [, navigate] = useLocation();
+
+  const listQuery = trpc.alertQueue.list.useQuery(undefined, {
+    refetchInterval: 10_000,
+    staleTime: 5_000,
+  });
+
+  const processMutation = trpc.alertQueue.process.useMutation({
+    onMutate: ({ id }) => setProcessingId(id),
+    onSuccess: () => {
+      toast.success("Walter analysis complete", {
+        description: "Expand the queue item to view the triage report",
+      });
+      utils.alertQueue.list.invalidate();
+      utils.alertQueue.count.invalidate();
+    },
+    onError: (err) => {
+      toast.error("Analysis failed", { description: err.message });
+    },
+    onSettled: () => setProcessingId(null),
+  });
+
+  const dismissMutation = trpc.alertQueue.remove.useMutation({
+    onSuccess: () => {
+      toast.info("Alert dismissed from queue");
+      utils.alertQueue.list.invalidate();
+      utils.alertQueue.count.invalidate();
+    },
+  });
+
+  const clearHistoryMutation = trpc.alertQueue.clearHistory.useMutation({
+    onSuccess: () => {
+      toast.info("Queue history cleared");
+      utils.alertQueue.list.invalidate();
+      utils.alertQueue.count.invalidate();
+    },
+  });
+
+  const handleAnalyze = useCallback((id: number) => {
+    processMutation.mutate({ id });
+  }, [processMutation]);
+
+  const handleDismiss = useCallback((id: number) => {
+    dismissMutation.mutate({ id });
+  }, [dismissMutation]);
+
+  const items = listQuery.data?.items ?? [];
+  const activeCount = listQuery.data?.total ?? 0;
+  const queuedItems = items.filter(i => i.status === "queued" || i.status === "processing");
+  const completedItems = items.filter(i => i.status === "completed" || i.status === "failed" || i.status === "dismissed");
+
+  return (
+    <div className="flex flex-col h-[calc(100vh-3.5rem)]">
+      {/* Header */}
+      <div className="flex-shrink-0 px-6 py-4 border-b border-white/5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-purple-500/15 border border-purple-500/30 flex items-center justify-center">
+              <Inbox className="w-5 h-5 text-purple-400" />
+            </div>
+            <div>
+              <h1 className="text-lg font-display font-bold text-foreground">Walter Queue</h1>
+              <p className="text-xs text-muted-foreground">
+                {activeCount}/10 alerts queued · Click "Analyze" to trigger Walter's pipeline
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => listQuery.refetch()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 text-xs text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${listQuery.isFetching ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+            {completedItems.length > 0 && (
+              <button
+                onClick={() => clearHistoryMutation.mutate()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 text-xs text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Clear History
+              </button>
+            )}
+            <button
+              onClick={() => navigate("/alerts")}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 text-xs text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
+            >
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Alerts Timeline
+            </button>
+          </div>
+        </div>
+
+        {/* Queue depth indicator */}
+        <div className="mt-3 flex items-center gap-2">
+          {Array.from({ length: 10 }, (_, i) => (
+            <div
+              key={i}
+              className={`h-1.5 flex-1 rounded-full transition-all ${
+                i < activeCount
+                  ? "bg-purple-500/60 shadow-[0_0_4px_rgba(168,85,247,0.3)]"
+                  : "bg-white/5"
+              }`}
+            />
+          ))}
+          <span className="text-[10px] font-mono text-muted-foreground ml-1">{activeCount}/10</span>
+        </div>
+      </div>
+
+      {/* Queue content */}
+      <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="max-w-5xl mx-auto space-y-6">
+          {/* Empty state */}
+          {items.length === 0 && !listQuery.isLoading && (
+            <div className="flex flex-col items-center justify-center py-20">
+              <div className="w-16 h-16 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center mb-4">
+                <Brain className="w-8 h-8 text-purple-400/50" />
+              </div>
+              <h3 className="text-lg font-display font-semibold text-foreground mb-1">No Alerts Queued</h3>
+              <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
+                Send alerts to Walter from the Alerts Timeline using the <Brain className="inline h-3 w-3 text-purple-400" /> button on each alert row.
+              </p>
+              <button
+                onClick={() => navigate("/alerts")}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-300 text-sm hover:bg-purple-500/25 transition-all"
+              >
+                <AlertTriangle className="h-4 w-4" />
+                Go to Alerts Timeline
+              </button>
+            </div>
+          )}
+
+          {/* Loading state */}
+          {listQuery.isLoading && (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="h-6 w-6 text-purple-400 animate-spin" />
+            </div>
+          )}
+
+          {/* Active queue */}
+          {queuedItems.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Activity className="h-4 w-4 text-purple-400" />
+                <h2 className="text-sm font-medium text-foreground">Active Queue</h2>
+                <span className="text-[10px] font-mono text-muted-foreground">({queuedItems.length})</span>
+              </div>
+              <div className="space-y-2">
+                {queuedItems.map(item => (
+                  <QueueItemCard
+                    key={item.id}
+                    item={item}
+                    onAnalyze={handleAnalyze}
+                    onDismiss={handleDismiss}
+                    isProcessing={processingId === item.id || processMutation.isPending}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Completed/history */}
+          {completedItems.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <CheckCircle2 className="h-4 w-4 text-green-400" />
+                <h2 className="text-sm font-medium text-foreground">Analysis History</h2>
+                <span className="text-[10px] font-mono text-muted-foreground">({completedItems.length})</span>
+              </div>
+              <div className="space-y-2">
+                {completedItems.map(item => (
+                  <QueueItemCard
+                    key={item.id}
+                    item={item}
+                    onAnalyze={handleAnalyze}
+                    onDismiss={handleDismiss}
+                    isProcessing={false}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

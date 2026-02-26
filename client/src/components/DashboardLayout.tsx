@@ -49,6 +49,7 @@ import {
   Database,
   Settings,
   Gauge,
+  Inbox,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -59,6 +60,35 @@ import { Button } from "./ui/button";
  * LLM Health Indicator — small dot showing custom LLM endpoint status.
  * Polls every 30s. Green = online, Red = offline, Amber = disabled.
  */
+/**
+ * Alert Queue Badge — shows the number of alerts waiting for Walter analysis.
+ * Clickable to navigate to the queue page.
+ */
+function AlertQueueBadge() {
+  const countQuery = trpc.alertQueue.count.useQuery(undefined, {
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  });
+  const [, navigate] = useLocation();
+
+  const count = countQuery.data?.count ?? 0;
+  if (count === 0) return null;
+
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        navigate("/alert-queue");
+      }}
+      className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[10px] font-mono hover:bg-purple-500/30 transition-all"
+      title={`${count} alert${count !== 1 ? "s" : ""} queued for Walter`}
+    >
+      <Inbox className="h-2.5 w-2.5" />
+      <span>{count}</span>
+    </button>
+  );
+}
+
 function LLMHealthDot() {
   const healthQuery = trpc.llm.healthCheck.useQuery(undefined, {
     refetchInterval: 30_000,
@@ -109,10 +139,11 @@ const menuItems = [
   { icon: Monitor, label: "IT Hygiene", path: "/hygiene", group: "Posture" },
   { icon: Server, label: "Cluster Health", path: "/cluster", group: "System" },
   { icon: HeartPulse, label: "System Status", path: "/status", group: "System" },
-  { icon: Brain, label: "Security Analyst", path: "/analyst", group: "Intelligence" },
+  { icon: Brain, label: "Security Analyst", path: "/analyst", group: "Intelligence", hasQueueBadge: true },
   { icon: Network, label: "Knowledge Graph", path: "/graph", group: "Intelligence" },
   { icon: FolderSearch, label: "Investigations", path: "/investigations", group: "Intelligence" },
   { icon: Database, label: "Data Pipeline", path: "/pipeline", group: "Intelligence" },
+  { icon: Inbox, label: "Walter Queue", path: "/alert-queue", group: "Intelligence" },
   { icon: Gauge, label: "Token Usage", path: "/admin/token-usage", group: "Admin" },
   { icon: UserCog, label: "User Management", path: "/admin/users", group: "Admin" },
   { icon: Settings, label: "Connection Settings", path: "/admin/settings", group: "Admin" },
@@ -327,6 +358,9 @@ function DashboardLayoutContent({
                             }`}
                           />
                           <span className="text-sm">{item.label}</span>
+                          {(item as typeof menuItems[number] & { hasQueueBadge?: boolean }).hasQueueBadge && (
+                            <AlertQueueBadge />
+                          )}
                           {(item.path === "/analyst" || item.path === "/assistant") && (
                             <LLMHealthDot />
                           )}

@@ -487,3 +487,57 @@ export const llmUsage = mysqlTable("llm_usage", {
 
 export type LlmUsage = typeof llmUsage.$inferSelect;
 export type InsertLlmUsage = typeof llmUsage.$inferInsert;
+
+/**
+ * Alert Queue — 10-deep FIFO queue for alerts awaiting Walter analysis.
+ * Analysts queue alerts from the Alerts Timeline, then click to trigger
+ * Walter's full agentic pipeline on demand. Max 10 items; oldest evicted.
+ */
+export const alertQueue = mysqlTable("alert_queue", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Wazuh alert ID (from _id or id field) */
+  alertId: varchar("alertId", { length: 128 }).notNull(),
+  /** Rule ID that fired */
+  ruleId: varchar("ruleId", { length: 32 }).notNull(),
+  /** Rule description */
+  ruleDescription: text("ruleDescription"),
+  /** Rule severity level (0-15) */
+  ruleLevel: int("ruleLevel").default(0).notNull(),
+  /** Agent ID */
+  agentId: varchar("agentId", { length: 16 }),
+  /** Agent name */
+  agentName: varchar("agentName", { length: 128 }),
+  /** Alert timestamp from Wazuh */
+  alertTimestamp: varchar("alertTimestamp", { length: 64 }),
+  /** Full raw alert JSON for Walter context */
+  rawJson: json("rawJson").$type<Record<string, unknown>>(),
+  /** Queue status: queued → processing → completed → failed → dismissed */
+  status: mysqlEnum("status", ["queued", "processing", "completed", "failed", "dismissed"]).default("queued").notNull(),
+  /** Walter's triage result (stored after analysis completes) */
+  triageResult: json("triageResult").$type<{
+    answer: string;
+    reasoning?: string;
+    trustScore?: number;
+    confidence?: number;
+    safetyStatus?: string;
+    agentSteps?: Array<Record<string, unknown>>;
+    sources?: Array<Record<string, unknown>>;
+    suggestedFollowUps?: string[];
+    provenance?: Record<string, unknown>;
+  }>(),
+  /** User who queued this alert */
+  queuedBy: int("queuedBy"),
+  /** When the alert was queued */
+  queuedAt: timestamp("queuedAt").defaultNow().notNull(),
+  /** When Walter started processing */
+  processedAt: timestamp("processedAt"),
+  /** When Walter completed analysis */
+  completedAt: timestamp("completedAt"),
+}, (table) => ([
+  index("aq_status_idx").on(table.status),
+  index("aq_alertId_idx").on(table.alertId),
+  index("aq_queuedAt_idx").on(table.queuedAt),
+]));
+
+export type AlertQueueItem = typeof alertQueue.$inferSelect;
+export type InsertAlertQueueItem = typeof alertQueue.$inferInsert;

@@ -14,6 +14,7 @@ import { adminUsersRouter } from "./admin/adminUsersRouter";
 import { graphRouter } from "./graph/graphRouter";
 import { connectionSettingsRouter } from "./admin/connectionSettingsRouter";
 import { llmRouter } from "./llm/llmRouter";
+import { alertQueueRouter } from "./alertQueue/alertQueueRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -65,6 +66,9 @@ export const appRouter = router({
 
   // LLM health monitoring and token usage tracking
   llm: llmRouter,
+
+  // Alert-to-Walter queue (10-deep, human-initiated analysis)
+  alertQueue: alertQueueRouter,
 });
 
 export type AppRouter = typeof appRouter;

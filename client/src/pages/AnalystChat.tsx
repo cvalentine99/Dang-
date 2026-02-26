@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { SoundEngine } from "@/lib/soundEngine";
+import { useSearch } from "wouter";
 import {
   Send, Bot, User, ChevronDown, ChevronRight, FileJson, Lightbulb, Loader2,
   AlertTriangle, Database, Search, Sparkles, Copy, Check, Shield, ShieldAlert,
@@ -845,6 +846,21 @@ export default function AnalystChat(): React.JSX.Element {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const analystMutation = trpc.graph.analystQuery.useMutation();
+
+  // Handle pre-loaded query from URL (e.g., from Alert Queue)
+  const searchString = useSearch();
+  useEffect(() => {
+    const params = new URLSearchParams(searchString);
+    const preloadedQuery = params.get("q");
+    if (preloadedQuery && !isAnalyzing && messages.length === 0) {
+      // Clear the URL param to prevent re-triggering
+      const url = new URL(window.location.href);
+      url.searchParams.delete("q");
+      window.history.replaceState({}, "", url.pathname);
+      // Auto-send the query
+      handleSend(preloadedQuery);
+    }
+  }, [searchString]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-scroll to bottom
   useEffect(() => {

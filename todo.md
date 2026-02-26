@@ -1153,3 +1153,25 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Write vitest tests for health check and usage tracking (12 new tests)
 - [x] Verify TypeScript clean (0 errors), 251/252 tests passing (1 pre-existing OTX timeout)
 - [x] Save checkpoint
+
+## Phase: Alert-to-Walter Queue (10-deep)
+- [x] Create alert_queue table (alertId, ruleId, ruleDescription, ruleLevel, agentId, agentName, rawJson, status, triageResult, timestamps)
+- [x] Queue max depth = 10, FIFO eviction (oldest queued item dismissed when full)
+- [x] Duplicate prevention (same alertId not re-queued)
+- [x] Status flow: queued → processing → completed/failed
+- [x] Build tRPC procedures: alertQueue.list, enqueue, remove, process, count, clearHistory
+- [x] Process triggers runAnalystPipeline with rich context prompt (MITRE, IPs, rule groups, raw JSON capped at 4000 chars)
+- [x] Triage result stored with trust score, confidence, safety status, suggested follow-ups
+- [x] Add "Send to Walter" (Brain icon) button on each alert row in Alerts Timeline
+- [x] Toast notification on successful queue with link to queue page
+- [x] AlertQueueBadge in sidebar (shows count, clickable to /alert-queue)
+- [x] "Walter Queue" nav entry in sidebar under Intelligence group
+- [x] AlertQueue page (/alert-queue) with queue depth indicator, active queue, analysis history
+- [x] Expandable triage reports with Streamdown markdown rendering
+- [x] Raw JSON viewer toggle per queue item
+- [x] "Open in Walter" button navigates to /analyst?q= with pre-loaded context
+- [x] AnalystChat accepts ?q= URL parameter to auto-send pre-loaded queries from queue
+- [x] Clear History button removes completed/failed/dismissed items
+- [x] Write vitest tests for queue logic — 13 new tests
+- [x] Verify TypeScript clean (0 errors), 264/265 tests passing (1 pre-existing OTX timeout)
+- [x] Save checkpoint
