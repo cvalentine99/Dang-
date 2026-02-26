@@ -1124,3 +1124,16 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Replay button shows on completed (non-loading) messages with agent steps
 - [x] Verify TypeScript clean (0 errors), 221 tests passing (11 new sound engine tests)
 - [x] Save checkpoint
+
+## Phase: LLM Connection Configuration in Settings
+- [x] Add LLM_HOST, LLM_PORT, LLM_MODEL, LLM_ENABLED env vars via secrets
+- [x] Extended connection_settings table with 'llm' category (no new table needed)
+- [x] Extended connectionSettingsRouter with 'llm' category + testLLMConnection
+- [x] Built llmService.ts with invokeLLMWithFallback (custom → built-in fallback)
+- [x] Added LLM panel to AdminSettings.tsx with AI Engine section header
+- [x] Fields: host, port, model, protocol, api_key (AES-256 encrypted), enabled toggle
+- [x] Test Connection validates /v1/models then /v1/chat/completions
+- [x] Integrated into both agenticPipeline.ts and hybridragRouter.ts
+- [x] 18 new tests: llmConfig.test.ts (5) + llmService.test.ts (13)
+- [x] TypeScript clean (0 errors), 239/240 tests passing (1 pre-existing OTX timeout)
+- [ ] Save checkpoint

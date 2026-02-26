@@ -19,8 +19,9 @@ import {
 } from "./connectionSettingsService";
 import axios from "axios";
 import https from "https";
+import { testLLMConnection } from "../llm/llmService";
 
-const categorySchema = z.enum(["wazuh_manager", "wazuh_indexer"]);
+const categorySchema = z.enum(["wazuh_manager", "wazuh_indexer", "llm"]);
 
 export const connectionSettingsRouter = router({
   /**
@@ -37,7 +38,7 @@ export const connectionSettingsRouter = router({
       const hasPassword: Record<string, boolean> = {};
 
       for (const [key, value] of Object.entries(values)) {
-        if (key === "pass" || key === "password") {
+        if (key === "pass" || key === "password" || key === "api_key") {
           maskedValues[key] = "";
           hasPassword[key] = !!value;
         } else {
@@ -102,6 +103,11 @@ export const connectionSettingsRouter = router({
       const merged: Record<string, string> = { ...effective.values };
       for (const [key, value] of Object.entries(settings)) {
         if (value) merged[key] = value;
+      }
+
+      // LLM category has its own test logic (no user/pass required)
+      if (category === "llm") {
+        return testLLMConnection(merged);
       }
 
       const host = merged.host;

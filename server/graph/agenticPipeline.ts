@@ -13,10 +13,11 @@
  * - Output validator: Post-generation scan for blocked patterns
  * - Confidence gate: Minimum threshold before presenting findings
  *
- * Uses the built-in invokeLLM helper (Claude) as the cognitive engine.
+ * Uses invokeLLMWithFallback which routes to custom LLM (e.g., Nemotron3 Nano)
+ * when configured, with automatic fallback to the built-in LLM.
  */
 
-import { invokeLLM } from "../_core/llm";
+import { invokeLLMWithFallback as invokeLLM } from "../llm/llmService";
 import { searchGraph, getGraphStats, getRiskAnalysis, getEndpoints, getResourceOverview, getUseCases, getErrorPatterns } from "./graphQueryService";
 import {
   getEffectiveIndexerConfig,

@@ -17,12 +17,8 @@ import { nanoid } from "nanoid";
 import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { analystNotes, ragSessions } from "../../drizzle/schema";
-import { invokeLLM } from "../_core/llm";
+import { invokeLLMWithFallback, getEffectiveLLMConfig } from "../llm/llmService";
 import { isWazuhConfigured, wazuhGet, getWazuhConfig, getEffectiveWazuhConfig } from "../wazuh/wazuhClient";
-
-// ── Nemotron 3 Nano config ────────────────────────────────────────────────────
-const NEMOTRON_BASE_URL = process.env.NEMOTRON_BASE_URL ?? "http://localhost:11434";
-const NEMOTRON_MODEL = process.env.NEMOTRON_MODEL ?? "unsloth/Nemotron-3-Nano-30B-A3B-GGUF";
 
 interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -30,48 +26,41 @@ interface ChatMessage {
 }
 
 /**
- * Try the local Nemotron 3 Nano model via Ollama-compatible API.
- * Falls back to Manus LLM if unavailable.
+ * Call the LLM using the unified service (custom endpoint → built-in fallback).
+ * Configuration is managed through Connection Settings UI.
  */
-async function callNemotron(messages: ChatMessage[]): Promise<string> {
-  try {
-    const response = await axios.post(
-      `${NEMOTRON_BASE_URL}/v1/chat/completions`,
-      {
-        model: NEMOTRON_MODEL,
-        messages,
-        temperature: 0.3,
-        max_tokens: 2048,
-        stream: false,
-      },
-      { timeout: 30_000, headers: { "Content-Type": "application/json" } }
-    );
-    const content = response.data?.choices?.[0]?.message?.content;
-    if (!content) throw new Error("Empty response from Nemotron");
-    return content;
-  } catch {
-    // Fallback to Manus built-in LLM
-    const fallbackMessages = messages.map(m => ({
+async function callLLM(messages: ChatMessage[]): Promise<string> {
+  const result = await invokeLLMWithFallback({
+    messages: messages.map(m => ({
       role: m.role as "system" | "user" | "assistant",
       content: m.content as string,
-    }));
-    const result = await invokeLLM({ messages: fallbackMessages });
-    const rawContent = result.choices?.[0]?.message?.content;
-    return typeof rawContent === 'string' ? rawContent : "Unable to generate response.";
-  }
+    })),
+    max_tokens: 2048,
+  });
+  const rawContent = result.choices?.[0]?.message?.content;
+  return typeof rawContent === 'string' ? rawContent : "Unable to generate response.";
 }
 
 /**
- * Check if the local Nemotron model is available.
+ * Check if the custom LLM is configured and reachable.
  */
-async function checkNemotronAvailability(): Promise<{ available: boolean; model: string; endpoint: string }> {
+async function checkLLMAvailability(): Promise<{ available: boolean; model: string; endpoint: string; enabled: boolean }> {
   try {
-    const response = await axios.get(`${NEMOTRON_BASE_URL}/api/tags`, { timeout: 3_000 });
-    const models: Array<{ name: string }> = response.data?.models ?? [];
-    const available = models.some(m => m.name.includes("nemotron") || m.name.includes("nano"));
-    return { available, model: NEMOTRON_MODEL, endpoint: NEMOTRON_BASE_URL };
+    const config = await getEffectiveLLMConfig();
+    if (!config.enabled || !config.host) {
+      return { available: false, model: config.model, endpoint: `${config.protocol}://${config.host}:${config.port}`, enabled: false };
+    }
+    const url = `${config.protocol}://${config.host}:${config.port}/v1/models`;
+    const response = await fetch(url, { signal: AbortSignal.timeout(3000) });
+    return {
+      available: response.ok,
+      model: config.model,
+      endpoint: `${config.protocol}://${config.host}:${config.port}`,
+      enabled: true,
+    };
   } catch {
-    return { available: false, model: NEMOTRON_MODEL, endpoint: NEMOTRON_BASE_URL };
+    const config = await getEffectiveLLMConfig();
+    return { available: false, model: config.model, endpoint: `${config.protocol}://${config.host}:${config.port}`, enabled: config.enabled };
   }
 }
 
@@ -135,11 +124,11 @@ export const hybridragRouter = router({
 
   // ── Model status ────────────────────────────────────────────────────────────
   modelStatus: publicProcedure.query(async () => {
-    const nemotron = await checkNemotronAvailability();
+    const llmStatus = await checkLLMAvailability();
     return {
-      nemotron,
+      nemotron: llmStatus,
       fallbackAvailable: true,
-      activeModel: nemotron.available ? NEMOTRON_MODEL : "manus-builtin",
+      activeModel: llmStatus.available && llmStatus.enabled ? llmStatus.model : "manus-builtin",
     };
   }),
 
@@ -190,7 +179,7 @@ export const hybridragRouter = router({
       ];
 
       // Call model
-      const response = await callNemotron(messages);
+      const response = await callLLM(messages);
 
       // Persist to DB
       if (db) {
@@ -212,7 +201,7 @@ export const hybridragRouter = router({
       return {
         sessionId: input.sessionId,
         response,
-        model: (await checkNemotronAvailability()).available ? NEMOTRON_MODEL : "manus-builtin",
+        model: (await checkLLMAvailability()).available ? (await getEffectiveLLMConfig()).model : "manus-builtin",
       };
     }),
 

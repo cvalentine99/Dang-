@@ -44,7 +44,7 @@ export function invalidateCache(category?: string): void {
 }
 
 // ── Sensitive keys that should be encrypted ─────────────────────────────────
-const SENSITIVE_KEYS = new Set(["pass", "password"]);
+const SENSITIVE_KEYS = new Set(["pass", "password", "api_key"]);
 
 // ── Environment variable mapping ────────────────────────────────────────────
 const ENV_MAP: Record<string, Record<string, string>> = {
@@ -61,12 +61,19 @@ const ENV_MAP: Record<string, Record<string, string>> = {
     pass: "WAZUH_INDEXER_PASS",
     protocol: "WAZUH_INDEXER_PROTOCOL",
   },
+  llm: {
+    host: "LLM_HOST",
+    port: "LLM_PORT",
+    model: "LLM_MODEL",
+    enabled: "LLM_ENABLED",
+  },
 };
 
 // ── Default values ──────────────────────────────────────────────────────────
 const DEFAULTS: Record<string, Record<string, string>> = {
   wazuh_manager: { port: "55000" },
   wazuh_indexer: { port: "9200", protocol: "https" },
+  llm: { port: "30000", model: "unsloth/Nemotron-3-Nano-30B-A3B-GGUF", protocol: "http", enabled: "false" },
 };
 
 // ── Core CRUD ───────────────────────────────────────────────────────────────

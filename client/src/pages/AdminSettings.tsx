@@ -1,5 +1,5 @@
 /**
- * Connection Settings — Admin page for managing Wazuh Manager and Indexer connections.
+ * Connection Settings — Admin page for managing Wazuh Manager, Indexer, and LLM connections.
  * Allows admins to update credentials from the UI without restarting Docker.
  * Shows current source (database override vs environment variable vs default).
  */
@@ -22,21 +22,33 @@ import {
   Loader2,
   Info,
   Shield,
+  Brain,
+  Zap,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 
-type Category = "wazuh_manager" | "wazuh_indexer";
+type Category = "wazuh_manager" | "wazuh_indexer" | "llm";
+
+interface FieldDef {
+  key: string;
+  label: string;
+  placeholder: string;
+  type?: "text" | "password" | "number";
+  description?: string;
+  fullWidth?: boolean;
+}
 
 interface ConnectionPanelProps {
   category: Category;
   title: string;
   description: string;
   icon: React.ReactNode;
-  fields: Array<{
-    key: string;
-    label: string;
-    placeholder: string;
-    type?: "text" | "password" | "number";
-  }>;
+  fields: FieldDef[];
+  /** Optional toggle field key — renders an enable/disable toggle in the header */
+  toggleField?: string;
+  /** Optional accent color class override */
+  accentClass?: string;
 }
 
 function SourceBadge({ source }: { source?: "database" | "env" | "default" }) {
@@ -58,8 +70,7 @@ function SourceBadge({ source }: { source?: "database" | "env" | "default" }) {
   );
 }
 
-function ConnectionPanel({ category, title, description, icon, fields }: ConnectionPanelProps) {
-  // Using sonner toast
+function ConnectionPanel({ category, title, description, icon, fields, toggleField, accentClass }: ConnectionPanelProps) {
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [testResult, setTestResult] = useState<{
@@ -115,17 +126,24 @@ function ConnectionPanel({ category, title, description, icon, fields }: Connect
       for (const field of fields) {
         initial[field.key] = settingsQuery.data.values[field.key] ?? "";
       }
+      // Also load toggle field value if present
+      if (toggleField && settingsQuery.data.values[toggleField] !== undefined) {
+        initial[toggleField] = settingsQuery.data.values[toggleField];
+      }
       setFormValues(initial);
     }
-  }, [settingsQuery.data, fields]);
+  }, [settingsQuery.data, fields, toggleField]);
 
   const handleSave = () => {
-    // Only send non-empty values; skip empty password fields (keep existing)
     const toSave: Record<string, string> = {};
     for (const field of fields) {
       const val = formValues[field.key];
-      if (field.type === "password" && (!val || val === "")) continue; // Don't overwrite with empty
+      if (field.type === "password" && (!val || val === "")) continue;
       if (val !== undefined && val !== "") toSave[field.key] = val;
+    }
+    // Include toggle field
+    if (toggleField) {
+      toSave[toggleField] = formValues[toggleField] ?? "false";
     }
     updateMutation.mutate({ category, settings: toSave });
   };
@@ -133,10 +151,12 @@ function ConnectionPanel({ category, title, description, icon, fields }: Connect
   const handleTest = () => {
     setIsTesting(true);
     setTestResult(null);
-    // Use current form values for testing
     const testSettings: Record<string, string> = {};
     for (const field of fields) {
       testSettings[field.key] = formValues[field.key] ?? "";
+    }
+    if (toggleField) {
+      testSettings[toggleField] = formValues[toggleField] ?? "false";
     }
     testMutation.mutate({ category, settings: testSettings });
   };
@@ -147,20 +167,55 @@ function ConnectionPanel({ category, title, description, icon, fields }: Connect
     }
   };
 
+  const handleToggle = () => {
+    if (!toggleField) return;
+    const current = formValues[toggleField] === "true";
+    setFormValues((prev) => ({ ...prev, [toggleField]: current ? "false" : "true" }));
+  };
+
   const hasDbOverrides = settingsQuery.data
     ? Object.values(settingsQuery.data.sources).some((s) => s === "database")
     : false;
 
+  const isEnabled = toggleField ? formValues[toggleField] === "true" : true;
+
+  // Filter out toggle field from rendered fields
+  const renderFields = fields.filter(f => f.key !== toggleField);
+
   return (
-    <div className="glass-panel p-6 space-y-5">
+    <div className={`glass-panel p-6 space-y-5 ${!isEnabled && toggleField ? "opacity-70" : ""}`}>
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-primary/15 flex items-center justify-center">
+          <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${accentClass ?? "bg-primary/15"}`}>
             {icon}
           </div>
           <div>
-            <h3 className="font-display text-lg font-semibold text-foreground">{title}</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-display text-lg font-semibold text-foreground">{title}</h3>
+              {toggleField && (
+                <button
+                  onClick={handleToggle}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold transition-colors ${
+                    isEnabled
+                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                      : "bg-muted text-muted-foreground border border-border"
+                  }`}
+                >
+                  {isEnabled ? (
+                    <>
+                      <ToggleRight className="h-3 w-3" />
+                      ENABLED
+                    </>
+                  ) : (
+                    <>
+                      <ToggleLeft className="h-3 w-3" />
+                      DISABLED
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
           </div>
         </div>
@@ -180,8 +235,8 @@ function ConnectionPanel({ category, title, description, icon, fields }: Connect
 
       {/* Fields */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {fields.map((field) => (
-          <div key={field.key} className="space-y-1.5">
+        {renderFields.map((field) => (
+          <div key={field.key} className={`space-y-1.5 ${field.fullWidth ? "md:col-span-2" : ""}`}>
             <div className="flex items-center justify-between">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 {field.label}
@@ -225,6 +280,9 @@ function ConnectionPanel({ category, title, description, icon, fields }: Connect
                 </button>
               )}
             </div>
+            {field.description && (
+              <p className="text-[10px] text-muted-foreground/70">{field.description}</p>
+            )}
           </div>
         ))}
       </div>
@@ -293,7 +351,7 @@ export default function AdminSettings() {
           Connection Settings
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Configure Wazuh Manager and Indexer connections. Settings saved here override environment variables without requiring a Docker restart.
+          Configure Wazuh Manager, Indexer, and LLM connections. Settings saved here override environment variables without requiring a restart.
         </p>
       </div>
 
@@ -305,7 +363,7 @@ export default function AdminSettings() {
             <strong className="text-foreground">Priority order:</strong> Database overrides take precedence over environment variables, which take precedence over defaults.
           </p>
           <p>
-            Passwords are <strong className="text-foreground">AES-256 encrypted</strong> at rest. Use <strong className="text-foreground">Test Connection</strong> to validate credentials before saving.
+            Passwords and API keys are <strong className="text-foreground">AES-256 encrypted</strong> at rest. Use <strong className="text-foreground">Test Connection</strong> to validate credentials before saving.
           </p>
         </div>
       </div>
@@ -338,6 +396,33 @@ export default function AdminSettings() {
           { key: "protocol", label: "Protocol", placeholder: "https" },
         ]}
       />
+
+      {/* LLM / AI Engine */}
+      <div className="pt-2">
+        <div className="flex items-center gap-2 mb-4">
+          <Zap className="h-4 w-4 text-violet-400" />
+          <h2 className="text-lg font-display font-semibold text-foreground">AI Engine</h2>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/30 font-mono">
+            WALTER BACKEND
+          </span>
+        </div>
+        <ConnectionPanel
+          category="llm"
+          title="Custom LLM Endpoint"
+          description="Self-hosted OpenAI-compatible LLM (e.g., Nemotron3 Nano via llama.cpp / vLLM / Ollama). When enabled, Walter routes queries here first with fallback to built-in."
+          icon={<Brain className="h-5 w-5 text-violet-400" />}
+          accentClass="bg-violet-500/15"
+          toggleField="enabled"
+          fields={[
+            { key: "enabled", label: "Enabled", placeholder: "true", description: "Toggle managed by the header switch" },
+            { key: "host", label: "Host", placeholder: "192.168.50.110", description: "IP or hostname of your LLM server" },
+            { key: "port", label: "Port", placeholder: "30000", type: "number", description: "Port the LLM server listens on" },
+            { key: "model", label: "Model Name", placeholder: "unsloth/Nemotron-3-Nano-30B-A3B-GGUF", fullWidth: true, description: "Model identifier passed to the /v1/chat/completions endpoint" },
+            { key: "protocol", label: "Protocol", placeholder: "http", description: "http or https — most local servers use http" },
+            { key: "api_key", label: "API Key (optional)", placeholder: "sk-...", type: "password", description: "Bearer token if your LLM server requires authentication" },
+          ]}
+        />
+      </div>
     </div>
   );
 }
