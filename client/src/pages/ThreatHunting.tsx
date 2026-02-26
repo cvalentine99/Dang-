@@ -134,12 +134,30 @@ export default function ThreatHunting() {
   const logsQ = trpc.wazuh.managerLogs.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 30_000 });
   const mitreQ = trpc.wazuh.mitreTechniques.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 60_000 });
 
+  // Indexer queries for global vuln/syscheck search (threat hunting searches across ALL agents)
+  const indexerStatusQ = trpc.indexer.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
+  const isIndexerConnected = indexerStatusQ.data?.configured === true && indexerStatusQ.data?.healthy === true;
+
+  const vulnSearchQ = trpc.indexer.vulnSearch.useQuery(
+    { query: activeQuery || undefined, size: 200 },
+    { retry: false, staleTime: 30_000, enabled: isIndexerConnected && !!activeQuery }
+  );
+
   const agents = agentsQ.data;
   const rules = rulesQ.data;
   const logs = logsQ.data;
   const mitreTechniques = mitreQ.data;
-  const vulns: Record<string, unknown> = {}; // Vulns require agentId — no data without a specific agent query
-  const syscheck: Record<string, unknown> = {}; // Syscheck requires agentId — no data without a specific agent query
+
+  // Build vuln/syscheck data from indexer for correlation searches
+  const vulns = useMemo<Record<string, unknown>>(() => {
+    if (!vulnSearchQ.data?.data) return {};
+    const resp = vulnSearchQ.data.data as unknown as Record<string, unknown>;
+    const hits = (resp.hits as Record<string, unknown>) ?? {};
+    const hitArr = (hits.hits as Array<Record<string, unknown>>) ?? [];
+    return { data: { affected_items: hitArr.map(h => h._source ?? {}) } };
+  }, [vulnSearchQ.data]);
+
+  const syscheck: Record<string, unknown> = {}; // Syscheck FIM data comes from per-agent queries (not global indexer)
 
   // ── Correlation engine ────────────────────────────────────────────────────
   const correlationResults = useMemo<CorrelationHit[]>(() => {

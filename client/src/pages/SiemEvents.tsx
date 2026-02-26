@@ -109,6 +109,9 @@ export default function SiemEvents() {
   const statusQ = trpc.wazuh.status.useQuery();
   const isConfigured = !!(statusQ.data as Record<string, unknown>)?.configured;
 
+  const indexerStatusQ = trpc.indexer.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
+  const isIndexerConnected = indexerStatusQ.data?.configured === true && indexerStatusQ.data?.healthy === true;
+
   const rulesQ = trpc.wazuh.rules.useQuery(
     { limit: 500, offset: 0 },
     { enabled: isConfigured }
@@ -117,6 +120,22 @@ export default function SiemEvents() {
     { limit: 500, offset: 0 },
     { enabled: isConfigured }
   );
+
+  // ─── Indexer alert search (primary data source for SIEM events) ────────
+  const timeFrom = timeRange === "15m" ? "now-15m" : timeRange === "1h" ? "now-1h"
+    : timeRange === "6h" ? "now-6h" : timeRange === "24h" ? "now-24h"
+    : timeRange === "7d" ? "now-7d" : timeRange === "30d" ? "now-30d" : "now-1h";
+
+  const alertsSearchQ = trpc.indexer.alertsSearch.useQuery({
+    from: timeFrom, to: "now", size: pageSize, offset: page * pageSize,
+    query: searchQuery || undefined,
+    ruleLevel: severityFilter !== "all"
+      ? (severityFilter === "critical" ? 14 : severityFilter === "high" ? 10 : severityFilter === "medium" ? 7 : severityFilter === "low" ? 4 : 0)
+      : undefined,
+    agentId: agentFilter !== "all" ? agentFilter : undefined,
+    sortField: sortField === "level" ? "rule.level" : "timestamp",
+    sortOrder: sortDir,
+  }, { retry: false, staleTime: 15_000, enabled: isIndexerConnected });
 
   // OTX IOC lookup query
   const otxLookupQ = trpc.otx.indicatorLookup.useQuery(
@@ -146,9 +165,70 @@ export default function SiemEvents() {
     onError: (err) => toast.error(`Failed to delete: ${err.message}`),
   });
 
-  // ─── Data ────────────────────────────────────────────────────────────────
-  const events: SiemEvent[] = [];
-  const logSources: { name: string; category: string; count: number }[] = [];
+  // ─── Data (from Indexer) ─────────────────────────────────────────────────
+  const { events, totalEvents } = useMemo(() => {
+    if (!isIndexerConnected || !alertsSearchQ.data?.data) {
+      return { events: [] as SiemEvent[], totalEvents: 0 };
+    }
+    const resp = alertsSearchQ.data.data as unknown as Record<string, unknown>;
+    const hits = (resp.hits as Record<string, unknown>) ?? {};
+    const hitArr = (hits.hits as Array<Record<string, unknown>>) ?? [];
+    const total = typeof hits.total === "object"
+      ? Number((hits.total as Record<string, unknown>).value ?? 0)
+      : Number(hits.total ?? 0);
+
+    const mapped: SiemEvent[] = hitArr.map((h) => {
+      const src = (h._source ?? {}) as Record<string, unknown>;
+      const agent = (src.agent ?? {}) as Record<string, unknown>;
+      const rule = (src.rule ?? {}) as Record<string, unknown>;
+      const decoder = (src.decoder ?? {}) as Record<string, unknown>;
+      const mitre = (rule.mitre ?? {}) as Record<string, unknown>;
+      return {
+        id: String(h._id ?? ""),
+        timestamp: String(src.timestamp ?? ""),
+        full_log: String(src.full_log ?? ""),
+        location: String(src.location ?? ""),
+        agent: {
+          id: String(agent.id ?? ""),
+          name: String(agent.name ?? ""),
+          ip: String(agent.ip ?? ""),
+        },
+        rule: {
+          id: Number(rule.id ?? 0),
+          level: Number(rule.level ?? 0),
+          description: String(rule.description ?? ""),
+          firedtimes: Number(rule.firedtimes ?? 0),
+          groups: (rule.groups as string[]) ?? [],
+          pci_dss: (rule.pci_dss as string[]) ?? [],
+          gdpr: (rule.gdpr as string[]) ?? [],
+          hipaa: (rule.hipaa as string[]) ?? [],
+          mitre: {
+            id: (mitre.id as string[]) ?? [],
+            tactic: (mitre.tactic as string[]) ?? [],
+            technique: (mitre.technique as string[]) ?? [],
+          },
+        },
+        decoder: {
+          name: String(decoder.name ?? ""),
+          parent: String(decoder.parent ?? ""),
+        },
+        data: (src.data ?? {}) as Record<string, unknown>,
+      };
+    });
+
+    return { events: mapped, totalEvents: total };
+  }, [alertsSearchQ.data, isIndexerConnected]);
+
+  const logSources = useMemo(() => {
+    const counts: Record<string, { category: string; count: number }> = {};
+    events.forEach((e) => {
+      const name = e.decoder.parent || e.decoder.name || "unknown";
+      if (!counts[name]) counts[name] = { category: e.location, count: 0 };
+      counts[name].count++;
+    });
+    return Object.entries(counts).map(([name, v]) => ({ name, category: v.category, count: v.count }));
+  }, [events]);
+
   const rules = rulesQ.data;
   const agents = agentsQ.data;
 
@@ -203,8 +283,9 @@ export default function SiemEvents() {
     return result;
   }, [events, searchQuery, severityFilter, sourceFilter, agentFilter, mitreFilter, sortField, sortDir]);
 
-  const pagedEvents = filteredEvents.slice(page * pageSize, (page + 1) * pageSize);
-  const totalPages = Math.ceil(filteredEvents.length / pageSize);
+  // With indexer search, events are already one page. Client-side filters refine further.
+  const pagedEvents = filteredEvents;
+  const totalPages = Math.ceil(totalEvents / pageSize);
 
   // ─── Correlation Engine ──────────────────────────────────────────────────
   const getRelatedEvents = useCallback(
@@ -474,7 +555,7 @@ export default function SiemEvents() {
 
       {/* ── KPI Row ───────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <StatCard label="Total Events" value={events.length.toLocaleString()} icon={Layers} />
+        <StatCard label="Total Events" value={totalEvents.toLocaleString()} icon={Layers} />
         <StatCard
           label="Critical"
           value={stats.severityCounts.critical}
@@ -732,8 +813,8 @@ export default function SiemEvents() {
 
         <div className="mt-2 flex items-center justify-between">
           <span className="text-xs text-slate-500">
-            Showing {pagedEvents.length} of {filteredEvents.length} events
-            {filteredEvents.length !== events.length && ` (filtered from ${events.length} total)`}
+            Showing {pagedEvents.length} of {totalEvents.toLocaleString()} events
+            {filteredEvents.length !== events.length && ` (filtered from ${events.length} on page)`}
           </span>
           <ExportButton
             getData={() => filteredEvents.map(e => ({
