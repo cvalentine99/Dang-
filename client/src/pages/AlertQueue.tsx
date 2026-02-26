@@ -7,7 +7,7 @@
  */
 
 import { trpc } from "@/lib/trpc";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { Streamdown } from "streamdown";
@@ -352,20 +352,56 @@ export default function AlertQueue() {
     },
   });
 
-  // Splunk batch ticket creation
+  // Splunk batch ticket creation with progress tracking
   const splunkEnabled = trpc.splunk.isEnabled.useQuery(undefined, { staleTime: 60_000 });
-  const batchCreateMutation = trpc.splunk.batchCreateTickets.useMutation({
-    onSuccess: (result) => {
-      if (result.sent > 0) {
-        toast.success(`${result.sent} Splunk ticket${result.sent > 1 ? "s" : ""} created`, {
-          description: result.message,
+  const [isBatchRunning, setIsBatchRunning] = useState(false);
+
+  const batchProgress = trpc.splunk.batchProgress.useQuery(undefined, {
+    enabled: isBatchRunning,
+    refetchInterval: isBatchRunning ? 500 : false,
+    staleTime: 0,
+  });
+
+  // Stop polling when batch completes
+  useEffect(() => {
+    const status = batchProgress.data?.status;
+    if (status === "completed" || status === "failed") {
+      const p = batchProgress.data;
+      if (p && p.sent > 0) {
+        toast.success(`${p.sent} Splunk ticket${p.sent > 1 ? "s" : ""} created`, {
+          description: `${p.sent} sent, ${p.failed} failed out of ${p.total} total`,
         });
-      } else {
-        toast.info("No new tickets to create", { description: result.message });
+      } else if (p && status === "completed" && p.sent === 0) {
+        toast.info("No new tickets created");
+      } else if (status === "failed") {
+        toast.error("Batch ticket creation failed");
       }
+      setIsBatchRunning(false);
+      utils.alertQueue.list.invalidate();
+    }
+  }, [batchProgress.data?.status]);
+
+  const batchCreateMutation = trpc.splunk.batchCreateTickets.useMutation({
+    onMutate: () => {
+      setIsBatchRunning(true);
+    },
+    onSuccess: (result) => {
+      // Final toast handled by the useEffect above via batchProgress polling
+      // But if the batch was so fast that polling didn't catch "running", handle here
+      if (!isBatchRunning) {
+        if (result.sent > 0) {
+          toast.success(`${result.sent} Splunk ticket${result.sent > 1 ? "s" : ""} created`, {
+            description: result.message,
+          });
+        } else {
+          toast.info("No new tickets to create", { description: result.message });
+        }
+      }
+      setIsBatchRunning(false);
       utils.alertQueue.list.invalidate();
     },
     onError: (err) => {
+      setIsBatchRunning(false);
       toast.error("Batch ticket creation failed", { description: err.message });
     },
   });
@@ -416,23 +452,53 @@ export default function AlertQueue() {
               <RefreshCw className={`h-3.5 w-3.5 ${listQuery.isFetching ? "animate-spin" : ""}`} />
               Refresh
             </button>
-            {/* Batch Create All Tickets — only when Splunk enabled and eligible items exist */}
-            {splunkEnabled.data?.enabled && ticketEligibleCount > 0 && (
-              <button
-                onClick={() => batchCreateMutation.mutate()}
-                disabled={batchCreateMutation.isPending}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-medium hover:bg-emerald-500/20 transition-all disabled:opacity-50"
-                title={`Create Splunk tickets for ${ticketEligibleCount} completed triage report${ticketEligibleCount > 1 ? "s" : ""}`}
-              >
-                {batchCreateMutation.isPending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
+            {/* Batch Create All Tickets — progress bar when running, button when idle */}
+            {splunkEnabled.data?.enabled && (isBatchRunning || ticketEligibleCount > 0) && (
+              isBatchRunning && batchProgress.data ? (
+                <div className="flex items-center gap-3 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 min-w-[280px]">
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[11px] font-medium text-emerald-300">
+                        {batchProgress.data.completed}/{batchProgress.data.total} tickets created
+                      </span>
+                      <span className="text-[10px] text-emerald-400/70 font-mono">
+                        {batchProgress.data.percentage}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-black/30 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-emerald-400 transition-all duration-300 ease-out"
+                        style={{ width: `${batchProgress.data.percentage}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="text-[9px] text-muted-foreground font-mono truncate max-w-[160px]">
+                        {batchProgress.data.currentAlert
+                          ? `Processing: ${batchProgress.data.currentAlert}`
+                          : "Finalizing..."}
+                      </span>
+                      <span className="text-[9px] text-muted-foreground">
+                        {batchProgress.data.sent > 0 && (
+                          <span className="text-emerald-400">{batchProgress.data.sent} sent</span>
+                        )}
+                        {batchProgress.data.failed > 0 && (
+                          <span className="text-red-400 ml-1">{batchProgress.data.failed} failed</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : ticketEligibleCount > 0 ? (
+                <button
+                  onClick={() => batchCreateMutation.mutate()}
+                  disabled={batchCreateMutation.isPending}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-medium hover:bg-emerald-500/20 transition-all disabled:opacity-50"
+                  title={`Create Splunk tickets for ${ticketEligibleCount} completed triage report${ticketEligibleCount > 1 ? "s" : ""}`}
+                >
                   <Ticket className="h-3.5 w-3.5" />
-                )}
-                {batchCreateMutation.isPending
-                  ? "Creating Tickets..."
-                  : `Create All Tickets (${ticketEligibleCount})`}
-              </button>
+                  Create All Tickets ({ticketEligibleCount})
+                </button>
+              ) : null
             )}
             {completedItems.length > 0 && (
               <button

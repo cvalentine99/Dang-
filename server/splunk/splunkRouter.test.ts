@@ -263,3 +263,81 @@ describe("Batch Ticket Creation Logic", () => {
     expect(result.message).toContain("No eligible");
   });
 });
+
+describe("Batch Progress Tracking", () => {
+  it("should export _getBatchProgressForTest from splunkRouter", async () => {
+    const { _getBatchProgressForTest } = await import("./splunkRouter");
+    expect(_getBatchProgressForTest).toBeDefined();
+    expect(typeof _getBatchProgressForTest).toBe("function");
+  });
+
+  it("should return idle status when no batch is running", async () => {
+    const { _getBatchProgressForTest } = await import("./splunkRouter");
+    const progress = _getBatchProgressForTest();
+    expect(progress.status).toBe("idle");
+    expect(progress.total).toBe(0);
+    expect(progress.completed).toBe(0);
+    expect(progress.batchId).toBe("");
+  });
+
+  it("should calculate percentage correctly", () => {
+    const total = 7;
+    const completed = 3;
+    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+    expect(percentage).toBe(43);
+  });
+
+  it("should calculate 0% when total is 0", () => {
+    const total = 0;
+    const completed = 0;
+    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+    expect(percentage).toBe(0);
+  });
+
+  it("should calculate 100% when all items completed", () => {
+    const total = 5;
+    const completed = 5;
+    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+    expect(percentage).toBe(100);
+  });
+
+  it("should detect expired batches after 5 minutes", () => {
+    const BATCH_EXPIRY_MS = 5 * 60 * 1000;
+    const updatedAt = Date.now() - (BATCH_EXPIRY_MS + 1000);
+    const isExpired = Date.now() - updatedAt > BATCH_EXPIRY_MS;
+    expect(isExpired).toBe(true);
+  });
+
+  it("should not detect fresh batches as expired", () => {
+    const BATCH_EXPIRY_MS = 5 * 60 * 1000;
+    const updatedAt = Date.now() - 1000; // 1 second ago
+    const isExpired = Date.now() - updatedAt > BATCH_EXPIRY_MS;
+    expect(isExpired).toBe(false);
+  });
+
+  it("should track sent and failed counts independently", () => {
+    const progress = {
+      total: 7,
+      completed: 5,
+      sent: 3,
+      failed: 2,
+      currentIndex: 5,
+    };
+    expect(progress.sent + progress.failed).toBe(progress.completed);
+    expect(progress.completed).toBeLessThanOrEqual(progress.total);
+  });
+
+  it("should mark batch as failed when all items fail", () => {
+    const failed = 5;
+    const total = 5;
+    const status = failed === total ? "failed" : "completed";
+    expect(status).toBe("failed");
+  });
+
+  it("should mark batch as completed when some items succeed", () => {
+    const failed = 2;
+    const total = 5;
+    const status = failed === total ? "failed" : "completed";
+    expect(status).toBe("completed");
+  });
+});

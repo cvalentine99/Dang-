@@ -22,6 +22,67 @@ import { getDb } from "../db";
 import { alertQueue } from "../../drizzle/schema";
 import { eq, and, inArray, isNull, sql } from "drizzle-orm";
 
+/**
+ * In-memory batch progress tracker.
+ * Tracks the current state of a running batch ticket operation.
+ * Auto-expires after 5 minutes of inactivity.
+ */
+interface BatchProgress {
+  batchId: string;
+  status: "idle" | "running" | "completed" | "failed";
+  total: number;
+  completed: number;
+  sent: number;
+  failed: number;
+  currentAlert: string;
+  currentIndex: number;
+  startedAt: number;
+  updatedAt: number;
+  results: Array<{ id: number; alertId: string; ticketId?: string; error?: string }>;
+}
+
+const BATCH_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
+
+let currentBatch: BatchProgress = {
+  batchId: "",
+  status: "idle",
+  total: 0,
+  completed: 0,
+  sent: 0,
+  failed: 0,
+  currentAlert: "",
+  currentIndex: 0,
+  startedAt: 0,
+  updatedAt: 0,
+  results: [],
+};
+
+function resetBatch(): void {
+  currentBatch = {
+    batchId: "",
+    status: "idle",
+    total: 0,
+    completed: 0,
+    sent: 0,
+    failed: 0,
+    currentAlert: "",
+    currentIndex: 0,
+    startedAt: 0,
+    updatedAt: 0,
+    results: [],
+  };
+}
+
+function isBatchExpired(): boolean {
+  if (currentBatch.status === "idle") return false;
+  return Date.now() - currentBatch.updatedAt > BATCH_EXPIRY_MS;
+}
+
+// Exported for testing
+export function _getBatchProgressForTest(): BatchProgress {
+  return { ...currentBatch };
+}
+
 export const splunkRouter = router({
   /**
    * Get current Splunk configuration (token masked for security).
@@ -163,8 +224,33 @@ export const splunkRouter = router({
     }),
 
   /**
+   * Get current batch ticket creation progress.
+   * Polled by the frontend during batch operations.
+   */
+  batchProgress: protectedProcedure.query(async () => {
+    // Auto-expire stale batches
+    if (isBatchExpired()) {
+      resetBatch();
+    }
+    return {
+      batchId: currentBatch.batchId,
+      status: currentBatch.status,
+      total: currentBatch.total,
+      completed: currentBatch.completed,
+      sent: currentBatch.sent,
+      failed: currentBatch.failed,
+      currentAlert: currentBatch.currentAlert,
+      currentIndex: currentBatch.currentIndex,
+      percentage: currentBatch.total > 0
+        ? Math.round((currentBatch.completed / currentBatch.total) * 100)
+        : 0,
+    };
+  }),
+
+  /**
    * Batch create Splunk ES tickets for all completed triage reports
    * that don't already have a ticket. Requires admin role.
+   * Updates in-memory progress tracker for real-time polling.
    */
   batchCreateTickets: protectedProcedure
     .mutation(async ({ ctx }) => {
@@ -173,6 +259,14 @@ export const splunkRouter = router({
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "Creating Splunk tickets requires SECURITY_ADMIN role",
+        });
+      }
+
+      // Prevent concurrent batches
+      if (currentBatch.status === "running") {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "A batch ticket creation is already in progress",
         });
       }
 
@@ -200,7 +294,7 @@ export const splunkRouter = router({
       const eligibleItems = completedItems.filter((item) => {
         const triage = item.triageResult as Record<string, unknown> | null;
         if (!triage || !triage.answer) return false;
-        if (triage.splunkTicketId) return false; // Already has a ticket
+        if (triage.splunkTicketId) return false;
         return true;
       });
 
@@ -215,11 +309,34 @@ export const splunkRouter = router({
         };
       }
 
+      // Initialize batch progress
+      const batchId = `batch-${Date.now()}`;
+      currentBatch = {
+        batchId,
+        status: "running",
+        total: eligibleItems.length,
+        completed: 0,
+        sent: 0,
+        failed: 0,
+        currentAlert: eligibleItems[0]?.alertId ?? "",
+        currentIndex: 0,
+        startedAt: Date.now(),
+        updatedAt: Date.now(),
+        results: [],
+      };
+
       let sent = 0;
       let failed = 0;
       const results: Array<{ id: number; alertId: string; ticketId?: string; error?: string }> = [];
 
-      for (const item of eligibleItems) {
+      for (let i = 0; i < eligibleItems.length; i++) {
+        const item = eligibleItems[i];
+
+        // Update progress: currently processing this item
+        currentBatch.currentIndex = i + 1;
+        currentBatch.currentAlert = item.alertId;
+        currentBatch.updatedAt = Date.now();
+
         try {
           const triage = item.triageResult as Record<string, unknown>;
           const rawJson = (item.rawJson as Record<string, unknown>) ?? {};
@@ -249,7 +366,6 @@ export const splunkRouter = router({
           });
 
           if (result.success && result.ticketId) {
-            // Update the queue item with ticket info
             const updatedTriage = {
               ...triage,
               splunkTicketId: result.ticketId,
@@ -263,9 +379,11 @@ export const splunkRouter = router({
 
             sent++;
             results.push({ id: item.id, alertId: item.alertId, ticketId: result.ticketId });
+            currentBatch.sent = sent;
           } else {
             failed++;
             results.push({ id: item.id, alertId: item.alertId, error: result.message });
+            currentBatch.failed = failed;
           }
         } catch (err) {
           failed++;
@@ -274,10 +392,21 @@ export const splunkRouter = router({
             alertId: item.alertId,
             error: err instanceof Error ? err.message : "Unknown error",
           });
+          currentBatch.failed = failed;
         }
+
+        // Update progress: item completed
+        currentBatch.completed = i + 1;
+        currentBatch.results = results;
+        currentBatch.updatedAt = Date.now();
       }
 
       const skipped = completedItems.length - eligibleItems.length;
+
+      // Mark batch as completed
+      currentBatch.status = failed === eligibleItems.length ? "failed" : "completed";
+      currentBatch.currentAlert = "";
+      currentBatch.updatedAt = Date.now();
 
       return {
         success: failed === 0,

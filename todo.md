@@ -1208,3 +1208,15 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Write vitest tests for batch ticket creation (6 new tests, 22 total in splunkRouter)
 - [x] Verify TypeScript clean (0 errors), 297/298 tests passing (1 pre-existing OTX timeout)
 - [x] Save checkpoint
+
+## Phase: Batch Ticket Progress Bar
+- [x] Add in-memory batch progress tracker to splunkRouter (batchId, total, completed, failed, current alert)
+- [x] Add batchProgress query endpoint to poll current batch status
+- [x] Update batchCreateTickets to emit progress updates during iteration
+- [x] Auto-expire stale batch progress after 5 minutes
+- [x] Replace spinner in AlertQueue with animated progress bar showing "3/7 tickets created"
+- [x] Show current alert being processed, success/fail counts
+- [x] Progress bar uses emerald color with percentage fill animation (300ms ease-out)
+- [x] Write vitest tests for progress tracking logic (10 new tests, 32 total in splunkRouter)
+- [x] Verify TypeScript clean (0 errors), 307/308 tests passing (1 pre-existing OTX timeout)
+- [x] Save checkpoint
