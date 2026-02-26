@@ -146,6 +146,15 @@ export default function DataPipeline(): React.JSX.Element {
             <p className="text-xs text-muted-foreground">ETL sync from Wazuh to Knowledge Graph</p>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+        <button
+          onClick={() => { syncStatusQuery.refetch(); graphStatsQuery.refetch(); }}
+          disabled={syncStatusQuery.isLoading || graphStatsQuery.isLoading}
+          className="p-2 rounded-lg border border-white/10 text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
+          title="Refresh status"
+        >
+          <RefreshCw className={`w-4 h-4 ${syncStatusQuery.isLoading || graphStatsQuery.isLoading ? "animate-spin" : ""}`} />
+        </button>
         <button
           onClick={() => syncMutation.mutate()}
           disabled={isRunning}
@@ -163,6 +172,7 @@ export default function DataPipeline(): React.JSX.Element {
             </>
           )}
         </button>
+        </div>
       </div>
 
       {/* Overview stats */}

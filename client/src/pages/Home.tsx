@@ -7,7 +7,6 @@ import { ThreatBadge, threatLevelFromNumber } from "@/components/shared/ThreatBa
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { ExportButton } from "@/components/shared/ExportButton";
 import { ThreatMap } from "@/components/shared/ThreatMap";
-import { LiveAlertFeed } from "@/components/LiveAlertFeed";
 import { EXPORT_COLUMNS } from "@/lib/exportUtils";
 import {
   MOCK_AGENT_SUMMARY, MOCK_MANAGER_STATS, MOCK_MANAGER_STATUS,
@@ -699,14 +698,9 @@ export default function Home() {
           </GlassPanel>
         </div>
 
-          {/* ── Row 5: Live Alert Feed + Event Ingestion + Fleet Agents ──── */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          <LiveAlertFeed
-            enabled={isIndexerConnected}
-            severityThreshold={10}
-            className="lg:col-span-4"
-          />
-          <GlassPanel className="lg:col-span-4">
+        {/* ── Row 5: Event Ingestion + Fleet Agents ───────────────────────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <GlassPanel>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /> Event Ingestion — Last 24h</h3>
               <div className="flex items-center gap-2">
@@ -731,7 +725,7 @@ export default function Home() {
             </ResponsiveContainer>
           </GlassPanel>
 
-          <GlassPanel className="lg:col-span-4">
+          <GlassPanel>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Clock className="h-4 w-4 text-primary" /> Fleet Agents</h3>
               <div className="flex items-center gap-2">

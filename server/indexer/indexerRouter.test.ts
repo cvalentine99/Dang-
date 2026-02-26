@@ -202,24 +202,6 @@ describe("indexer router", () => {
     });
   });
 
-  describe("alertsAggByDecoder endpoint", () => {
-    it("accepts time range and returns results", async () => {
-      const result = await caller.indexer.alertsAggByDecoder({
-        from: "now-1h",
-        to: "now",
-      });
-      expect(result).toBeDefined();
-    });
-
-    it("accepts optional size parameter", async () => {
-      const result = await caller.indexer.alertsAggByDecoder({
-        from: "now-1h",
-        to: "now",
-        size: 20,
-      });
-      expect(result).toBeDefined();
-    });
-  });
 
   describe("alertsTimeline endpoint", () => {
     it("accepts time range and interval", async () => {

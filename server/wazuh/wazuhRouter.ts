@@ -578,49 +578,4 @@ export const wazuhRouter = router({
     .query(({ input }) =>
       proxyGet("/lists/files", { limit: input.limit, offset: input.offset })
     ),
-
-  // ══════════════════════════════════════════════════════════════════════════════
-  // MULTI-AGENT SYSCOLLECTOR (for drift comparison)
-  // ══════════════════════════════════════════════════════════════════════════════
-  /** Fetch packages/services/users for multiple agents in one call */
-  multiAgentSyscollector: publicProcedure
-    .input(z.object({
-      agentIds: z.array(agentIdSchema).min(1).max(10),
-      types: z.array(z.enum(["packages", "services", "users"])).default(["packages", "services", "users"]),
-    }))
-    .query(async ({ input }) => {
-      const result: Record<string, {
-        packages?: Array<Record<string, unknown>>;
-        services?: Array<Record<string, unknown>>;
-        users?: Array<Record<string, unknown>>;
-      }> = {};
-
-      await Promise.all(
-        input.agentIds.map(async (agentId) => {
-          const agentData: {
-            packages?: Array<Record<string, unknown>>;
-            services?: Array<Record<string, unknown>>;
-            users?: Array<Record<string, unknown>>;
-          } = {};
-
-          const fetches = input.types.map(async (type) => {
-            try {
-              const res = await proxyGet(`/syscollector/${agentId}/${type}`, {
-                limit: 500,
-                offset: 0,
-              });
-              const items = ((res as Record<string, unknown>)?.data as Record<string, unknown>)?.affected_items as Array<Record<string, unknown>> ?? [];
-              agentData[type] = items;
-            } catch {
-              agentData[type] = [];
-            }
-          });
-
-          await Promise.all(fetches);
-          result[agentId] = agentData;
-        })
-      );
-
-      return result;
-    }),
 });

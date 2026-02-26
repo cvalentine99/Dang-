@@ -106,7 +106,6 @@ export const indexerRouter = router({
         ruleId: z.string().optional(),
         srcip: z.string().optional(),
         geoCountry: z.string().optional(),
-        decoderName: z.string().optional(),
         sortField: z.enum(["timestamp", "rule.level", "agent.id"]).default("timestamp"),
         sortOrder: z.enum(["asc", "desc"]).default("desc"),
       })
@@ -124,7 +123,6 @@ export const indexerRouter = router({
       if (input.ruleId) filters.push({ term: { "rule.id": input.ruleId } });
       if (input.srcip) filters.push({ term: { "data.srcip": input.srcip } });
       if (input.geoCountry) filters.push({ term: { "GeoLocation.country_name": input.geoCountry } });
-      if (input.decoderName) filters.push({ term: { "decoder.name": input.decoderName } });
 
       const must: Array<Record<string, unknown>> = [];
       if (input.query) {
@@ -258,28 +256,6 @@ export const indexerRouter = router({
           size: 0,
           aggs: {
             timeline: dateHistogramAgg("timestamp", input.interval),
-          },
-        },
-        "alerts"
-      );
-    }),
-
-  /** Top decoders (log source distribution) */
-  alertsAggByDecoder: publicProcedure
-    .input(timeRangeSchema.extend({ topN: z.number().int().min(1).max(50).default(20) }))
-    .query(async ({ input }) => {
-      return safeSearch(
-        INDEX_PATTERNS.ALERTS,
-        {
-          query: boolQuery({ filter: [timeRangeFilter(input.from, input.to)] }),
-          size: 0,
-          aggs: {
-            top_decoders: {
-              ...termsAgg("decoder.name", input.topN),
-              aggs: {
-                parent_decoder: termsAgg("decoder.parent", 1),
-              },
-            },
           },
         },
         "alerts"
@@ -468,7 +444,6 @@ export const indexerRouter = router({
                 severity: termsAgg("rule.level", 16),
               },
             },
-            levels: termsAgg("rule.level", 16),
             timeline: {
               ...dateHistogramAgg("timestamp", "1d"),
               aggs: {
@@ -476,40 +451,6 @@ export const indexerRouter = router({
               },
             },
           },
-        },
-        "alerts"
-      );
-    }),
-
-  /** Get alert counts for all compliance frameworks at once */
-  complianceFrameworkCounts: publicProcedure
-    .input(timeRangeSchema)
-    .query(async ({ input }) => {
-      const frameworks = ["pci_dss", "hipaa", "nist_800_53", "gdpr", "tsc"] as const;
-      return safeSearch(
-        INDEX_PATTERNS.ALERTS,
-        {
-          query: boolQuery({
-            filter: [
-              timeRangeFilter(input.from, input.to),
-              {
-                bool: {
-                  should: frameworks.map(fw => ({ exists: { field: `rule.${fw}` } })),
-                  minimum_should_match: 1,
-                },
-              },
-            ],
-          }),
-          size: 0,
-          aggs: Object.fromEntries(
-            frameworks.map(fw => [
-              fw,
-              {
-                filter: { exists: { field: `rule.${fw}` } },
-                aggs: { severity: termsAgg("rule.level", 16) },
-              },
-            ])
-          ),
         },
         "alerts"
       );

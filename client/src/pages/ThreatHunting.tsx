@@ -84,7 +84,7 @@ const CHART_COLORS = [
 
 // ── Correlation result type ─────────────────────────────────────────────────────
 interface CorrelationHit {
-  source: "agents" | "rules" | "vulnerabilities" | "syscheck" | "logs" | "mitre" | "alerts";
+  source: "agents" | "rules" | "vulnerabilities" | "syscheck" | "logs" | "mitre";
   sourceLabel: string;
   matches: Record<string, unknown>[];
   count: number;
@@ -147,89 +147,8 @@ export default function ThreatHunting() {
   const rules = useFallback(rulesQ.data, MOCK_RULES, isConnected);
   const logs = useFallback(logsQ.data, MOCK_MANAGER_LOGS, isConnected);
   const mitreTechniques = useFallback(mitreQ.data, MOCK_MITRE_TECHNIQUES, isConnected);
-
-  // ── Indexer queries for cross-agent vulnerability + FIM search ─────────
-  const indexerStatusQ = trpc.indexer.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
-  const isIndexerConnected = !!(indexerStatusQ.data as Record<string, unknown>)?.configured && !!(indexerStatusQ.data as Record<string, unknown>)?.healthy;
-
-  // Cross-agent vulnerability search via Indexer (no agentId required)
-  const vulnSearchQ = trpc.indexer.vulnSearch.useQuery(
-    { from: "now-90d", to: "now", size: 200 },
-    { retry: false, staleTime: 60_000, enabled: isIndexerConnected }
-  );
-
-  // FIM/syscheck events via alerts index (decoder.name contains syscheck)
-  const fimSearchQ = trpc.indexer.alertsSearch.useQuery(
-    { from: "now-30d", to: "now", size: 200, decoderName: "syscheck" },
-    { retry: false, staleTime: 60_000, enabled: isIndexerConnected }
-  );
-
-  // Cross-agent alerts search for IOC correlation
-  const [iocAlertQuery, setIocAlertQuery] = useState<string | null>(null);
-  const iocAlertsQ = trpc.indexer.alertsSearch.useQuery(
-    { from: "now-30d", to: "now", size: 100, query: iocAlertQuery ?? "" },
-    { retry: false, staleTime: 30_000, enabled: isIndexerConnected && !!iocAlertQuery }
-  );
-
-  // Parse Indexer vulnerability results into the same shape as MOCK_VULNERABILITIES
-  const vulns = useMemo(() => {
-    if (isIndexerConnected && vulnSearchQ.data?.data) {
-      const resp = vulnSearchQ.data.data as unknown as Record<string, unknown>;
-      const hits = (resp.hits as Record<string, unknown>) ?? {};
-      const hitArr = (hits.hits as Array<Record<string, unknown>>) ?? [];
-      const total = typeof hits.total === "object"
-        ? Number((hits.total as Record<string, unknown>).value ?? 0)
-        : Number(hits.total ?? 0);
-      const items = hitArr.map((h) => {
-        const src = (h._source ?? {}) as Record<string, unknown>;
-        const vuln = (src.vulnerability ?? {}) as Record<string, unknown>;
-        const pkg = (src.package ?? {}) as Record<string, unknown>;
-        const score = (vuln.score ?? {}) as Record<string, unknown>;
-        return {
-          cve: String(vuln.id ?? ""),
-          severity: String(vuln.severity ?? "Medium"),
-          cvss3_score: Number(score.base ?? 0),
-          cvss2_score: Number(score.version ?? 0),
-          name: String(pkg.name ?? ""),
-          version: String(pkg.version ?? ""),
-          title: String(vuln.description ?? vuln.title ?? ""),
-          status: String(vuln.status ?? "Active"),
-          published: String(vuln.published ?? ""),
-          detection_time: String(vuln.detected_at ?? src.timestamp ?? ""),
-        };
-      });
-      return { data: { affected_items: items, total_affected_items: total, total_failed_items: 0, failed_items: [] } };
-    }
-    return MOCK_VULNERABILITIES;
-  }, [isIndexerConnected, vulnSearchQ.data]);
-
-  // Parse Indexer FIM/syscheck results into the same shape as MOCK_SYSCHECK_FILES
-  const syscheck = useMemo(() => {
-    if (isIndexerConnected && fimSearchQ.data?.data) {
-      const resp = fimSearchQ.data.data as unknown as Record<string, unknown>;
-      const hits = (resp.hits as Record<string, unknown>) ?? {};
-      const hitArr = (hits.hits as Array<Record<string, unknown>>) ?? [];
-      const total = typeof hits.total === "object"
-        ? Number((hits.total as Record<string, unknown>).value ?? 0)
-        : Number(hits.total ?? 0);
-      const items = hitArr.map((h) => {
-        const src = (h._source ?? {}) as Record<string, unknown>;
-        const sysData = (src.syscheck ?? src.data ?? {}) as Record<string, unknown>;
-        return {
-          file: String(sysData.path ?? sysData.file ?? (src.data as Record<string, unknown>)?.path ?? ""),
-          event: String(sysData.event ?? "modified"),
-          md5: String(sysData.md5_after ?? sysData.md5 ?? ""),
-          sha256: String(sysData.sha256_after ?? sysData.sha256 ?? ""),
-          sha1: String(sysData.sha1_after ?? sysData.sha1 ?? ""),
-          uname: String(sysData.uname_after ?? sysData.uname ?? ""),
-          date: String(src.timestamp ?? ""),
-          size: Number(sysData.size_after ?? sysData.size ?? 0),
-        };
-      });
-      return { data: { affected_items: items, total_affected_items: total, total_failed_items: 0, failed_items: [] } };
-    }
-    return MOCK_SYSCHECK_FILES;
-  }, [isIndexerConnected, fimSearchQ.data]);
+  const vulns = MOCK_VULNERABILITIES; // Vulns require agentId, use mock for cross-search
+  const syscheck = MOCK_SYSCHECK_FILES; // Syscheck requires agentId, use mock for cross-search
 
   // ── Correlation engine ────────────────────────────────────────────────────
   const correlationResults = useMemo<CorrelationHit[]>(() => {
@@ -309,31 +228,8 @@ export default function ThreatHunting() {
       results.push({ source: "mitre", sourceLabel: "MITRE ATT&CK", matches: mitreHits, count: mitreHits.length });
     }
 
-    // Search Indexer alerts (cross-agent, real-time)
-    if (isIndexerConnected && iocAlertsQ.data?.data) {
-      const resp = iocAlertsQ.data.data as unknown as Record<string, unknown>;
-      const hitsObj = (resp.hits as Record<string, unknown>) ?? {};
-      const hitArr = (hitsObj.hits as Array<Record<string, unknown>>) ?? [];
-      const alertHits = hitArr.map((h) => {
-        const src = (h._source ?? {}) as Record<string, unknown>;
-        return {
-          _id: h._id,
-          timestamp: src.timestamp,
-          agent: src.agent,
-          rule: src.rule,
-          decoder: src.decoder,
-          data: src.data,
-          full_log: src.full_log,
-          location: src.location,
-        };
-      });
-      if (alertHits.length > 0) {
-        results.push({ source: "alerts", sourceLabel: "Indexer Alerts", matches: alertHits as Record<string, unknown>[], count: alertHits.length });
-      }
-    }
-
     return results;
-  }, [activeQuery, activeIocType, agents, rules, vulns, syscheck, logs, mitreTechniques, isIndexerConnected, iocAlertsQ.data]);
+  }, [activeQuery, activeIocType, agents, rules, vulns, syscheck, logs, mitreTechniques]);
 
   const totalHits = correlationResults.reduce((sum, r) => sum + r.count, 0);
 
@@ -344,10 +240,6 @@ export default function ThreatHunting() {
     setActiveIocType(iocType);
     setExpandedSource(null);
     setSelectedHunt(null);
-    // Trigger Indexer alert search for IOC correlation
-    if (isIndexerConnected) {
-      setIocAlertQuery(searchValue.trim());
-    }
 
     const entry: HuntEntry = {
       id: `hunt-${Date.now()}`,
@@ -358,7 +250,7 @@ export default function ThreatHunting() {
       sources: [],
     };
     setHuntHistory((prev) => [entry, ...prev].slice(0, 50));
-  }, [searchValue, iocType, isIndexerConnected]);
+  }, [searchValue, iocType]);
 
   // Update last hunt entry with results
   useMemo(() => {
@@ -384,15 +276,10 @@ export default function ThreatHunting() {
     rulesQ.refetch();
     logsQ.refetch();
     mitreQ.refetch();
-    if (isIndexerConnected) {
-      vulnSearchQ.refetch();
-      fimSearchQ.refetch();
-      if (iocAlertQuery) iocAlertsQ.refetch();
-    }
+    savedSearchesQ.refetch();
   };
 
-  const isLoading = agentsQ.isLoading || rulesQ.isLoading || logsQ.isLoading || mitreQ.isLoading
-    || (isIndexerConnected && (vulnSearchQ.isLoading || fimSearchQ.isLoading));
+  const isLoading = agentsQ.isLoading || rulesQ.isLoading || logsQ.isLoading || mitreQ.isLoading;
 
   // ── Computed stats ────────────────────────────────────────────────────────
   const agentCount = Number(((agents as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items ?? 0);
@@ -708,7 +595,6 @@ export default function ThreatHunting() {
                 setActiveQuery(qh.value);
                 setActiveIocType(qh.type);
                 setExpandedSource(null);
-                if (isIndexerConnected) setIocAlertQuery(qh.value);
                 const entry: HuntEntry = {
                   id: `hunt-${Date.now()}`,
                   timestamp: new Date().toISOString(),
@@ -879,7 +765,6 @@ export default function ThreatHunting() {
                     : result.source === "vulnerabilities" ? Bug
                     : result.source === "syscheck" ? FileWarning
                     : result.source === "logs" ? Terminal
-                    : result.source === "alerts" ? AlertTriangle
                     : Target;
 
                   return (
@@ -966,15 +851,6 @@ export default function ThreatHunting() {
                                       <th className="px-4 py-2 text-left text-muted-foreground font-medium">ID</th>
                                       <th className="px-4 py-2 text-left text-muted-foreground font-medium">Name</th>
                                       <th className="px-4 py-2 text-left text-muted-foreground font-medium">Tactics</th>
-                                      <th className="px-4 py-2 text-left text-muted-foreground font-medium">Description</th>
-                                    </>
-                                  )}
-                                  {result.source === "alerts" && (
-                                    <>
-                                      <th className="px-4 py-2 text-left text-muted-foreground font-medium">Timestamp</th>
-                                      <th className="px-4 py-2 text-left text-muted-foreground font-medium">Agent</th>
-                                      <th className="px-4 py-2 text-left text-muted-foreground font-medium">Rule</th>
-                                      <th className="px-4 py-2 text-left text-muted-foreground font-medium">Level</th>
                                       <th className="px-4 py-2 text-left text-muted-foreground font-medium">Description</th>
                                     </>
                                   )}
@@ -1102,27 +978,6 @@ export default function ThreatHunting() {
                                         </>
                                       )}
 
-                                      {result.source === "alerts" && (() => {
-                                        const agent = (m.agent ?? {}) as Record<string, unknown>;
-                                        const rule = (m.rule ?? {}) as Record<string, unknown>;
-                                        return (
-                                          <>
-                                            <td className="px-4 py-2 font-mono text-muted-foreground text-[11px]">
-                                              {m.timestamp ? new Date(String(m.timestamp)).toLocaleString() : "—"}
-                                            </td>
-                                            <td className="px-4 py-2">
-                                              <span className="text-foreground">{String(agent.name ?? "")}</span>
-                                              <span className="text-muted-foreground text-[10px] ml-1">({String(agent.id ?? "")})</span>
-                                            </td>
-                                            <td className="px-4 py-2 font-mono text-primary">{String(rule.id ?? "")}</td>
-                                            <td className="px-4 py-2">
-                                              <ThreatBadge level={threatLevelFromNumber(Number(rule.level ?? 0))} />
-                                            </td>
-                                            <td className="px-4 py-2 text-foreground max-w-[300px] truncate">{String(rule.description ?? "")}</td>
-                                          </>
-                                        );
-                                      })()}
-
                                       <td className="px-4 py-2">
                                         <RawJsonViewer data={match} title={`${result.sourceLabel} #${idx + 1}`} />
                                       </td>
@@ -1241,30 +1096,17 @@ export default function ThreatHunting() {
             })}
           </div>
 
-          <div className="mt-4 pt-3 border-t border-border/30 space-y-1">
+          <div className="mt-4 pt-3 border-t border-border/30">
             <p className="text-xs text-muted-foreground">
               {isConnected ? (
                 <span className="flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.765_0.177_163.223)]" />
-                  Wazuh API: Live data
+                  Live data from Wazuh API
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.795_0.184_86.047)]" />
-                  Wazuh API: Using sample data
-                </span>
-              )}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {isIndexerConnected ? (
-                <span className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.765_0.177_163.223)]" />
-                  Indexer: Live vulnerability + FIM + alert search
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.795_0.184_86.047)]" />
-                  Indexer: Offline — CVE/FIM use sample data
+                  Using sample data — connect Wazuh API for live hunting
                 </span>
               )}
             </p>

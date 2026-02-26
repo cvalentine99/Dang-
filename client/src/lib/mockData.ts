@@ -1,15 +1,7 @@
 /**
- * FALLBACK DATA — Graceful degradation when Wazuh API is unreachable.
- *
- * Every constant mirrors the exact Wazuh REST API v4.x / Indexer response shape
- * so the UI can render meaningful placeholder content when the real API is offline.
- *
- * When Wazuh is connected, real API data replaces these seamlessly via the
- * `isConnected ? realData : MOCK_*` pattern used across all pages.
- *
- * DO NOT use these as primary data sources — they exist only for fallback.
- * DO NOT remove exports that are still imported by pages — check with:
- *   grep -rn "MOCK_NAME" client/src/ --include="*.tsx" | grep -v mockData.ts
+ * Fallback data matching exact Wazuh API response shapes.
+ * Used when Wazuh API is not connected. When connected, real API data replaces this seamlessly.
+ * Every structure mirrors the actual Wazuh REST API v4.x response format.
  */
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -795,6 +787,26 @@ export const MOCK_RULE_GROUPS = {
 };
 
 // Rule files for reference
+export const MOCK_RULE_FILES = {
+  data: {
+    affected_items: [
+      { filename: "0005-pam_rules.xml", relative_dirname: "ruleset/rules", status: "enabled" },
+      { filename: "0010-syslog_rules.xml", relative_dirname: "ruleset/rules", status: "enabled" },
+      { filename: "0015-ossec_rules.xml", relative_dirname: "ruleset/rules", status: "enabled" },
+      { filename: "0095-sshd_rules.xml", relative_dirname: "ruleset/rules", status: "enabled" },
+      { filename: "0260-web_rules.xml", relative_dirname: "ruleset/rules", status: "enabled" },
+      { filename: "0330-windows_decoders.xml", relative_dirname: "ruleset/decoders", status: "enabled" },
+      { filename: "0370-clamav_rules.xml", relative_dirname: "ruleset/rules", status: "enabled" },
+      { filename: "0470-suricata_rules.xml", relative_dirname: "ruleset/rules", status: "enabled" },
+      { filename: "0565-docker_rules.xml", relative_dirname: "ruleset/rules", status: "enabled" },
+      { filename: "0585-win-security_rules.xml", relative_dirname: "ruleset/rules", status: "enabled" },
+    ],
+    total_affected_items: 10,
+    total_failed_items: 0,
+    failed_items: [],
+  },
+};
+
 
 // ═══════════════════════════════════════════════════════════════════════
 // BROWSER EXTENSIONS (syscollector)

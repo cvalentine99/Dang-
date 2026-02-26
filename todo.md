@@ -943,3 +943,26 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [ ] Add error boundary to catch and display render errors gracefully
 
 - [x] Rename "SecondSight Analyst" to "Walter" on the Security Analyst page
+
+## Phase: Wire Up Real Refresh Buttons & Auto-Refresh Controls
+
+- [x] Pull latest code from GitHub
+- [x] Audit all pages for placeholder/broken refresh controls
+- [x] SOC Console: Wire refresh button to invalidate all tRPC queries
+- [x] Fleet Command: Wire refresh button to re-fetch agent data
+- [x] SIEM Events: Wire refresh button to re-fetch events + savedSearches
+- [x] Alerts Timeline: Wire refresh button to re-fetch alerts
+- [x] Vulnerabilities: Wire refresh button to re-fetch vuln data
+- [x] MITRE ATT&CK: Wire refresh button to re-fetch MITRE data
+- [x] Threat Hunting: Wire refresh button to re-fetch hunt results + savedSearches
+- [x] Compliance: Wire refresh button to re-fetch SCA data
+- [x] File Integrity: Wire refresh button to re-fetch FIM data
+- [x] IT Hygiene: Wire refresh button to re-fetch syscollector data
+- [x] Cluster Health: Wire refresh button to re-fetch cluster data
+- [x] Knowledge Graph: Wire refresh button to re-fetch graph data
+- [x] ThreatIntel: Wire onRefresh to invalidate OTX queries (newly added)
+- [x] DataPipeline: Add refresh button for sync status + graph stats (newly added)
+- [x] Investigations: Add refresh button to invalidate list (newly added)
+- [x] All pages use RefreshControl with auto-refresh dropdown (Off/30s/1m/5m/15m)
+- [x] Fix pre-existing test failures from GitHub sync (connectionSettings, multiAgentSyscollector, graph limit)
+- [x] All 198 tests passing, TypeScript clean

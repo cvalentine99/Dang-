@@ -138,31 +138,6 @@ export default function Compliance() {
     { retry: 1, staleTime: 60_000, enabled: indexerHealthy }
   );
 
-  // Indexer: framework alert counts for overview cards
-  const fwCountsQ = trpc.indexer.complianceFrameworkCounts.useQuery(
-    { from: new Date(Date.now() - trMs).toISOString(), to: new Date().toISOString() },
-    { retry: 1, staleTime: 120_000, enabled: indexerHealthy }
-  );
-
-  // Parse framework counts from Indexer response
-  const frameworkAlertCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    if (indexerHealthy && fwCountsQ.data?.data) {
-      const resp = fwCountsQ.data.data as unknown as Record<string, unknown>;
-      const aggs = resp.aggregations as Record<string, unknown> ?? {};
-      FRAMEWORKS.forEach(fw => {
-        const fwAgg = aggs[fw.id] as Record<string, unknown> | undefined;
-        counts[fw.id] = Number(fwAgg?.doc_count ?? 0);
-      });
-    } else {
-      // Fallback to mock counts
-      FRAMEWORKS.forEach(fw => {
-        counts[fw.id] = MOCK_COMPLIANCE_ALERTS[fw.id as keyof typeof MOCK_COMPLIANCE_ALERTS]?.total ?? 0;
-      });
-    }
-    return counts;
-  }, [fwCountsQ.data, indexerHealthy]);
-
   const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); utils.indexer.invalidate(); }, [utils]);
 
   // ── Policies (real or fallback) ───────────────────────────────────────
@@ -306,7 +281,7 @@ export default function Compliance() {
                 {FRAMEWORKS.map(fw => {
                   const matchingPolicy = policies.find(p => String(p.policy_id ?? "").toLowerCase().includes(fw.id.replace(/_/g, "")) || String(p.name ?? "").toLowerCase().includes(fw.id.replace(/_/g, " ")));
                   const score = matchingPolicy ? Number(matchingPolicy.score ?? 0) : null;
-                  const alertCount = frameworkAlertCounts[fw.id] ?? 0;
+                  const mockData = MOCK_COMPLIANCE_ALERTS[fw.id as keyof typeof MOCK_COMPLIANCE_ALERTS];
                   return (
                     <button key={fw.id} onClick={() => { setSelectedFramework(fw.id as typeof selectedFramework); setActiveTab("framework-alerts"); }} className="bg-secondary/20 rounded-lg p-4 border border-border/20 text-center hover:border-primary/30 hover:bg-primary/5 transition-all cursor-pointer">
                       <span className="text-2xl">{fw.icon}</span>
@@ -314,7 +289,7 @@ export default function Compliance() {
                       {score !== null ? (
                         <p className={`text-lg font-bold mt-1 ${score >= 80 ? "text-threat-low" : score >= 60 ? "text-threat-medium" : "text-threat-critical"}`}>{score}%</p>
                       ) : <p className="text-xs text-muted-foreground mt-1">No policy</p>}
-                      <p className="text-[10px] text-muted-foreground mt-1">{alertCount.toLocaleString()} alerts</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">{mockData?.total?.toLocaleString() ?? 0} alerts</p>
                     </button>
                   );
                 })}

@@ -51,11 +51,12 @@ describe("Wazuh Credential Validation", () => {
 
     const url = `https://${WAZUH_HOST}:${WAZUH_PORT}/security/user/authenticate`;
     try {
+      // Wazuh /security/user/authenticate requires Basic Auth header and NO body.
+      // Do NOT send Content-Type or any request body.
       const response = await fetch(url, {
         method: "POST",
         headers: {
           Authorization: `Basic ${Buffer.from(`${WAZUH_USER}:${WAZUH_PASS}`).toString("base64")}`,
-          "Content-Type": "application/json",
         },
         signal: AbortSignal.timeout(5000),
         // @ts-ignore - Node fetch doesn't have this in types but it works

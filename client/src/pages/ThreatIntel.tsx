@@ -365,6 +365,7 @@ function IocResult({ data, type, value }: { data: Record<string, unknown>; type:
 // MAIN PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function ThreatIntel() {
+  const utils = trpc.useUtils();
   // ── Tab state ──────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<"feed" | "search" | "lookup">("feed");
 
@@ -382,6 +383,10 @@ export default function ThreatIntel() {
   const [iocValue, setIocValue] = useState("");
   const [iocInput, setIocInput] = useState("");
   const [iocSection, setIocSection] = useState<"general" | "reputation" | "geo" | "malware" | "url_list" | "passive_dns">("general");
+
+  const handleRefresh = useCallback(() => {
+    utils.otx.invalidate();
+  }, [utils]);
 
   // ── OTX Status ─────────────────────────────────────────────────────────────
   const statusQuery = trpc.otx.status.useQuery();
@@ -473,6 +478,8 @@ export default function ThreatIntel() {
         <PageHeader
           title="Threat Intelligence"
           subtitle="AlienVault OTX Feed"
+          onRefresh={handleRefresh}
+          isLoading={true}
         />
         <GlassPanel className="p-12 text-center">
           <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-3" />
@@ -488,6 +495,8 @@ export default function ThreatIntel() {
         <PageHeader
           title="Threat Intelligence"
           subtitle="AlienVault OTX Feed"
+          onRefresh={handleRefresh}
+          isLoading={false}
         />
         <GlassPanel className="p-12 text-center">
           <XCircle className="w-12 h-12 text-threat-high mx-auto mb-4" />
@@ -506,6 +515,8 @@ export default function ThreatIntel() {
       <PageHeader
         title="Threat Intelligence"
         subtitle="AlienVault OTX Feed"
+        onRefresh={handleRefresh}
+        isLoading={feedQuery.isLoading || searchResultsQuery.isLoading || iocQuery.isLoading}
       >
         <div className="flex items-center gap-3">
           {otxUser && (

@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import {
   FolderSearch, Plus, Search, Clock, Tag, ChevronRight, FileText,
   Archive, CheckCircle2, Loader2, Trash2, X, AlertTriangle, StickyNote,
-  Download, FileCode, FileType,
+  Download, FileCode, FileType, RefreshCw,
 } from "lucide-react";
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -337,6 +337,7 @@ function InvestigationDetail({ id, onBack }: { id: number; onBack: () => void })
 // ── Main Investigations Page ────────────────────────────────────────────────
 
 export default function Investigations(): React.JSX.Element {
+  const utils = trpc.useUtils();
   const [showCreate, setShowCreate] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -380,13 +381,23 @@ export default function Investigations(): React.JSX.Element {
             <p className="text-xs text-muted-foreground">{data?.total ?? 0} investigation{(data?.total ?? 0) !== 1 ? "s" : ""}</p>
           </div>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-200 hover:bg-purple-500/30 transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          New Investigation
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { utils.graph.listInvestigations.invalidate(); }}
+            disabled={isLoading}
+            className="p-2 rounded-lg border border-white/10 text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
+            title="Refresh investigations"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-200 hover:bg-purple-500/30 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            New Investigation
+          </button>
+        </div>
       </div>
 
       {/* Filters */}

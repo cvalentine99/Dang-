@@ -100,8 +100,11 @@ describe("graph.overviewGraph", () => {
   it("respects the limit parameter", async () => {
     const caller = appRouter.createCaller(createUserContext());
     const result = await caller.graph.overviewGraph({ limit: 5 });
-    // Nodes should not exceed limit (may be less if graph is empty)
-    expect(result.nodes.length).toBeLessThanOrEqual(5);
+    // Limit controls the number of endpoints fetched; each endpoint may add
+    // summary nodes (processes, vulns, events), so total nodes can exceed limit.
+    // Verify that the number of endpoint-type nodes respects the limit.
+    const endpointNodes = result.nodes.filter((n: { type: string }) => n.type === "endpoint");
+    expect(endpointNodes.length).toBeLessThanOrEqual(5);
   });
 });
 

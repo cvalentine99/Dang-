@@ -49,7 +49,6 @@ import {
   Database,
   Settings,
 } from "lucide-react";
-import { AlertNotificationBell } from "@/components/LiveAlertFeed";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
@@ -70,7 +69,7 @@ const menuItems = [
   { icon: Monitor, label: "IT Hygiene", path: "/hygiene", group: "Posture" },
   { icon: Server, label: "Cluster Health", path: "/cluster", group: "System" },
   { icon: HeartPulse, label: "System Status", path: "/status", group: "System" },
-  { icon: Brain, label: "Walter", path: "/analyst", group: "Intelligence" },
+  { icon: Brain, label: "Security Analyst", path: "/analyst", group: "Intelligence" },
   { icon: Network, label: "Knowledge Graph", path: "/graph", group: "Intelligence" },
   { icon: FolderSearch, label: "Investigations", path: "/investigations", group: "Intelligence" },
   { icon: Database, label: "Data Pipeline", path: "/pipeline", group: "Intelligence" },
@@ -244,7 +243,7 @@ function DashboardLayoutContent({
                 <PanelLeft className="h-4 w-4 text-muted-foreground" />
               </button>
               {!isCollapsed && (
-                <div className="flex items-center gap-2 min-w-0 flex-1">
+                <div className="flex items-center gap-2 min-w-0">
                   <span className="font-display font-bold text-lg tracking-tight text-primary truncate">
                     Dang!
                   </span>
@@ -253,9 +252,6 @@ function DashboardLayoutContent({
                   </span>
                 </div>
               )}
-              <div className="shrink-0">
-                <AlertNotificationBell collapsed={isCollapsed} />
-              </div>
             </div>
           </SidebarHeader>
 

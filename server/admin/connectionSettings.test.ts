@@ -194,6 +194,12 @@ describe("connectionSettings router", () => {
   });
 
   it("testConnection returns failure when host/user/pass missing", async () => {
+    // Override the mock to return empty effective settings so merge still lacks user/pass
+    const { getEffectiveSettings } = await import("./connectionSettingsService");
+    (getEffectiveSettings as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      values: { host: "", port: "", user: "", pass: "" },
+      sources: { host: "default", port: "default", user: "default", pass: "default" },
+    });
     const result = await adminCaller.connectionSettings.testConnection({
       category: "wazuh_manager",
       settings: { host: "192.168.1.1" },
@@ -203,7 +209,12 @@ describe("connectionSettings router", () => {
   });
 
   it("testConnection validates required fields for wazuh_manager", async () => {
-    // Missing user and pass should return failure without making network call
+    // Override mock to return empty effective settings
+    const { getEffectiveSettings } = await import("./connectionSettingsService");
+    (getEffectiveSettings as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      values: { host: "", port: "", user: "", pass: "" },
+      sources: { host: "default", port: "default", user: "default", pass: "default" },
+    });
     const result = await adminCaller.connectionSettings.testConnection({
       category: "wazuh_manager",
       settings: { host: "192.168.99.99", port: "55000" },
@@ -214,7 +225,12 @@ describe("connectionSettings router", () => {
   });
 
   it("testConnection validates required fields for wazuh_indexer", async () => {
-    // Missing user and pass should return failure without making network call
+    // Override mock to return empty effective settings
+    const { getEffectiveSettings } = await import("./connectionSettingsService");
+    (getEffectiveSettings as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      values: { host: "", port: "", user: "", pass: "" },
+      sources: { host: "default", port: "default", user: "default", pass: "default" },
+    });
     const result = await adminCaller.connectionSettings.testConnection({
       category: "wazuh_indexer",
       settings: { host: "192.168.99.99", port: "9200" },

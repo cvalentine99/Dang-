@@ -47,52 +47,6 @@ type WazuhDecoder = {
   relative_dirname: string;
 };
 
-// ─── Normalization helpers ──────────────────────────────────────────────────
-function safeStringArray(v: unknown): string[] {
-  if (Array.isArray(v)) return v.map((x) => String(x ?? ""));
-  return [];
-}
-
-function normalizeRule(raw: unknown): WazuhRule {
-  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const mitre = (r.mitre && typeof r.mitre === "object" ? r.mitre : {}) as Record<string, unknown>;
-  return {
-    id: Number.isFinite(Number(r.id)) ? Number(r.id) : 0,
-    level: Number.isFinite(Number(r.level)) ? Number(r.level) : 0,
-    description: String(r.description ?? ""),
-    groups: safeStringArray(r.groups),
-    mitre: {
-      id: safeStringArray(mitre.id),
-      tactic: safeStringArray(mitre.tactic),
-      technique: safeStringArray(mitre.technique),
-    },
-    pci_dss: safeStringArray(r.pci_dss),
-    gdpr: safeStringArray(r.gdpr),
-    hipaa: safeStringArray(r.hipaa),
-    filename: String(r.filename ?? ""),
-    relative_dirname: String(r.relative_dirname ?? ""),
-    status: String(r.status ?? "unknown"),
-    details: (r.details && typeof r.details === "object" && !Array.isArray(r.details))
-      ? Object.fromEntries(Object.entries(r.details as Record<string, unknown>).map(([k, v]) => [k, String(v ?? "")]))
-      : {},
-  };
-}
-
-function normalizeDecoder(raw: unknown): WazuhDecoder {
-  const d = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  return {
-    name: String(d.name ?? d.decoder_name ?? "unknown"),
-    position: Number.isFinite(Number(d.position)) ? Number(d.position) : 0,
-    status: String(d.status ?? "unknown"),
-    file: String(d.file ?? ""),
-    path: String(d.path ?? ""),
-    relative_dirname: String(d.relative_dirname ?? ""),
-    details: (d.details && typeof d.details === "object" && !Array.isArray(d.details))
-      ? Object.fromEntries(Object.entries(d.details as Record<string, unknown>).map(([k, v]) => [k, String(v ?? "")]))
-      : {},
-  };
-}
-
 // ─── Constants ───────────────────────────────────────────────────────────────
 const SEVERITY_COLORS: Record<string, string> = {
   critical: "#ef4444",
@@ -156,29 +110,17 @@ export default function RulesetExplorer() {
   const decodersRaw = useFallback(decodersQ.data, MOCK_DECODERS, isConfigured);
   const ruleGroupsRaw = useFallback(ruleGroupsQ.data, MOCK_RULE_GROUPS, isConfigured);
 
-  const rules: WazuhRule[] = useMemo(() => {
-    const items = (
-      (rulesRaw as Record<string, unknown>)?.data as Record<string, unknown> | undefined
-    )?.affected_items;
-    if (!Array.isArray(items)) return [];
-    return items.filter(Boolean).map(normalizeRule);
-  }, [rulesRaw]);
+  const rules: WazuhRule[] = (
+    (rulesRaw as Record<string, unknown>)?.data as Record<string, unknown> | undefined
+  )?.affected_items as WazuhRule[] ?? [];
 
-  const decoders: WazuhDecoder[] = useMemo(() => {
-    const items = (
-      (decodersRaw as Record<string, unknown>)?.data as Record<string, unknown> | undefined
-    )?.affected_items;
-    if (!Array.isArray(items)) return [];
-    return items.filter(Boolean).map(normalizeDecoder);
-  }, [decodersRaw]);
+  const decoders: WazuhDecoder[] = (
+    (decodersRaw as Record<string, unknown>)?.data as Record<string, unknown> | undefined
+  )?.affected_items as WazuhDecoder[] ?? [];
 
-  const ruleGroups: string[] = useMemo(() => {
-    const items = (
-      (ruleGroupsRaw as Record<string, unknown>)?.data as Record<string, unknown> | undefined
-    )?.affected_items;
-    if (!Array.isArray(items)) return [];
-    return items.filter(Boolean).map((x) => String(x));
-  }, [ruleGroupsRaw]);
+  const ruleGroups: string[] = (
+    (ruleGroupsRaw as Record<string, unknown>)?.data as Record<string, unknown> | undefined
+  )?.affected_items as string[] ?? [];
 
   // ─── Filtering: Rules ────────────────────────────────────────────────────
   const filteredRules = useMemo(() => {
@@ -192,8 +134,8 @@ export default function RulesetExplorer() {
           r.id.toString().includes(q) ||
           r.groups.some((g) => g.toLowerCase().includes(q)) ||
           r.filename.toLowerCase().includes(q) ||
-          r.mitre.id.some((id) => id.toLowerCase().includes(q)) ||
-          r.mitre.technique.some((t) => t.toLowerCase().includes(q))
+          (r.mitre.id || []).some((id) => id.toLowerCase().includes(q)) ||
+          (r.mitre.technique || []).some((t) => t.toLowerCase().includes(q))
       );
     }
 
@@ -224,8 +166,8 @@ export default function RulesetExplorer() {
       (d) =>
         d.name.toLowerCase().includes(q) ||
         d.file.toLowerCase().includes(q) ||
-        (d.details.parent ?? "").toLowerCase().includes(q) ||
-        (d.details.prematch ?? "").toLowerCase().includes(q)
+        (d.details?.parent ?? "").toLowerCase().includes(q) ||
+        (d.details?.prematch ?? "").toLowerCase().includes(q)
     );
   }, [decoders, searchQuery]);
 
@@ -236,13 +178,11 @@ export default function RulesetExplorer() {
     const fileCounts: Record<string, number> = {};
 
     rules.forEach((r) => {
-      const sev = LEVEL_TO_SEVERITY(r.level);
-      if (sev in levelCounts) levelCounts[sev]++;
+      levelCounts[LEVEL_TO_SEVERITY(r.level)]++;
       r.groups.forEach((g) => {
         groupCounts[g] = (groupCounts[g] || 0) + 1;
       });
-      const fname = r.filename || "unknown";
-      fileCounts[fname] = (fileCounts[fname] || 0) + 1;
+      fileCounts[r.filename] = (fileCounts[r.filename] || 0) + 1;
     });
 
     return { levelCounts, groupCounts, fileCounts };
@@ -253,9 +193,8 @@ export default function RulesetExplorer() {
     const parentCounts: Record<string, number> = {};
 
     decoders.forEach((d) => {
-      const fname = d.file || "unknown";
-      fileCounts[fname] = (fileCounts[fname] || 0) + 1;
-      const parent = d.details.parent ?? "root";
+      fileCounts[d.file] = (fileCounts[d.file] || 0) + 1;
+      const parent = d.details?.parent ?? "root";
       parentCounts[parent] = (parentCounts[parent] || 0) + 1;
     });
 
@@ -263,7 +202,7 @@ export default function RulesetExplorer() {
   }, [decoders]);
 
   const levelPieData = Object.entries(ruleStats.levelCounts)
-    .filter(([, v]) => Number.isFinite(v) && v > 0)
+    .filter(([, v]) => v > 0)
     .map(([k, v]) => ({ name: k.charAt(0).toUpperCase() + k.slice(1), value: v, color: SEVERITY_COLORS[k] }));
 
   const topGroups = Object.entries(ruleStats.groupCounts)
@@ -701,7 +640,7 @@ export default function RulesetExplorer() {
                             </div>
                             <div className="flex justify-between">
                               <span className="text-slate-500">File</span>
-                              <span className="font-mono text-slate-200 text-right truncate max-w-[180px]">{rule.filename || "unknown"}</span>
+                              <span className="font-mono text-slate-200 text-right truncate max-w-[180px]">{rule.filename}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-slate-500">Path</span>
@@ -714,7 +653,7 @@ export default function RulesetExplorer() {
                         <div className="space-y-2">
                           <h4 className="text-xs font-semibold text-violet-300">Match Logic</h4>
                           <div className="space-y-1.5 text-xs">
-                            {Object.entries(rule.details).map(([key, val]) => (
+                            {Object.entries(rule.details || {}).map(([key, val]) => (
                               <div key={key} className="flex justify-between gap-2">
                                 <span className="text-slate-500 flex-shrink-0">{key}</span>
                                 <span className="font-mono text-slate-200 text-right break-all">{val}</span>
@@ -881,13 +820,13 @@ export default function RulesetExplorer() {
                     {/* Pattern */}
                     <div className="flex items-center min-w-0">
                       <span className="text-xs text-slate-300 font-mono truncate">
-                        {decoder.details.prematch || decoder.details.regex || decoder.details.plugin_decoder || "—"}
+                        {decoder.details?.prematch || decoder.details?.regex || decoder.details?.plugin_decoder || "—"}
                       </span>
                     </div>
 
                     {/* File */}
                     <div className="flex items-center text-xs text-slate-500 font-mono truncate" title={decoder.file}>
-                      {decoder.file || "unknown"}
+                      {decoder.file}
                     </div>
 
                     {/* Status */}
@@ -931,7 +870,7 @@ export default function RulesetExplorer() {
                             </div>
                             <div className="flex justify-between">
                               <span className="text-slate-500">File</span>
-                              <span className="font-mono text-slate-200">{decoder.file || "unknown"}</span>
+                              <span className="font-mono text-slate-200">{decoder.file}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-slate-500">Path</span>
@@ -950,7 +889,7 @@ export default function RulesetExplorer() {
                         <div className="space-y-2">
                           <h4 className="text-xs font-semibold text-violet-300">Extraction Logic</h4>
                           <div className="space-y-1.5 text-xs">
-                            {Object.entries(decoder.details).map(([key, val]) => (
+                            {Object.entries(decoder.details || {}).map(([key, val]) => (
                               <div key={key}>
                                 <span className="text-slate-500 block mb-0.5">{key}</span>
                                 <pre className="text-[11px] text-slate-200 bg-black/30 rounded px-2 py-1 font-mono overflow-x-auto whitespace-pre-wrap break-all border border-white/5">
@@ -963,7 +902,7 @@ export default function RulesetExplorer() {
                       </div>
 
                       {/* Parent decoder chain */}
-                      {decoder.details.parent && (
+                      {decoder.details?.parent && (
                         <div>
                           <h4 className="text-xs font-semibold text-violet-300 mb-2">Decoder Chain</h4>
                           <div className="flex items-center gap-2 text-xs">
