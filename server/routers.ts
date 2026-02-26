@@ -15,6 +15,7 @@ import { graphRouter } from "./graph/graphRouter";
 import { connectionSettingsRouter } from "./admin/connectionSettingsRouter";
 import { llmRouter } from "./llm/llmRouter";
 import { alertQueueRouter } from "./alertQueue/alertQueueRouter";
+import { splunkRouter } from "./splunk/splunkRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -69,6 +70,9 @@ export const appRouter = router({
 
   // Alert-to-Walter queue (10-deep, human-initiated analysis)
   alertQueue: alertQueueRouter,
+
+  // Splunk ES Mission Control — HEC ticket creation
+  splunk: splunkRouter,
 });
 
 export type AppRouter = typeof appRouter;

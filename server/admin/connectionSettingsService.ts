@@ -44,7 +44,7 @@ export function invalidateCache(category?: string): void {
 }
 
 // ── Sensitive keys that should be encrypted ─────────────────────────────────
-const SENSITIVE_KEYS = new Set(["pass", "password", "api_key"]);
+const SENSITIVE_KEYS = new Set(["pass", "password", "api_key", "hec_token"]);
 
 // ── Environment variable mapping ────────────────────────────────────────────
 const ENV_MAP: Record<string, Record<string, string>> = {
@@ -67,6 +67,12 @@ const ENV_MAP: Record<string, Record<string, string>> = {
     model: "LLM_MODEL",
     enabled: "LLM_ENABLED",
   },
+  splunk: {
+    host: "SPLUNK_HOST",
+    port: "SPLUNK_PORT",
+    hec_token: "SPLUNK_HEC_TOKEN",
+    hec_port: "SPLUNK_HEC_PORT",
+  },
 };
 
 // ── Default values ──────────────────────────────────────────────────────────
@@ -74,6 +80,7 @@ const DEFAULTS: Record<string, Record<string, string>> = {
   wazuh_manager: { port: "55000" },
   wazuh_indexer: { port: "9200", protocol: "https" },
   llm: { port: "30000", model: "unsloth/Nemotron-3-Nano-30B-A3B-GGUF", protocol: "http", enabled: "false" },
+  splunk: { port: "8000", hec_port: "8088", protocol: "https", enabled: "false" },
 };
 
 // ── Core CRUD ───────────────────────────────────────────────────────────────

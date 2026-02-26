@@ -26,9 +26,10 @@ import {
   Zap,
   ToggleLeft,
   ToggleRight,
+  Ticket,
 } from "lucide-react";
 
-type Category = "wazuh_manager" | "wazuh_indexer" | "llm";
+type Category = "wazuh_manager" | "wazuh_indexer" | "llm" | "splunk";
 
 interface FieldDef {
   key: string;
@@ -351,7 +352,7 @@ export default function AdminSettings() {
           Connection Settings
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Configure Wazuh Manager, Indexer, and LLM connections. Settings saved here override environment variables without requiring a restart.
+          Configure Wazuh Manager, Indexer, LLM, and Splunk ES connections. Settings saved here override environment variables without requiring a restart.
         </p>
       </div>
 
@@ -420,6 +421,33 @@ export default function AdminSettings() {
             { key: "model", label: "Model Name", placeholder: "unsloth/Nemotron-3-Nano-30B-A3B-GGUF", fullWidth: true, description: "Model identifier passed to the /v1/chat/completions endpoint" },
             { key: "protocol", label: "Protocol", placeholder: "http", description: "http or https — most local servers use http" },
             { key: "api_key", label: "API Key (optional)", placeholder: "sk-...", type: "password", description: "Bearer token if your LLM server requires authentication" },
+          ]}
+        />
+      </div>
+
+      {/* Splunk ES Mission Control */}
+      <div className="pt-2">
+        <div className="flex items-center gap-2 mb-4">
+          <Ticket className="h-4 w-4 text-emerald-400" />
+          <h2 className="text-lg font-display font-semibold text-foreground">Incident Management</h2>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
+            SPLUNK ES
+          </span>
+        </div>
+        <ConnectionPanel
+          category="splunk"
+          title="Splunk Enterprise Security"
+          description="HTTP Event Collector (HEC) integration for pushing Walter triage reports as notable events to Splunk ES Mission Control. Requires SECURITY_ADMIN role to create tickets."
+          icon={<Ticket className="h-5 w-5 text-emerald-400" />}
+          accentClass="bg-emerald-500/15"
+          toggleField="enabled"
+          fields={[
+            { key: "enabled", label: "Enabled", placeholder: "true", description: "Toggle managed by the header switch" },
+            { key: "host", label: "Splunk Host", placeholder: "192.168.50.213", description: "IP or hostname of your Splunk ES instance" },
+            { key: "port", label: "Web UI Port", placeholder: "8000", type: "number", description: "Splunk web interface port" },
+            { key: "hec_port", label: "HEC Port", placeholder: "8088", type: "number", description: "HTTP Event Collector listener port" },
+            { key: "hec_token", label: "HEC Token", placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", type: "password", description: "HEC authentication token (UUID format)" },
+            { key: "protocol", label: "Protocol", placeholder: "https", description: "https (default) or http for non-TLS setups" },
           ]}
         />
       </div>

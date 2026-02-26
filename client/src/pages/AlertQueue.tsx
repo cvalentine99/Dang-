@@ -30,6 +30,8 @@ import {
   ArrowRight,
   Sparkles,
   RefreshCw,
+  Ticket,
+  ExternalLink,
 } from "lucide-react";
 
 // Severity color mapping
@@ -106,7 +108,24 @@ function QueueItemCard({
     confidence?: number;
     safetyStatus?: string;
     suggestedFollowUps?: string[];
+    splunkTicketId?: string;
+    splunkTicketCreatedAt?: string;
+    splunkTicketCreatedBy?: string;
   } | null;
+
+  const splunkEnabled = trpc.splunk.isEnabled.useQuery(undefined, { staleTime: 60_000 });
+  const createTicketMutation = trpc.splunk.createTicket.useMutation({
+    onSuccess: (result) => {
+      toast.success("Splunk ticket created", {
+        description: `Ticket ${result.ticketId} sent to Splunk ES Mission Control`,
+      });
+      // Refetch to show the ticket ID in the triage result
+      trpc.useUtils().alertQueue.list.invalidate();
+    },
+    onError: (err) => {
+      toast.error("Failed to create Splunk ticket", { description: err.message });
+    },
+  });
 
   const handleAnalyzeInWalter = () => {
     // Navigate to Walter with the alert context pre-loaded
@@ -168,13 +187,38 @@ function QueueItemCard({
             </>
           )}
           {(item.status === "completed" || item.status === "failed") && (
-            <button
-              onClick={handleAnalyzeInWalter}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs font-medium hover:bg-cyan-500/20 transition-all"
-            >
-              <ArrowRight className="h-3.5 w-3.5" />
-              Open in Walter
-            </button>
+            <div className="flex items-center gap-1.5">
+              {/* Create Splunk Ticket button — only for completed items with triage */}
+              {item.status === "completed" && triage?.answer && splunkEnabled.data?.enabled && !triage?.splunkTicketId && (
+                <button
+                  onClick={() => createTicketMutation.mutate({ queueItemId: item.id })}
+                  disabled={createTicketMutation.isPending}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-medium hover:bg-emerald-500/20 transition-all disabled:opacity-50"
+                  title="Create ticket in Splunk ES Mission Control"
+                >
+                  {createTicketMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Ticket className="h-3.5 w-3.5" />
+                  )}
+                  Create Ticket
+                </button>
+              )}
+              {/* Show ticket ID if already created */}
+              {triage?.splunkTicketId && (
+                <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[10px] font-mono">
+                  <Ticket className="h-3 w-3" />
+                  {triage.splunkTicketId}
+                </span>
+              )}
+              <button
+                onClick={handleAnalyzeInWalter}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs font-medium hover:bg-cyan-500/20 transition-all"
+              >
+                <ArrowRight className="h-3.5 w-3.5" />
+                Open in Walter
+              </button>
+            </div>
           )}
           <button
             onClick={() => setExpanded(!expanded)}

@@ -1184,3 +1184,16 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Update vitest tests for new priority ordering (6 new tests, 19 total in alertQueue)
 - [x] Verify TypeScript clean (0 errors), 270/271 tests passing (1 pre-existing OTX timeout)
 - [x] Save checkpoint
+
+## Phase: Splunk ES Mission Control Integration (HEC)
+- [x] Store Splunk secrets: SPLUNK_HOST, SPLUNK_PORT, SPLUNK_HEC_TOKEN, SPLUNK_HEC_PORT
+- [x] Build Splunk HEC client service (POST /services/collector/event with TLS skip for on-prem)
+- [x] Build splunkRouter with tRPC procedures: testConnection, createTicket, getConfig, isEnabled
+- [x] Add Splunk connection panel to AdminSettings (host, port, HEC token, HEC port, protocol, enabled toggle)
+- [x] Add "Create Ticket" button on completed Walter triage reports in AlertQueue
+- [x] Ticket payload: alert details, triage summary, MITRE mappings, severity, urgency mapping, recommended actions
+- [x] Feature-gated behind admin role check (SECURITY_ADMIN equivalent)
+- [x] Store splunkTicketId, splunkTicketCreatedAt, splunkTicketCreatedBy back to alert_queue triageResult
+- [x] Write vitest tests for Splunk HEC client and router (21 new tests across 2 files)
+- [x] Verify TypeScript clean (0 errors), 291/292 tests passing (1 pre-existing OTX timeout)
+- [x] Save checkpoint

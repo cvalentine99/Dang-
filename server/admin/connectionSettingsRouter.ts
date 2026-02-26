@@ -20,8 +20,9 @@ import {
 import axios from "axios";
 import https from "https";
 import { testLLMConnection } from "../llm/llmService";
+import { testSplunkConnection } from "../splunk/splunkService";
 
-const categorySchema = z.enum(["wazuh_manager", "wazuh_indexer", "llm"]);
+const categorySchema = z.enum(["wazuh_manager", "wazuh_indexer", "llm", "splunk"]);
 
 export const connectionSettingsRouter = router({
   /**
@@ -38,7 +39,7 @@ export const connectionSettingsRouter = router({
       const hasPassword: Record<string, boolean> = {};
 
       for (const [key, value] of Object.entries(values)) {
-        if (key === "pass" || key === "password" || key === "api_key") {
+        if (key === "pass" || key === "password" || key === "api_key" || key === "hec_token") {
           maskedValues[key] = "";
           hasPassword[key] = !!value;
         } else {
@@ -108,6 +109,16 @@ export const connectionSettingsRouter = router({
       // LLM category has its own test logic (no user/pass required)
       if (category === "llm") {
         return testLLMConnection(merged);
+      }
+
+      // Splunk HEC has its own test logic
+      if (category === "splunk") {
+        const splunkResult = await testSplunkConnection();
+        return {
+          success: splunkResult.success,
+          message: splunkResult.message,
+          latencyMs: splunkResult.latencyMs ?? 0,
+        };
       }
 
       const host = merged.host;
