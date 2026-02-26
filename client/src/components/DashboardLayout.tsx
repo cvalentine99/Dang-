@@ -48,11 +48,51 @@ import {
   FolderSearch,
   Database,
   Settings,
+  Gauge,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
+
+/**
+ * LLM Health Indicator — small dot showing custom LLM endpoint status.
+ * Polls every 30s. Green = online, Red = offline, Amber = disabled.
+ */
+function LLMHealthDot() {
+  const healthQuery = trpc.llm.healthCheck.useQuery(undefined, {
+    refetchInterval: 30_000,
+    staleTime: 25_000,
+    retry: false,
+  });
+
+  const status = healthQuery.data?.status ?? "disabled";
+  const latency = healthQuery.data?.latencyMs ?? 0;
+  const model = healthQuery.data?.model ?? "";
+
+  const dotColors = {
+    online: "bg-emerald-400 shadow-emerald-400/50",
+    offline: "bg-red-400 shadow-red-400/50",
+    disabled: "bg-amber-400/60 shadow-amber-400/30",
+  };
+
+  const statusLabels = {
+    online: "Custom LLM Online",
+    offline: "Custom LLM Offline",
+    disabled: "Custom LLM Disabled",
+  };
+
+  return (
+    <span className="relative ml-auto flex items-center" title={`${statusLabels[status]}${latency ? ` (${latency}ms)` : ""}${model ? `\n${model}` : ""}`}>
+      <span
+        className={`h-2 w-2 rounded-full shadow-[0_0_6px] ${dotColors[status]} transition-colors`}
+      />
+      {status === "online" && (
+        <span className={`absolute h-2 w-2 rounded-full ${dotColors[status]} animate-ping opacity-40`} />
+      )}
+    </span>
+  );
+}
 
 const menuItems = [
   { icon: LayoutDashboard, label: "SOC Console", path: "/", group: "Operations" },
@@ -73,6 +113,7 @@ const menuItems = [
   { icon: Network, label: "Knowledge Graph", path: "/graph", group: "Intelligence" },
   { icon: FolderSearch, label: "Investigations", path: "/investigations", group: "Intelligence" },
   { icon: Database, label: "Data Pipeline", path: "/pipeline", group: "Intelligence" },
+  { icon: Gauge, label: "Token Usage", path: "/admin/token-usage", group: "Admin" },
   { icon: UserCog, label: "User Management", path: "/admin/users", group: "Admin" },
   { icon: Settings, label: "Connection Settings", path: "/admin/settings", group: "Admin" },
   { icon: StickyNote, label: "Analyst Notes", path: "/notes", group: "Tools" },
@@ -286,6 +327,9 @@ function DashboardLayoutContent({
                             }`}
                           />
                           <span className="text-sm">{item.label}</span>
+                          {(item.path === "/analyst" || item.path === "/assistant") && (
+                            <LLMHealthDot />
+                          )}
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     </div>

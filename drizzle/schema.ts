@@ -453,3 +453,37 @@ export const connectionSettings = mysqlTable("connection_settings", {
 
 export type ConnectionSetting = typeof connectionSettings.$inferSelect;
 export type InsertConnectionSetting = typeof connectionSettings.$inferInsert;
+
+/**
+ * LLM Usage Tracking — logs every LLM invocation for monitoring and analytics.
+ * Tracks token counts, latency, model used, and whether it was custom or built-in.
+ */
+export const llmUsage = mysqlTable("llm_usage", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Model identifier (e.g., 'unsloth/Nemotron-3-Nano-30B-A3B-GGUF' or 'gemini-2.5-flash') */
+  model: varchar("model", { length: 256 }).notNull(),
+  /** Source of the response: 'custom', 'builtin', or 'fallback' (custom failed, fell back) */
+  source: varchar("source", { length: 32 }).notNull(),
+  /** Number of tokens in the prompt */
+  promptTokens: int("promptTokens").default(0).notNull(),
+  /** Number of tokens in the completion */
+  completionTokens: int("completionTokens").default(0).notNull(),
+  /** Total tokens (prompt + completion) */
+  totalTokens: int("totalTokens").default(0).notNull(),
+  /** Latency in milliseconds for the LLM call */
+  latencyMs: int("latencyMs").default(0).notNull(),
+  /** Caller context: which feature triggered this call */
+  caller: varchar("caller", { length: 128 }),
+  /** Whether the call succeeded */
+  success: int("success").default(1).notNull(),
+  /** Error message if the call failed */
+  errorMessage: text("errorMessage"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  index("lu_source_idx").on(table.source),
+  index("lu_model_idx").on(table.model),
+  index("lu_created_idx").on(table.createdAt),
+]));
+
+export type LlmUsage = typeof llmUsage.$inferSelect;
+export type InsertLlmUsage = typeof llmUsage.$inferInsert;

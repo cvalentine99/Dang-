@@ -29,6 +29,7 @@ import KnowledgeGraph from "./pages/KnowledgeGraph";
 import Investigations from "./pages/Investigations";
 import DataPipeline from "./pages/DataPipeline";
 import AdminSettings from "./pages/AdminSettings";
+import TokenUsage from "./pages/TokenUsage";
 
 function Router() {
   return (
@@ -59,6 +60,7 @@ function Router() {
             <Route path="/status" component={Status} />
             <Route path="/admin/users" component={AdminUsers} />
             <Route path="/admin/settings" component={AdminSettings} />
+            <Route path="/admin/token-usage" component={TokenUsage} />
             <Route path="/analyst" component={AnalystChat} />
             <Route path="/graph" component={KnowledgeGraph} />
             <Route path="/investigations" component={Investigations} />

@@ -1137,3 +1137,19 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] 18 new tests: llmConfig.test.ts (5) + llmService.test.ts (13)
 - [x] TypeScript clean (0 errors), 239/240 tests passing (1 pre-existing OTX timeout)
 - [ ] Save checkpoint
+
+## Phase: Model Health Indicator + Token Usage Tracking
+- [x] Add /api/trpc llm.healthCheck endpoint (ping custom LLM /v1/models, return status + latency)
+- [x] Add green/red/amber health dot next to Walter nav entry in DashboardLayout sidebar
+- [x] Dot polls health every 30s with stale time, shows tooltip with model name + latency
+- [x] Create llm_usage table in drizzle schema (prompt_tokens, completion_tokens, total_tokens, model, source, latency_ms, created_at)
+- [x] Log token usage from every invokeLLMWithFallback call into llm_usage table
+- [x] Build tRPC procedures: llm.usageStats (aggregated), llm.usageHistory (time series)
+- [x] Build Token Usage dashboard page with glass-panel cards
+- [x] Cards: total tokens today, avg latency, requests count, model distribution
+- [x] Time series chart: tokens over time (last 24h / 7d / 30d)
+- [x] Table: recent LLM calls with model, tokens, latency, timestamp
+- [x] Add nav entry for Token Usage page in sidebar under ADMIN section
+- [x] Write vitest tests for health check and usage tracking (12 new tests)
+- [x] Verify TypeScript clean (0 errors), 251/252 tests passing (1 pre-existing OTX timeout)
+- [x] Save checkpoint

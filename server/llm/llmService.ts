@@ -10,6 +10,8 @@
 
 import { getEffectiveSettings } from "../admin/connectionSettingsService";
 import { invokeLLM as invokeBuiltInLLM, type InvokeParams, type InvokeResult } from "../_core/llm";
+import { getDb } from "../db";
+import { llmUsage } from "../../drizzle/schema";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -166,27 +168,131 @@ async function invokeCustomLLM(params: InvokeParams, config: LLMConfig): Promise
 // ── Unified LLM Invocation ──────────────────────────────────────────────────
 
 /**
+ * Log token usage to the database (fire-and-forget).
+ */
+async function logUsage(entry: {
+  model: string;
+  source: "custom" | "builtin" | "fallback";
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  latencyMs: number;
+  caller?: string;
+  success: boolean;
+  errorMessage?: string;
+}): Promise<void> {
+  try {
+    const db = await getDb();
+    if (!db) return;
+    await db.insert(llmUsage).values({
+      model: entry.model,
+      source: entry.source,
+      promptTokens: entry.promptTokens,
+      completionTokens: entry.completionTokens,
+      totalTokens: entry.totalTokens,
+      latencyMs: entry.latencyMs,
+      caller: entry.caller,
+      success: entry.success ? 1 : 0,
+      errorMessage: entry.errorMessage,
+    });
+  } catch (err) {
+    console.error(`[LLM] Failed to log usage: ${(err as Error).message}`);
+  }
+}
+
+/**
+ * Extract token usage from an LLM response.
+ */
+function extractUsage(result: InvokeResult): { promptTokens: number; completionTokens: number; totalTokens: number } {
+  const usage = (result as { usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } }).usage;
+  return {
+    promptTokens: usage?.prompt_tokens ?? 0,
+    completionTokens: usage?.completion_tokens ?? 0,
+    totalTokens: usage?.total_tokens ?? 0,
+  };
+}
+
+/**
  * Invoke LLM — routes to custom endpoint if configured, otherwise falls back to built-in.
+ * Logs token usage for every call.
  *
  * This is the primary entry point that should be used instead of the raw invokeLLM.
  */
-export async function invokeLLMWithFallback(params: InvokeParams): Promise<InvokeResult> {
+export async function invokeLLMWithFallback(params: InvokeParams & { caller?: string }): Promise<InvokeResult> {
   const config = await getEffectiveLLMConfig();
+  const startTime = Date.now();
 
   if (config.enabled && config.host) {
     try {
       console.log(`[LLM] Using custom endpoint: ${buildBaseUrl(config)} (model: ${config.model})`);
-      return await invokeCustomLLM(params, config);
+      const result = await invokeCustomLLM(params, config);
+      const latencyMs = Date.now() - startTime;
+      const usage = extractUsage(result);
+
+      // Log successful custom call
+      logUsage({
+        model: config.model,
+        source: "custom",
+        ...usage,
+        latencyMs,
+        caller: params.caller,
+        success: true,
+      });
+
+      return result;
     } catch (err) {
+      const customLatency = Date.now() - startTime;
       console.error(`[LLM] Custom endpoint failed: ${(err as Error).message}`);
       console.log("[LLM] Falling back to built-in LLM...");
+
+      // Log failed custom attempt
+      logUsage({
+        model: config.model,
+        source: "custom",
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        latencyMs: customLatency,
+        caller: params.caller,
+        success: false,
+        errorMessage: (err as Error).message,
+      });
+
       // Fall back to built-in
-      return invokeBuiltInLLM(params);
+      const fallbackStart = Date.now();
+      const result = await invokeBuiltInLLM(params);
+      const fallbackLatency = Date.now() - fallbackStart;
+      const usage = extractUsage(result);
+
+      // Log fallback call
+      logUsage({
+        model: result.model ?? "builtin",
+        source: "fallback",
+        ...usage,
+        latencyMs: fallbackLatency,
+        caller: params.caller,
+        success: true,
+      });
+
+      return result;
     }
   }
 
   // Use built-in LLM
-  return invokeBuiltInLLM(params);
+  const result = await invokeBuiltInLLM(params);
+  const latencyMs = Date.now() - startTime;
+  const usage = extractUsage(result);
+
+  logUsage({
+    model: result.model ?? "builtin",
+    source: "builtin",
+    ...usage,
+    latencyMs,
+    caller: params.caller,
+    success: true,
+  });
+
+  return result;
 }
 
 // ── Test Connection ─────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ import { localAuthRouter } from "./localAuth/localAuthRouter";
 import { adminUsersRouter } from "./admin/adminUsersRouter";
 import { graphRouter } from "./graph/graphRouter";
 import { connectionSettingsRouter } from "./admin/connectionSettingsRouter";
+import { llmRouter } from "./llm/llmRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -61,6 +62,9 @@ export const appRouter = router({
   graph: graphRouter,
   // Connection Settings (admin-only)
   connectionSettings: connectionSettingsRouter,
+
+  // LLM health monitoring and token usage tracking
+  llm: llmRouter,
 });
 
 export type AppRouter = typeof appRouter;
