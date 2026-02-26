@@ -1,0 +1,452 @@
+/**
+ * QueueNotifier — Global notification component for Walter Queue alerts.
+ *
+ * Mounted inside DashboardLayout so it runs on every page. Polls the
+ * alertQueue.recentAlerts endpoint every 10s to detect newly queued alerts.
+ * When a new alert arrives:
+ *   - Critical (12+): Urgent alarm sound + persistent red toast (15s)
+ *   - High (8-11): Warning chime + amber toast (10s)
+ *   - Medium/Low: Subtle click + standard toast (5s)
+ *
+ * Respects the existing soundEngine mute toggle.
+ * Notification preferences stored in localStorage.
+ */
+
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
+import { SoundEngine } from "@/lib/soundEngine";
+import { useLocation } from "wouter";
+import {
+  AlertTriangle,
+  ShieldAlert,
+  Bell,
+  BellOff,
+  Settings2,
+  Inbox,
+} from "lucide-react";
+
+// ── Notification preferences (localStorage) ────────────────────────────────
+
+const NOTIF_PREFS_KEY = "walter-queue-notifications";
+
+interface NotifPrefs {
+  /** Enable notifications for critical alerts (12+) */
+  critical: boolean;
+  /** Enable notifications for high alerts (8-11) */
+  high: boolean;
+  /** Enable notifications for medium/low alerts (0-7) */
+  low: boolean;
+}
+
+const DEFAULT_PREFS: NotifPrefs = {
+  critical: true,
+  high: true,
+  low: false,
+};
+
+function getNotifPrefs(): NotifPrefs {
+  try {
+    const stored = localStorage.getItem(NOTIF_PREFS_KEY);
+    if (stored) return { ...DEFAULT_PREFS, ...JSON.parse(stored) };
+  } catch {
+    // ignore
+  }
+  return DEFAULT_PREFS;
+}
+
+function setNotifPrefs(prefs: NotifPrefs): void {
+  try {
+    localStorage.setItem(NOTIF_PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    // ignore
+  }
+}
+
+// ── Severity classification ─────────────────────────────────────────────────
+
+function getSeverityTier(level: number): "critical" | "high" | "low" {
+  if (level >= 12) return "critical";
+  if (level >= 8) return "high";
+  return "low";
+}
+
+function getSeverityLabel(level: number): string {
+  if (level >= 12) return "CRITICAL";
+  if (level >= 8) return "HIGH";
+  if (level >= 4) return "MEDIUM";
+  return "LOW";
+}
+
+// ── Sound effects for notifications ─────────────────────────────────────────
+
+/** Urgent alarm: three rapid descending tones for critical alerts */
+function playCriticalAlarm(): void {
+  if (SoundEngine.isMuted()) return;
+  try {
+    const ctx = new AudioContext();
+    const now = ctx.currentTime;
+    const vol = 0.18;
+
+    // Three rapid descending alarm tones
+    [0, 0.15, 0.3].forEach((offset, i) => {
+      const freq = 880 - i * 120; // 880, 760, 640 Hz
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "square";
+      osc.frequency.setValueAtTime(freq, now + offset);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.7, now + offset + 0.12);
+
+      gain.gain.setValueAtTime(0, now + offset);
+      gain.gain.linearRampToValueAtTime(vol, now + offset + 0.005);
+      gain.gain.setValueAtTime(vol, now + offset + 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.13);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.14);
+    });
+  } catch {
+    // Web Audio not available
+  }
+}
+
+/** Warning chime: two-tone rising for high alerts */
+function playHighWarning(): void {
+  if (SoundEngine.isMuted()) return;
+  try {
+    const ctx = new AudioContext();
+    const now = ctx.currentTime;
+    const vol = 0.14;
+
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = "triangle";
+    osc1.frequency.setValueAtTime(600, now);
+
+    gain1.gain.setValueAtTime(0, now);
+    gain1.gain.linearRampToValueAtTime(vol, now + 0.01);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.21);
+
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = "triangle";
+    osc2.frequency.setValueAtTime(800, now + 0.12);
+
+    gain2.gain.setValueAtTime(0, now + 0.12);
+    gain2.gain.linearRampToValueAtTime(vol * 1.1, now + 0.13);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.12);
+    osc2.stop(now + 0.36);
+  } catch {
+    // Web Audio not available
+  }
+}
+
+// ── Toast renderers ─────────────────────────────────────────────────────────
+
+function showCriticalToast(alert: {
+  alertId: string;
+  ruleDescription: string | null;
+  ruleLevel: number;
+  agentName: string | null;
+}, navigate: (path: string) => void): void {
+  toast.error(
+    `🚨 CRITICAL ALERT — Level ${alert.ruleLevel}`,
+    {
+      description: (
+        <div className="space-y-1.5 mt-1">
+          <p className="text-xs text-red-200/90 font-medium leading-snug">
+            {alert.ruleDescription ?? "Unknown rule"}
+          </p>
+          <div className="flex items-center gap-2 text-[10px] text-red-300/60 font-mono">
+            <span>Alert: {alert.alertId}</span>
+            {alert.agentName && <span>· Agent: {alert.agentName}</span>}
+          </div>
+          <button
+            onClick={() => {
+              toast.dismiss();
+              navigate("/alert-queue");
+            }}
+            className="mt-1 flex items-center gap-1 text-[11px] font-medium text-red-300 hover:text-red-200 transition-colors"
+          >
+            <Inbox className="h-3 w-3" />
+            View in Walter Queue →
+          </button>
+        </div>
+      ),
+      duration: 15000,
+      icon: <ShieldAlert className="h-5 w-5 text-red-400" />,
+      className: "!bg-red-950/90 !border-red-500/40 !backdrop-blur-xl",
+    }
+  );
+}
+
+function showHighToast(alert: {
+  alertId: string;
+  ruleDescription: string | null;
+  ruleLevel: number;
+  agentName: string | null;
+}, navigate: (path: string) => void): void {
+  toast.warning(
+    `⚠ HIGH ALERT — Level ${alert.ruleLevel}`,
+    {
+      description: (
+        <div className="space-y-1.5 mt-1">
+          <p className="text-xs text-orange-200/90 font-medium leading-snug">
+            {alert.ruleDescription ?? "Unknown rule"}
+          </p>
+          <div className="flex items-center gap-2 text-[10px] text-orange-300/60 font-mono">
+            <span>Alert: {alert.alertId}</span>
+            {alert.agentName && <span>· Agent: {alert.agentName}</span>}
+          </div>
+          <button
+            onClick={() => {
+              toast.dismiss();
+              navigate("/alert-queue");
+            }}
+            className="mt-1 flex items-center gap-1 text-[11px] font-medium text-orange-300 hover:text-orange-200 transition-colors"
+          >
+            <Inbox className="h-3 w-3" />
+            View in Walter Queue →
+          </button>
+        </div>
+      ),
+      duration: 10000,
+      icon: <AlertTriangle className="h-5 w-5 text-orange-400" />,
+      className: "!bg-orange-950/90 !border-orange-500/40 !backdrop-blur-xl",
+    }
+  );
+}
+
+function showLowToast(alert: {
+  alertId: string;
+  ruleDescription: string | null;
+  ruleLevel: number;
+}): void {
+  toast.info(
+    `Alert queued — Level ${alert.ruleLevel}`,
+    {
+      description: alert.ruleDescription ?? alert.alertId,
+      duration: 5000,
+    }
+  );
+}
+
+// ── QueueNotifier Component ─────────────────────────────────────────────────
+
+/** Polling interval for checking new queue entries (10 seconds) */
+const POLL_INTERVAL_MS = 10_000;
+
+export function QueueNotifier() {
+  const [, navigate] = useLocation();
+  const [prefs, setPrefs] = useState<NotifPrefs>(getNotifPrefs);
+  const [showSettings, setShowSettings] = useState(false);
+
+  // Track which alert IDs we've already notified about to prevent duplicates
+  const notifiedIdsRef = useRef<Set<string>>(new Set());
+
+  // Track the "since" timestamp — start from now, only notify on new arrivals
+  const sinceRef = useRef<string>(new Date().toISOString());
+
+  // Stabilize the since input
+  const [sinceValue] = useState(() => sinceRef.current);
+
+  // Poll for recent alerts
+  const recentAlerts = trpc.alertQueue.recentAlerts.useQuery(
+    { since: sinceValue },
+    {
+      refetchInterval: POLL_INTERVAL_MS,
+      staleTime: 0,
+      enabled: prefs.critical || prefs.high || prefs.low,
+    }
+  );
+
+  // Process new alerts and trigger notifications
+  useEffect(() => {
+    const alerts = recentAlerts.data?.alerts;
+    if (!alerts || alerts.length === 0) return;
+
+    for (const alert of alerts) {
+      // Skip if we've already notified about this alert
+      if (notifiedIdsRef.current.has(alert.alertId)) continue;
+
+      // Mark as notified
+      notifiedIdsRef.current.add(alert.alertId);
+
+      // Determine severity tier
+      const tier = getSeverityTier(alert.ruleLevel);
+
+      // Check if notifications are enabled for this tier
+      if (!prefs[tier]) continue;
+
+      // Trigger sound + toast based on severity
+      switch (tier) {
+        case "critical":
+          playCriticalAlarm();
+          showCriticalToast(alert, navigate);
+          break;
+        case "high":
+          playHighWarning();
+          showHighToast(alert, navigate);
+          break;
+        case "low":
+          SoundEngine.stepComplete();
+          showLowToast(alert);
+          break;
+      }
+    }
+
+    // Prune notified IDs set to prevent unbounded growth (keep last 100)
+    if (notifiedIdsRef.current.size > 100) {
+      const arr = Array.from(notifiedIdsRef.current);
+      notifiedIdsRef.current = new Set(arr.slice(-50));
+    }
+  }, [recentAlerts.data, prefs, navigate]);
+
+  // Persist preferences when they change
+  const updatePrefs = useCallback((update: Partial<NotifPrefs>) => {
+    setPrefs((prev) => {
+      const next = { ...prev, ...update };
+      setNotifPrefs(next);
+      return next;
+    });
+  }, []);
+
+  const isAnyEnabled = prefs.critical || prefs.high || prefs.low;
+
+  return (
+    <>
+      {/* Floating notification settings button — bottom-right corner */}
+      <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2">
+        {/* Settings panel */}
+        {showSettings && (
+          <div className="mb-1 w-64 rounded-xl border border-white/10 bg-black/80 backdrop-blur-xl p-4 shadow-2xl shadow-purple-500/5 animate-in slide-in-from-bottom-2 fade-in duration-200">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-xs font-display font-semibold text-foreground">
+                Queue Notifications
+              </h4>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="text-muted-foreground hover:text-foreground text-xs"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-[10px] text-muted-foreground mb-3 leading-relaxed">
+              Get notified when alerts enter the Walter Queue. Sounds respect the global mute toggle.
+            </p>
+
+            {/* Critical toggle */}
+            <label className="flex items-center justify-between py-1.5 cursor-pointer group">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-red-500" />
+                <span className="text-[11px] text-foreground/80 group-hover:text-foreground">
+                  Critical (12+)
+                </span>
+              </div>
+              <button
+                onClick={() => updatePrefs({ critical: !prefs.critical })}
+                className={`w-8 h-4 rounded-full transition-colors ${
+                  prefs.critical ? "bg-red-500/60" : "bg-white/10"
+                }`}
+              >
+                <div
+                  className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${
+                    prefs.critical ? "translate-x-4" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+            </label>
+
+            {/* High toggle */}
+            <label className="flex items-center justify-between py-1.5 cursor-pointer group">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-orange-500" />
+                <span className="text-[11px] text-foreground/80 group-hover:text-foreground">
+                  High (8–11)
+                </span>
+              </div>
+              <button
+                onClick={() => updatePrefs({ high: !prefs.high })}
+                className={`w-8 h-4 rounded-full transition-colors ${
+                  prefs.high ? "bg-orange-500/60" : "bg-white/10"
+                }`}
+              >
+                <div
+                  className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${
+                    prefs.high ? "translate-x-4" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+            </label>
+
+            {/* Low toggle */}
+            <label className="flex items-center justify-between py-1.5 cursor-pointer group">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-blue-500" />
+                <span className="text-[11px] text-foreground/80 group-hover:text-foreground">
+                  Medium/Low (0–7)
+                </span>
+              </div>
+              <button
+                onClick={() => updatePrefs({ low: !prefs.low })}
+                className={`w-8 h-4 rounded-full transition-colors ${
+                  prefs.low ? "bg-blue-500/60" : "bg-white/10"
+                }`}
+              >
+                <div
+                  className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${
+                    prefs.low ? "translate-x-4" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+            </label>
+
+            <div className="mt-3 pt-2 border-t border-white/5">
+              <p className="text-[9px] text-muted-foreground">
+                {SoundEngine.isMuted()
+                  ? "🔇 Sounds muted — toggle in Walter chat"
+                  : "🔊 Sounds enabled"}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Notification bell button */}
+        <button
+          onClick={() => setShowSettings(!showSettings)}
+          className={`group relative w-9 h-9 rounded-full border backdrop-blur-xl flex items-center justify-center transition-all shadow-lg ${
+            isAnyEnabled
+              ? "bg-purple-500/15 border-purple-500/30 hover:bg-purple-500/25 shadow-purple-500/10"
+              : "bg-black/40 border-white/10 hover:bg-white/10"
+          }`}
+          title="Queue notification settings"
+        >
+          {isAnyEnabled ? (
+            <Bell className="h-4 w-4 text-purple-400 group-hover:text-purple-300" />
+          ) : (
+            <BellOff className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
+          )}
+
+          {/* Active indicator dot */}
+          {isAnyEnabled && (
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
+          )}
+        </button>
+      </div>
+    </>
+  );
+}
+
+export default QueueNotifier;

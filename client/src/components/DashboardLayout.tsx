@@ -1,5 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { QueueNotifier } from "@/components/QueueNotifier";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -436,6 +437,9 @@ function DashboardLayoutContent({
         )}
         <main className="flex-1 p-4 lg:p-6">{children}</main>
       </SidebarInset>
+
+      {/* Global queue notification listener */}
+      <QueueNotifier />
     </>
   );
 }

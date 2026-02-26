@@ -1220,3 +1220,17 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Write vitest tests for progress tracking logic (10 new tests, 32 total in splunkRouter)
 - [x] Verify TypeScript clean (0 errors), 307/308 tests passing (1 pre-existing OTX timeout)
 - [x] Save checkpoint
+
+## Phase: Critical Alert Queue Notifications
+- [x] Add backend endpoint alertQueue.recentAlerts — returns recently queued alerts since a given timestamp
+- [x] Build global QueueNotifier component that polls every 10s for new queue entries
+- [x] Play urgent alarm sound (3 rapid descending square-wave tones) for critical alerts
+- [x] Show persistent toast with alert details, severity badge, and "View in Walter Queue" action button
+- [x] Toast auto-dismisses: critical=15s, high=10s, low=5s, all manually dismissable
+- [x] Three notification tiers: critical (12+) = urgent alarm + red toast, high (8-11) = warning chime + amber toast, low (0-7) = click + info toast
+- [x] Notification preferences stored in localStorage with floating settings panel (bell icon, bottom-right)
+- [x] QueueNotifier mounted inside DashboardLayout, active on every page
+- [x] Respects existing soundEngine mute toggle, shows mute status in settings panel
+- [x] Write vitest tests for notification logic (20 new tests)
+- [x] Verify TypeScript clean (0 errors), 328/328 tests all passing
+- [x] Save checkpoint

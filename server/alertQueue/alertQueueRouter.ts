@@ -14,7 +14,7 @@ import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
 import { getDb } from "../db";
 import { alertQueue } from "../../drizzle/schema";
-import { eq, desc, asc, sql, and, inArray } from "drizzle-orm";
+import { eq, desc, asc, sql, and, inArray, gte } from "drizzle-orm";
 import { runAnalystPipeline, type AnalystMessage } from "../graph/agenticPipeline";
 
 const MAX_QUEUE_DEPTH = 10;
@@ -260,6 +260,47 @@ export const alertQueueRouter = router({
         .limit(1);
 
       return item ?? null;
+    }),
+
+  /**
+   * Get recently queued alerts since a given timestamp.
+   * Used by the global QueueNotifier to detect new arrivals and trigger notifications.
+   * Returns alerts queued within the last N seconds, ordered by severity desc.
+   */
+  recentAlerts: protectedProcedure
+    .input(z.object({
+      /** ISO timestamp — return alerts queued after this time */
+      since: z.string(),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return { alerts: [] };
+
+      const sinceDate = new Date(input.since);
+
+      const alerts = await db
+        .select({
+          id: alertQueue.id,
+          alertId: alertQueue.alertId,
+          ruleId: alertQueue.ruleId,
+          ruleDescription: alertQueue.ruleDescription,
+          ruleLevel: alertQueue.ruleLevel,
+          agentId: alertQueue.agentId,
+          agentName: alertQueue.agentName,
+          status: alertQueue.status,
+          queuedAt: alertQueue.queuedAt,
+        })
+        .from(alertQueue)
+        .where(
+          and(
+            gte(alertQueue.queuedAt, sinceDate),
+            inArray(alertQueue.status, ["queued", "processing"])
+          )
+        )
+        .orderBy(desc(alertQueue.ruleLevel), desc(alertQueue.queuedAt))
+        .limit(10);
+
+      return { alerts };
     }),
 
   /**
