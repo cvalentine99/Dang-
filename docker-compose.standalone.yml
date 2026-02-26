@@ -11,6 +11,8 @@
 #   ./deploy.sh --wazuh-host
 #
 # Set WAZUH_HOST=host.docker.internal in .env to reach host-installed Wazuh.
+# Set WAZUH_INDEXER_HOST=<server-IP> (NOT host.docker.internal) because
+# OpenSearch binds to the server's primary IP, not 0.0.0.0.
 # ============================================================================
 
 networks:
