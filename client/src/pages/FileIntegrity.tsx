@@ -5,7 +5,6 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
-import { MOCK_SYSCHECK_FILES, MOCK_SYSCHECK_LAST_SCAN, MOCK_AGENTS } from "@/lib/mockData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -64,9 +63,9 @@ export default function FileIntegrity() {
 
   const agentsQ = trpc.wazuh.agents.useQuery({ limit: 100, offset: 0, status: "active" }, { retry: 1, staleTime: 30_000, enabled: isConnected });
   const agentList = useMemo(() => {
-    if (isConnected && agentsQ.data) return extractItems(agentsQ.data);
-    return MOCK_AGENTS.data.affected_items.filter(a => a.status === "active") as unknown as Array<Record<string, unknown>>;
-  }, [agentsQ.data, isConnected]);
+    if (!agentsQ.data) return [];
+    return extractItems(agentsQ.data);
+  }, [agentsQ.data]);
 
   const syscheckQ = trpc.wazuh.syscheckFiles.useQuery({
     agentId, limit: pageSize, offset: page * pageSize, search: search || undefined,
@@ -76,16 +75,11 @@ export default function FileIntegrity() {
 
   const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); }, [utils]);
 
-  // ── Files (real or fallback) ──────────────────────────────────────────
+  // ── Files ────────────────────────────────────────────────────────────
   const files = useMemo(() => {
-    if (isConnected && syscheckQ.data) return extractItems(syscheckQ.data);
-    let items = MOCK_SYSCHECK_FILES.data.affected_items as unknown as Array<Record<string, unknown>>;
-    if (search) {
-      const q = search.toLowerCase();
-      items = items.filter(f => String(f.file ?? "").toLowerCase().includes(q));
-    }
-    return items;
-  }, [syscheckQ.data, isConnected, search]);
+    if (!syscheckQ.data) return [];
+    return extractItems(syscheckQ.data);
+  }, [syscheckQ.data]);
 
   const totalFiles = useMemo(() => {
     if (isConnected && syscheckQ.data) {
@@ -97,12 +91,10 @@ export default function FileIntegrity() {
 
   // ── Last scan (real or fallback) ──────────────────────────────────────
   const lastScan = useMemo(() => {
-    if (isConnected && lastScanQ.data) {
-      const items = extractItems(lastScanQ.data);
-      return items[0] ?? null;
-    }
-    return MOCK_SYSCHECK_LAST_SCAN.data.affected_items[0] as unknown as Record<string, unknown>;
-  }, [lastScanQ.data, isConnected]);
+    if (!lastScanQ.data) return null;
+    const items = extractItems(lastScanQ.data);
+    return items[0] ?? null;
+  }, [lastScanQ.data]);
 
   const eventDist = useMemo(() => {
     const counts: Record<string, number> = {};

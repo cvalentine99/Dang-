@@ -175,10 +175,29 @@ first_run_setup() {
   echo ""
   log "Wazuh Connection"
   if [ "$WAZUH_HOST_MODE" = "true" ]; then
-    info "Package-based mode: connecting to Wazuh on this host via Docker bridge"
+    info "Package-based mode: connecting to Wazuh on this host"
+    # Wazuh Manager API binds to 0.0.0.0, so host.docker.internal works.
     set_env "WAZUH_HOST" "host.docker.internal"
-    set_env "WAZUH_INDEXER_HOST" "host.docker.internal"
     ok "WAZUH_HOST set to host.docker.internal"
+
+    # Wazuh Indexer (OpenSearch) binds to a specific IP (network.host in opensearch.yml),
+    # NOT 0.0.0.0. The Docker bridge gateway (172.17.0.x) won't reach it.
+    # Auto-detect the server's primary IP so the container can reach OpenSearch directly.
+    local server_ip=""
+    server_ip=$(ip route get 1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1); exit}' || true)
+    if [ -z "$server_ip" ]; then
+      server_ip=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
+    fi
+    if [ -n "$server_ip" ]; then
+      set_env "WAZUH_INDEXER_HOST" "$server_ip"
+      ok "WAZUH_INDEXER_HOST set to ${server_ip} (server's primary IP)"
+      info "OpenSearch binds to this IP, not the Docker bridge (172.17.0.x)"
+    else
+      # Fallback: ask the user
+      local idx_host
+      idx_host=$(prompt "Wazuh Indexer IP (OpenSearch)" "host.docker.internal")
+      set_env "WAZUH_INDEXER_HOST" "$idx_host"
+    fi
   else
     info "Docker mode: connecting to Wazuh containers on shared network"
     # Auto-detect Wazuh network

@@ -5,7 +5,6 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { AddNoteDialog } from "@/components/shared/AddNoteDialog";
-import { MOCK_AGENTS, MOCK_AGENT_SUMMARY } from "@/lib/mockData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -80,8 +79,8 @@ export default function AgentHealth() {
 
   // ── Agent summary (real or fallback) ──────────────────────────────────
   const agentData = useMemo(() => {
-    const raw = isConnected ? agentSummaryQ.data : MOCK_AGENT_SUMMARY;
-    const items = extractItems(raw);
+    if (!agentSummaryQ.data) return { total: 0, active: 0, disconnected: 0, never: 0, pending: 0 };
+    const items = extractItems(agentSummaryQ.data);
     const first = items[0];
     if (!first) return { total: 0, active: 0, disconnected: 0, never: 0, pending: 0 };
     return {
@@ -91,52 +90,35 @@ export default function AgentHealth() {
       never: Number(first.never_connected ?? (first.connection as Record<string, number>)?.never_connected ?? 0),
       pending: Number(first.pending ?? (first.connection as Record<string, number>)?.pending ?? 0),
     };
-  }, [agentSummaryQ.data, isConnected]);
+  }, [agentSummaryQ.data]);
 
   // ── OS distribution (real or fallback) ────────────────────────────────
   const osDistribution = useMemo(() => {
-    if (isConnected && agentSummaryOsQ.data) {
-      const items = extractItems(agentSummaryOsQ.data);
-      const counts: Record<string, number> = {};
-      items.forEach(item => { const os = String(item.os ?? item.platform ?? "Unknown"); counts[os] = (counts[os] ?? 0) + 1; });
-      return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 8);
-    }
-    // Fallback: derive from mock agents
+    if (!agentSummaryOsQ.data) return [];
+    const items = extractItems(agentSummaryOsQ.data);
     const counts: Record<string, number> = {};
-    MOCK_AGENTS.data.affected_items.forEach(a => { const os = a.os.platform; counts[os] = (counts[os] ?? 0) + 1; });
-    return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-  }, [agentSummaryOsQ.data, isConnected]);
+    items.forEach(item => { const os = String(item.os ?? item.platform ?? "Unknown"); counts[os] = (counts[os] ?? 0) + 1; });
+    return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 8);
+  }, [agentSummaryOsQ.data]);
 
   // ── Groups (real or fallback) ─────────────────────────────────────────
   const groups = useMemo(() => {
-    if (isConnected && groupsQ.data) {
-      const items = extractItems(groupsQ.data);
-      return items.map(g => ({ name: String(g.name ?? ""), count: Number(g.count ?? 0) }));
-    }
-    // Fallback: derive from mock agents
-    const counts: Record<string, number> = {};
-    MOCK_AGENTS.data.affected_items.forEach(a => a.group.forEach(g => { counts[g] = (counts[g] ?? 0) + 1; }));
-    return Object.entries(counts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
-  }, [groupsQ.data, isConnected]);
+    if (!groupsQ.data) return [];
+    const items = extractItems(groupsQ.data);
+    return items.map(g => ({ name: String(g.name ?? ""), count: Number(g.count ?? 0) }));
+  }, [groupsQ.data]);
 
   // ── Agents list (real or fallback) ────────────────────────────────────
   const agents = useMemo(() => {
-    if (isConnected && agentsQ.data) return extractItems(agentsQ.data);
-    // Fallback: apply local filters to mock data
-    let items = MOCK_AGENTS.data.affected_items as unknown as Array<Record<string, unknown>>;
-    if (statusFilter !== "all") items = items.filter(a => a.status === statusFilter);
-    if (groupFilter !== "all") items = items.filter(a => Array.isArray(a.group) && (a.group as string[]).includes(groupFilter));
-    if (search) items = items.filter(a => String(a.name ?? "").toLowerCase().includes(search.toLowerCase()) || String(a.ip ?? "").includes(search));
-    return items.slice(page * pageSize, (page + 1) * pageSize);
-  }, [agentsQ.data, isConnected, statusFilter, groupFilter, search, page]);
+    if (!agentsQ.data) return [];
+    return extractItems(agentsQ.data);
+  }, [agentsQ.data]);
 
   const totalAgents = useMemo(() => {
-    if (isConnected && agentsQ.data) {
-      const d = (agentsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-      return Number(d?.total_affected_items ?? agents.length);
-    }
-    return MOCK_AGENTS.data.total_affected_items;
-  }, [agentsQ.data, isConnected, agents.length]);
+    if (!agentsQ.data) return 0;
+    const d = (agentsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    return Number(d?.total_affected_items ?? agents.length);
+  }, [agentsQ.data, agents.length]);
 
   const statusPieData = useMemo(() => [
     { name: "Active", value: agentData.active },
@@ -147,30 +129,20 @@ export default function AgentHealth() {
 
   // ── Agent detail (real or fallback) ───────────────────────────────────
   const agentDetail = useMemo(() => {
-    if (isConnected && agentDetailQ.data) {
-      const items = extractItems(agentDetailQ.data);
-      return items[0] ?? null;
-    }
-    if (selectedAgent) {
-      return MOCK_AGENTS.data.affected_items.find(a => a.id === selectedAgent) as unknown as Record<string, unknown> ?? null;
-    }
-    return null;
-  }, [agentDetailQ.data, isConnected, selectedAgent]);
+    if (!agentDetailQ.data) return null;
+    const items = extractItems(agentDetailQ.data);
+    return items[0] ?? null;
+  }, [agentDetailQ.data]);
 
   const agentOsDetail = useMemo(() => {
-    if (isConnected && agentOsQ.data) return extractItems(agentOsQ.data)[0] ?? null;
-    if (selectedAgent) {
-      const agent = MOCK_AGENTS.data.affected_items.find(a => a.id === selectedAgent);
-      return agent?.os as unknown as Record<string, unknown> ?? null;
-    }
-    return null;
-  }, [agentOsQ.data, isConnected, selectedAgent]);
+    if (!agentOsQ.data) return null;
+    return extractItems(agentOsQ.data)[0] ?? null;
+  }, [agentOsQ.data]);
 
   const agentHwDetail = useMemo(() => {
-    if (isConnected && agentHwQ.data) return extractItems(agentHwQ.data)[0] ?? null;
-    if (selectedAgent) return { cpu: { name: "Intel Xeon E5-2680 v4", cores: 4, mhz: 2400 }, ram: { total: 8388608, free: 4194304, usage: 50 }, board_serial: "VMware-42 01 a8 3b" } as unknown as Record<string, unknown>;
-    return null;
-  }, [agentHwQ.data, isConnected, selectedAgent]);
+    if (!agentHwQ.data) return null;
+    return extractItems(agentHwQ.data)[0] ?? null;
+  }, [agentHwQ.data]);
 
   const isLoading = statusQ.isLoading;
   const totalPages = Math.ceil(totalAgents / pageSize);

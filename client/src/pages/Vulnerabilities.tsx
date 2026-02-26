@@ -5,7 +5,6 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
-import { MOCK_VULNERABILITIES, MOCK_AGENTS } from "@/lib/mockData";
 import { ExportButton } from "@/components/shared/ExportButton";
 import { AddNoteDialog } from "@/components/shared/AddNoteDialog";
 import { EXPORT_COLUMNS } from "@/lib/exportUtils";
@@ -105,9 +104,9 @@ export default function Vulnerabilities() {
   // ── Agent list ────────────────────────────────────────────────────────────
   const agentsQ = trpc.wazuh.agents.useQuery({ limit: 100, offset: 0, status: "active" }, { retry: 1, staleTime: 30_000, enabled: isWazuhConnected });
   const agentList = useMemo(() => {
-    if (isWazuhConnected && agentsQ.data) return extractItems(agentsQ.data);
-    return MOCK_AGENTS.data.affected_items.filter(a => a.status === "active") as unknown as Array<Record<string, unknown>>;
-  }, [agentsQ.data, isWazuhConnected]);
+    if (!agentsQ.data) return [];
+    return extractItems(agentsQ.data);
+  }, [agentsQ.data]);
 
   // ── Indexer: Fleet-wide aggregations ──────────────────────────────────────
   const vulnSevQ = trpc.indexer.vulnAggBySeverity.useQuery(undefined, { retry: 1, staleTime: 30_000, enabled: isIndexerConnected && viewMode === "fleet" });
@@ -129,167 +128,121 @@ export default function Vulnerabilities() {
 
   // ── Fleet severity distribution (Indexer or mock) ─────────────────────────
   const { fleetSevDist, fleetTotal, fleetAvgCvss, fleetSource } = useMemo(() => {
-    if (isIndexerConnected && vulnSevQ.data?.data) {
-      const aggs = parseAggs(vulnSevQ.data.data);
-      const sevBuckets = parseBuckets(aggs.severity);
-      const avgCvss = Number((aggs.avg_cvss as Record<string, unknown>)?.value ?? 0);
-      const total = sevBuckets.reduce((s, b) => s + Number(b.doc_count ?? 0), 0);
-      return {
-        fleetSevDist: sevBuckets.map(b => ({ name: String(b.key), value: Number(b.doc_count ?? 0) })),
-        fleetTotal: total,
-        fleetAvgCvss: avgCvss.toFixed(1),
-        fleetSource: "indexer" as const,
-      };
+    if (!vulnSevQ.data?.data) {
+      return { fleetSevDist: [], fleetTotal: 0, fleetAvgCvss: "0.0", fleetSource: "mock" as const };
     }
-    // Mock fallback
-    const items = MOCK_VULNERABILITIES.data.affected_items as unknown as Array<Record<string, unknown>>;
-    const counts: Record<string, number> = {};
-    items.forEach(v => { const s = String(v.severity ?? "Untriaged"); counts[s] = (counts[s] ?? 0) + 1; });
-    const avgCvss = items.length > 0 ? (items.reduce((s, v) => s + Number(v.cvss3_score ?? v.cvss2_score ?? 0), 0) / items.length) : 0;
+    const aggs = parseAggs(vulnSevQ.data.data);
+    const sevBuckets = parseBuckets(aggs.severity);
+    const avgCvss = Number((aggs.avg_cvss as Record<string, unknown>)?.value ?? 0);
+    const total = sevBuckets.reduce((s, b) => s + Number(b.doc_count ?? 0), 0);
     return {
-      fleetSevDist: Object.entries(counts).map(([name, value]) => ({ name, value })),
-      fleetTotal: MOCK_VULNERABILITIES.data.total_affected_items,
+      fleetSevDist: sevBuckets.map(b => ({ name: String(b.key), value: Number(b.doc_count ?? 0) })),
+      fleetTotal: total,
       fleetAvgCvss: avgCvss.toFixed(1),
-      fleetSource: "mock" as const,
+      fleetSource: "indexer" as const,
     };
-  }, [isIndexerConnected, vulnSevQ.data]);
+  }, [vulnSevQ.data]);
 
   // ── Top vulnerable agents (Indexer or mock) ───────────────────────────────
   const { topAgents, agentSource } = useMemo(() => {
-    if (isIndexerConnected && vulnAgentQ.data?.data) {
-      const aggs = parseAggs(vulnAgentQ.data.data);
-      const buckets = parseBuckets((aggs.top_agents as Record<string, unknown>));
-      return {
-        topAgents: buckets.map(b => {
-          const nameBuckets = parseBuckets((b.agent_name as Record<string, unknown>));
-          return {
-            id: String(b.key),
-            name: nameBuckets.length > 0 ? String(nameBuckets[0].key) : String(b.key),
-            count: Number(b.doc_count ?? 0),
-            avgCvss: Number((b.avg_cvss as Record<string, unknown>)?.value ?? 0).toFixed(1),
-            sevBreakdown: parseBuckets(b.severity).map(s => ({ sev: String(s.key), count: Number(s.doc_count ?? 0) })),
-          };
-        }),
-        agentSource: "indexer" as const,
-      };
+    if (!vulnAgentQ.data?.data) {
+      return { topAgents: [] as { id: string; name: string; count: number; avgCvss: string; sevBreakdown: { sev: string; count: number }[] }[], agentSource: "mock" as const };
     }
-    // Mock fallback: group mock vulns by agent
-    const items = MOCK_VULNERABILITIES.data.affected_items as unknown as Array<Record<string, unknown>>;
-    const agentCounts: Record<string, number> = {};
-    items.forEach(() => { agentCounts["001"] = (agentCounts["001"] ?? 0) + 1; });
+    const aggs = parseAggs(vulnAgentQ.data.data);
+    const buckets = parseBuckets((aggs.top_agents as Record<string, unknown>));
     return {
-      topAgents: Object.entries(agentCounts).map(([id, count]) => ({
-        id, name: "web-server-prod-01", count, avgCvss: "6.2",
-        sevBreakdown: [{ sev: "Critical", count: 3 }, { sev: "High", count: 5 }, { sev: "Medium", count: 8 }],
-      })),
-      agentSource: "mock" as const,
-    };
-  }, [isIndexerConnected, vulnAgentQ.data]);
-
-  // ── Top packages (Indexer or mock) ────────────────────────────────────────
-  const { topPackages, pkgSource } = useMemo(() => {
-    if (isIndexerConnected && vulnPkgQ.data?.data) {
-      const aggs = parseAggs(vulnPkgQ.data.data);
-      const buckets = parseBuckets((aggs.top_packages as Record<string, unknown>));
-      return {
-        topPackages: buckets.map(b => ({
-          name: String(b.key),
+      topAgents: buckets.map(b => {
+        const nameBuckets = parseBuckets((b.agent_name as Record<string, unknown>));
+        return {
+          id: String(b.key),
+          name: nameBuckets.length > 0 ? String(nameBuckets[0].key) : String(b.key),
           count: Number(b.doc_count ?? 0),
           avgCvss: Number((b.avg_cvss as Record<string, unknown>)?.value ?? 0).toFixed(1),
           sevBreakdown: parseBuckets(b.severity).map(s => ({ sev: String(s.key), count: Number(s.doc_count ?? 0) })),
-        })),
-        pkgSource: "indexer" as const,
-      };
-    }
-    // Mock fallback
-    const items = MOCK_VULNERABILITIES.data.affected_items as unknown as Array<Record<string, unknown>>;
-    const counts: Record<string, number> = {};
-    items.forEach(v => { const pkg = String(v.name ?? "unknown"); counts[pkg] = (counts[pkg] ?? 0) + 1; });
-    return {
-      topPackages: Object.entries(counts).map(([name, count]) => ({ name, count, avgCvss: "5.5", sevBreakdown: [] })).sort((a, b) => b.count - a.count).slice(0, 15),
-      pkgSource: "mock" as const,
+        };
+      }),
+      agentSource: "indexer" as const,
     };
-  }, [isIndexerConnected, vulnPkgQ.data]);
+  }, [vulnAgentQ.data]);
+
+  // ── Top packages (Indexer or mock) ────────────────────────────────────────
+  const { topPackages, pkgSource } = useMemo(() => {
+    if (!vulnPkgQ.data?.data) {
+      return { topPackages: [] as { name: string; count: number; avgCvss: string; sevBreakdown: { sev: string; count: number }[] }[], pkgSource: "mock" as const };
+    }
+    const aggs = parseAggs(vulnPkgQ.data.data);
+    const buckets = parseBuckets((aggs.top_packages as Record<string, unknown>));
+    return {
+      topPackages: buckets.map(b => ({
+        name: String(b.key),
+        count: Number(b.doc_count ?? 0),
+        avgCvss: Number((b.avg_cvss as Record<string, unknown>)?.value ?? 0).toFixed(1),
+        sevBreakdown: parseBuckets(b.severity).map(s => ({ sev: String(s.key), count: Number(s.doc_count ?? 0) })),
+      })),
+      pkgSource: "indexer" as const,
+    };
+  }, [vulnPkgQ.data]);
 
   // ── Top CVEs (Indexer or mock) ────────────────────────────────────────────
   const { topCves, cveSource } = useMemo(() => {
-    if (isIndexerConnected && vulnCveQ.data?.data) {
-      const aggs = parseAggs(vulnCveQ.data.data);
-      const buckets = parseBuckets((aggs.top_cves as Record<string, unknown>));
-      return {
-        topCves: buckets.map(b => {
-          const sevBuckets = parseBuckets(b.severity);
-          return {
-            cve: String(b.key),
-            count: Number(b.doc_count ?? 0),
-            severity: sevBuckets.length > 0 ? String(sevBuckets[0].key) : "Unknown",
-            affectedAgents: Number((b.affected_agents as Record<string, unknown>)?.value ?? 0),
-            avgCvss: Number((b.avg_cvss as Record<string, unknown>)?.value ?? 0).toFixed(1),
-            packages: parseBuckets(b.packages).map(p => String(p.key)).slice(0, 3),
-          };
-        }),
-        cveSource: "indexer" as const,
-      };
+    if (!vulnCveQ.data?.data) {
+      return { topCves: [] as { cve: string; count: number; severity: string; affectedAgents: number; avgCvss: string; packages: string[] }[], cveSource: "mock" as const };
     }
-    // Mock fallback
-    const items = MOCK_VULNERABILITIES.data.affected_items as unknown as Array<Record<string, unknown>>;
-    const cveMap: Record<string, { count: number; sev: string; cvss: number }> = {};
-    items.forEach(v => {
-      const cve = String(v.cve ?? "");
-      if (!cveMap[cve]) cveMap[cve] = { count: 0, sev: String(v.severity ?? "Unknown"), cvss: Number(v.cvss3_score ?? 0) };
-      cveMap[cve].count++;
-    });
+    const aggs = parseAggs(vulnCveQ.data.data);
+    const buckets = parseBuckets((aggs.top_cves as Record<string, unknown>));
     return {
-      topCves: Object.entries(cveMap).map(([cve, d]) => ({
-        cve, count: d.count, severity: d.sev, affectedAgents: 1, avgCvss: d.cvss.toFixed(1), packages: [],
-      })).sort((a, b) => b.count - a.count).slice(0, 20),
-      cveSource: "mock" as const,
+      topCves: buckets.map(b => {
+        const sevBuckets = parseBuckets(b.severity);
+        return {
+          cve: String(b.key),
+          count: Number(b.doc_count ?? 0),
+          severity: sevBuckets.length > 0 ? String(sevBuckets[0].key) : "Unknown",
+          affectedAgents: Number((b.affected_agents as Record<string, unknown>)?.value ?? 0),
+          avgCvss: Number((b.avg_cvss as Record<string, unknown>)?.value ?? 0).toFixed(1),
+          packages: parseBuckets(b.packages).map(p => String(p.key)).slice(0, 3),
+        };
+      }),
+      cveSource: "indexer" as const,
     };
-  }, [isIndexerConnected, vulnCveQ.data]);
+  }, [vulnCveQ.data]);
 
   // ── Per-agent vulns (Server API or mock) ──────────────────────────────────
   const { agentVulns, agentTotal, agentVulnSource } = useMemo(() => {
-    if (isWazuhConnected && vulnsQ.data) {
-      const items = extractItems(vulnsQ.data);
-      const d = (vulnsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-      return { agentVulns: items, agentTotal: Number(d?.total_affected_items ?? items.length), agentVulnSource: "server" as const };
+    if (!vulnsQ.data) {
+      return { agentVulns: [] as Array<Record<string, unknown>>, agentTotal: 0, agentVulnSource: "mock" as const };
     }
-    let items = MOCK_VULNERABILITIES.data.affected_items as unknown as Array<Record<string, unknown>>;
-    if (sevFilter !== "all") items = items.filter(v => String(v.severity ?? "").toLowerCase() === sevFilter);
-    return { agentVulns: items, agentTotal: items.length, agentVulnSource: "mock" as const };
-  }, [vulnsQ.data, isWazuhConnected, sevFilter]);
+    const items = extractItems(vulnsQ.data);
+    const d = (vulnsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    return { agentVulns: items, agentTotal: Number(d?.total_affected_items ?? items.length), agentVulnSource: "server" as const };
+  }, [vulnsQ.data]);
 
   // ── Indexer fleet-wide search results ─────────────────────────────────────
   const { fleetVulns, fleetSearchTotal, fleetSearchSource } = useMemo(() => {
-    if (isIndexerConnected && vulnSearchQ.data?.data) {
-      const resp = vulnSearchQ.data.data as unknown as Record<string, unknown>;
-      const hits = (resp.hits as Record<string, unknown>) ?? {};
-      const hitArr = ((hits.hits as Array<Record<string, unknown>>) ?? []);
-      const total = typeof hits.total === "object" ? Number((hits.total as Record<string, unknown>).value ?? 0) : Number(hits.total ?? 0);
-      const mapped = hitArr.map(h => {
-        const src = (h._source as Record<string, unknown>) ?? {};
-        const vuln = (src.vulnerability as Record<string, unknown>) ?? {};
-        const pkg = (src.package as Record<string, unknown>) ?? {};
-        const agent = (src.agent as Record<string, unknown>) ?? {};
-        return {
-          _id: String(h._id ?? ""),
-          cve: vuln.id, severity: vuln.severity, title: vuln.title,
-          cvss3_score: (vuln.score as Record<string, unknown>)?.base,
-          name: pkg.name, version: pkg.version, architecture: pkg.architecture,
-          status: vuln.status ?? vuln.condition,
-          published: vuln.published, updated: vuln.updated,
-          agent_id: agent.id, agent_name: agent.name,
-          _raw: src,
-        } as Record<string, unknown>;
-      });
-      return { fleetVulns: mapped, fleetSearchTotal: total, fleetSearchSource: "indexer" as const };
+    if (!vulnSearchQ.data?.data) {
+      return { fleetVulns: [] as Array<Record<string, unknown>>, fleetSearchTotal: 0, fleetSearchSource: "mock" as const };
     }
-    // Mock fallback
-    let items = MOCK_VULNERABILITIES.data.affected_items as unknown as Array<Record<string, unknown>>;
-    if (sevFilter !== "all") items = items.filter(v => String(v.severity ?? "").toLowerCase() === sevFilter);
-    if (search) { const q = search.toLowerCase(); items = items.filter(v => String(v.cve ?? "").toLowerCase().includes(q) || String(v.name ?? "").toLowerCase().includes(q)); }
-    return { fleetVulns: items, fleetSearchTotal: items.length, fleetSearchSource: "mock" as const };
-  }, [isIndexerConnected, vulnSearchQ.data, sevFilter, search]);
+    const resp = vulnSearchQ.data.data as unknown as Record<string, unknown>;
+    const hits = (resp.hits as Record<string, unknown>) ?? {};
+    const hitArr = ((hits.hits as Array<Record<string, unknown>>) ?? []);
+    const total = typeof hits.total === "object" ? Number((hits.total as Record<string, unknown>).value ?? 0) : Number(hits.total ?? 0);
+    const mapped = hitArr.map(h => {
+      const src = (h._source as Record<string, unknown>) ?? {};
+      const vuln = (src.vulnerability as Record<string, unknown>) ?? {};
+      const pkg = (src.package as Record<string, unknown>) ?? {};
+      const agent = (src.agent as Record<string, unknown>) ?? {};
+      return {
+        _id: String(h._id ?? ""),
+        cve: vuln.id, severity: vuln.severity, title: vuln.title,
+        cvss3_score: (vuln.score as Record<string, unknown>)?.base,
+        name: pkg.name, version: pkg.version, architecture: pkg.architecture,
+        status: vuln.status ?? vuln.condition,
+        published: vuln.published, updated: vuln.updated,
+        agent_id: agent.id, agent_name: agent.name,
+        _raw: src,
+      } as Record<string, unknown>;
+    });
+    return { fleetVulns: mapped, fleetSearchTotal: total, fleetSearchSource: "indexer" as const };
+  }, [vulnSearchQ.data]);
 
   // ── Computed KPIs ─────────────────────────────────────────────────────────
   const criticalCount = fleetSevDist.find(d => d.name === "Critical")?.value ?? 0;

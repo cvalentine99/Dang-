@@ -7,15 +7,6 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { WazuhGuard, useWazuhStatus } from "@/components/shared/WazuhGuard";
 import {
-  MOCK_AGENTS,
-  MOCK_RULES,
-  MOCK_VULNERABILITIES,
-  MOCK_SYSCHECK_FILES,
-  MOCK_MANAGER_LOGS,
-  MOCK_MITRE_TECHNIQUES,
-  useFallback,
-} from "@/lib/mockData";
-import {
   Search,
   Crosshair,
   Shield,
@@ -137,18 +128,36 @@ export default function ThreatHunting() {
     onError: (err) => toast.error(`Failed to delete: ${err.message}`),
   });
 
-  // ── API queries (always enabled, use fallback when not connected) ──────────
+  // ── API queries ─────────────────────────────────────────────────────────────
   const agentsQ = trpc.wazuh.agents.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 60_000 });
   const rulesQ = trpc.wazuh.rules.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 60_000 });
   const logsQ = trpc.wazuh.managerLogs.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 30_000 });
   const mitreQ = trpc.wazuh.mitreTechniques.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 60_000 });
 
-  const agents = useFallback(agentsQ.data, MOCK_AGENTS, isConnected);
-  const rules = useFallback(rulesQ.data, MOCK_RULES, isConnected);
-  const logs = useFallback(logsQ.data, MOCK_MANAGER_LOGS, isConnected);
-  const mitreTechniques = useFallback(mitreQ.data, MOCK_MITRE_TECHNIQUES, isConnected);
-  const vulns = MOCK_VULNERABILITIES; // Vulns require agentId, use mock for cross-search
-  const syscheck = MOCK_SYSCHECK_FILES; // Syscheck requires agentId, use mock for cross-search
+  // Indexer queries for global vuln/syscheck search (threat hunting searches across ALL agents)
+  const indexerStatusQ = trpc.indexer.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
+  const isIndexerConnected = indexerStatusQ.data?.configured === true && indexerStatusQ.data?.healthy === true;
+
+  const vulnSearchQ = trpc.indexer.vulnSearch.useQuery(
+    { query: activeQuery || undefined, size: 200 },
+    { retry: false, staleTime: 30_000, enabled: isIndexerConnected && !!activeQuery }
+  );
+
+  const agents = agentsQ.data;
+  const rules = rulesQ.data;
+  const logs = logsQ.data;
+  const mitreTechniques = mitreQ.data;
+
+  // Build vuln/syscheck data from indexer for correlation searches
+  const vulns = useMemo<Record<string, unknown>>(() => {
+    if (!vulnSearchQ.data?.data) return {};
+    const resp = vulnSearchQ.data.data as unknown as Record<string, unknown>;
+    const hits = (resp.hits as Record<string, unknown>) ?? {};
+    const hitArr = (hits.hits as Array<Record<string, unknown>>) ?? [];
+    return { data: { affected_items: hitArr.map(h => h._source ?? {}) } };
+  }, [vulnSearchQ.data]);
+
+  const syscheck: Record<string, unknown> = {}; // Syscheck FIM data comes from per-agent queries (not global indexer)
 
   // ── Correlation engine ────────────────────────────────────────────────────
   const correlationResults = useMemo<CorrelationHit[]>(() => {

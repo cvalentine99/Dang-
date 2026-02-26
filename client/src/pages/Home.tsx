@@ -8,10 +8,7 @@ import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { ExportButton } from "@/components/shared/ExportButton";
 import { ThreatMap } from "@/components/shared/ThreatMap";
 import { EXPORT_COLUMNS } from "@/lib/exportUtils";
-import {
-  MOCK_AGENT_SUMMARY, MOCK_MANAGER_STATS, MOCK_MANAGER_STATUS,
-  MOCK_RULES, MOCK_AGENTS, MOCK_MITRE_TACTICS, MOCK_DAEMON_STATS,
-} from "@/lib/mockData";
+
 import {
   Activity, AlertTriangle, Shield, ShieldCheck, Bug, Server,
   Cpu, Zap, Users, Clock, Target, BarChart3, Wifi, WifiOff,
@@ -129,11 +126,10 @@ function ConnectivityItem({ label, subtitle, connected, status }: { label: strin
 }
 
 /** Data source badge */
-function SourceBadge({ source }: { source: "indexer" | "server" | "mock" }) {
+function SourceBadge({ source }: { source: "indexer" | "server" }) {
   const config = {
     indexer: { label: "Indexer", color: "text-threat-low bg-threat-low/10 border-threat-low/20" },
     server: { label: "Server API", color: "text-primary bg-primary/10 border-primary/20" },
-    mock: { label: "Mock", color: "text-muted-foreground bg-secondary/30 border-border/30" },
   }[source];
   return (
     <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded border ${config.color}`}>
@@ -147,66 +143,6 @@ function extractItems(raw: unknown): Array<Record<string, unknown>> {
   const d = (raw as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
   return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
 }
-
-// ── Mock data for Indexer panels when not connected ─────────────────────────
-const MOCK_THREAT_TRENDS = Array.from({ length: 24 }, (_, i) => ({
-  hour: `${String(i).padStart(2, "0")}:00`,
-  critical: Math.floor(Math.random() * 8) + 1,
-  high: Math.floor(Math.random() * 25) + 5,
-  medium: Math.floor(Math.random() * 60) + 20,
-  low: Math.floor(Math.random() * 120) + 40,
-  info: Math.floor(Math.random() * 200) + 80,
-}));
-
-const MOCK_TOP_TALKERS = [
-  { agentId: "003", agentName: "web-server-prod-01", count: 4521, avgLevel: 7.2 },
-  { agentId: "007", agentName: "db-server-prod-01", count: 3187, avgLevel: 8.1 },
-  { agentId: "001", agentName: "dc-primary-01", count: 2843, avgLevel: 5.4 },
-  { agentId: "005", agentName: "mail-gateway-01", count: 2156, avgLevel: 6.8 },
-  { agentId: "009", agentName: "vpn-gateway-01", count: 1892, avgLevel: 9.3 },
-  { agentId: "002", agentName: "app-server-01", count: 1654, avgLevel: 4.2 },
-  { agentId: "011", agentName: "dns-server-01", count: 1423, avgLevel: 3.9 },
-  { agentId: "004", agentName: "file-server-01", count: 987, avgLevel: 5.1 },
-];
-
-const MOCK_GEO_DATA = [
-  { country: "United States", count: 8432, avgLevel: 6.2 },
-  { country: "China", count: 5621, avgLevel: 9.1 },
-  { country: "Russia", count: 3847, avgLevel: 10.3 },
-  { country: "Germany", count: 2156, avgLevel: 4.8 },
-  { country: "Brazil", count: 1893, avgLevel: 5.7 },
-  { country: "India", count: 1654, avgLevel: 5.2 },
-  { country: "Netherlands", count: 1287, avgLevel: 7.4 },
-  { country: "South Korea", count: 943, avgLevel: 6.1 },
-  { country: "United Kingdom", count: 876, avgLevel: 4.3 },
-  { country: "France", count: 654, avgLevel: 5.9 },
-];
-
-const MOCK_TOP_RULES = [
-  { ruleId: "5710", description: "sshd: Attempt to login using a denied user.", count: 3241, level: 12 },
-  { ruleId: "5503", description: "PAM: User login failed.", count: 2876, level: 10 },
-  { ruleId: "31101", description: "Web server 400 error code.", count: 2543, level: 6 },
-  { ruleId: "5716", description: "sshd: Authentication success.", count: 1987, level: 3 },
-  { ruleId: "60103", description: "Integrity checksum changed.", count: 1654, level: 7 },
-  { ruleId: "5402", description: "Successful sudo to ROOT executed.", count: 1432, level: 5 },
-  { ruleId: "31104", description: "Web server 403 error code.", count: 1287, level: 6 },
-  { ruleId: "5501", description: "Login session opened.", count: 1098, level: 3 },
-  { ruleId: "87901", description: "Vulnerability detected in package.", count: 876, level: 8 },
-  { ruleId: "80791", description: "Docker: Container started.", count: 654, level: 3 },
-];
-
-const MOCK_MITRE_TRENDS = [
-  { tactic: "Initial Access", count: 4521, trend: 12 },
-  { tactic: "Execution", count: 3876, trend: -5 },
-  { tactic: "Persistence", count: 3241, trend: 8 },
-  { tactic: "Privilege Escalation", count: 2987, trend: 15 },
-  { tactic: "Defense Evasion", count: 2654, trend: -3 },
-  { tactic: "Credential Access", count: 2432, trend: 22 },
-  { tactic: "Discovery", count: 2187, trend: 1 },
-  { tactic: "Lateral Movement", count: 1876, trend: 18 },
-  { tactic: "Collection", count: 1543, trend: -8 },
-  { tactic: "Command & Control", count: 1287, trend: 6 },
-];
 
 export default function Home() {
   const utils = trpc.useUtils();
@@ -262,9 +198,10 @@ export default function Home() {
     utils.indexer.invalidate();
   }, [utils]);
 
-  // ── Agent summary (real or fallback) ──────────────────────────────────────
+  // ── Agent summary (real or empty) ──────────────────────────────────────
   const agentData = useMemo(() => {
-    const raw = isConnected ? agentSummaryQ.data : MOCK_AGENT_SUMMARY;
+    if (!isConnected || !agentSummaryQ.data) return { total: 0, active: 0, disconnected: 0, never: 0, pending: 0 };
+    const raw = agentSummaryQ.data;
     const d = (raw as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
     if (!d) return { total: 0, active: 0, disconnected: 0, never: 0, pending: 0 };
     const items = d.affected_items as Array<Record<string, unknown>> | undefined;
@@ -283,14 +220,13 @@ export default function Home() {
       const first = items[0];
       return { eps: Number(first?.events_received ?? first?.total_events_decoded ?? 0), totalEvents: Number(first?.total_events ?? first?.events_received ?? 0), decodedEvents: Number(first?.total_events_decoded ?? 0), droppedEvents: Number(first?.events_dropped ?? 0) };
     }
-    const ds = MOCK_DAEMON_STATS.data.affected_items[0];
-    return { eps: Number(ds.events_received ?? 0), totalEvents: Number(ds.events_received ?? 0), decodedEvents: Number(ds.syscheck_events_decoded ?? 0) + Number(ds.alerts_written ?? 0), droppedEvents: Number(ds.events_dropped ?? 0) };
+    return { eps: 0, totalEvents: 0, decodedEvents: 0, droppedEvents: 0 };
   }, [analysisdQ.data, isConnected]);
 
   // ── Hourly trend (Server API) ────────────────────────────────────────────
   const hourlyData = useMemo(() => {
-    const raw = isConnected ? statsHourlyQ.data : MOCK_MANAGER_STATS;
-    const items = extractItems(raw);
+    if (!isConnected || !statsHourlyQ.data) return [];
+    const items = extractItems(statsHourlyQ.data);
     if (items.length === 0) return [];
     return items.map((item, i) => ({
       hour: `${String(item.hour ?? i).padStart(2, "0")}:00`,
@@ -301,8 +237,8 @@ export default function Home() {
 
   // ── Daemon status ─────────────────────────────────────────────────────────
   const daemonData = useMemo(() => {
-    const raw = isConnected ? managerStatusQ.data : MOCK_MANAGER_STATUS;
-    const items = extractItems(raw);
+    if (!isConnected || !managerStatusQ.data) return [];
+    const items = extractItems(managerStatusQ.data);
     const first = items[0];
     if (!first) return [];
     return Object.entries(first).filter(([k]) => !["affected_items", "total_affected_items", "total_failed_items", "failed_items"].includes(k)).map(([name, status]) => ({ name, status: String(status) }));
@@ -310,20 +246,20 @@ export default function Home() {
 
   // ── Top rules (Server API definition) ─────────────────────────────────────
   const topRulesDef = useMemo(() => {
-    const raw = isConnected ? rulesQ.data : MOCK_RULES;
-    return extractItems(raw).slice(0, 8);
+    if (!isConnected || !rulesQ.data) return [];
+    return extractItems(rulesQ.data).slice(0, 8);
   }, [rulesQ.data, isConnected]);
 
   // ── Recent agents ─────────────────────────────────────────────────────────
   const recentAgents = useMemo(() => {
-    const raw = isConnected ? agentsQ.data : MOCK_AGENTS;
-    return extractItems(raw).slice(0, 8);
+    if (!isConnected || !agentsQ.data) return [];
+    return extractItems(agentsQ.data).slice(0, 8);
   }, [agentsQ.data, isConnected]);
 
   // ── MITRE tactics (Server API) ────────────────────────────────────────────
   const mitreData = useMemo(() => {
-    const raw = isConnected ? mitreTacticsQ.data : MOCK_MITRE_TACTICS;
-    return extractItems(raw).slice(0, 14).map(t => ({
+    if (!isConnected || !mitreTacticsQ.data) return [];
+    return extractItems(mitreTacticsQ.data).slice(0, 14).map(t => ({
       name: String(t.name ?? "").replace(/^TA\d+\s*-?\s*/, "").slice(0, 22),
       id: String(t.external_id ?? t.id ?? ""),
       count: Number(t.techniques_count ?? 1),
@@ -343,7 +279,7 @@ export default function Home() {
         return { errors, warnings, info };
       }
     }
-    return { errors: 11, warnings: 47, info: 18854 };
+    return { errors: 0, warnings: 0, info: 0 };
   }, [logsSummaryQ.data, isConnected]);
 
   const agentPieData = useMemo(() => [
@@ -378,10 +314,10 @@ export default function Home() {
         });
       }
     }
-    return MOCK_THREAT_TRENDS;
+    return [];
   }, [alertsAggByLevelQ.data, isIndexerConnected]);
 
-  const threatTrendsSource: "indexer" | "mock" = isIndexerConnected && alertsAggByLevelQ.data?.data ? "indexer" : "mock";
+  const threatTrendsSource: "indexer" | "server" = isIndexerConnected && alertsAggByLevelQ.data?.data ? "indexer" : "server";
 
   /** Top Talkers: agents ranked by alert volume */
   const topTalkersData = useMemo(() => {
@@ -397,10 +333,10 @@ export default function Home() {
         }));
       }
     }
-    return MOCK_TOP_TALKERS;
+    return [];
   }, [alertsAggByAgentQ.data, isIndexerConnected]);
 
-  const topTalkersSource: "indexer" | "mock" = isIndexerConnected && alertsAggByAgentQ.data?.data ? "indexer" : "mock";
+  const topTalkersSource: "indexer" | "server" = isIndexerConnected && alertsAggByAgentQ.data?.data ? "indexer" : "server";
 
   /** Geographic distribution — prefer GeoIP-enriched endpoint, fallback to basic agg, then mock */
   const geoData = useMemo(() => {
@@ -435,10 +371,10 @@ export default function Home() {
         }));
       }
     }
-    return MOCK_GEO_DATA;
+    return [];
   }, [alertsGeoEnrichedQ.data, alertsGeoAggQ.data, isIndexerConnected]);
 
-  const geoSource: "indexer" | "mock" = isIndexerConnected && (alertsGeoEnrichedQ.data?.data || alertsGeoAggQ.data?.data) ? "indexer" : "mock";
+  const geoSource: "indexer" | "server" = isIndexerConnected && (alertsGeoEnrichedQ.data?.data || alertsGeoAggQ.data?.data) ? "indexer" : "server";
 
   /** Top Firing Rules from Indexer */
   const topFiringRules = useMemo(() => {
@@ -454,10 +390,10 @@ export default function Home() {
         }));
       }
     }
-    return MOCK_TOP_RULES;
+    return [];
   }, [alertsAggByRuleQ.data, isIndexerConnected]);
 
-  const topFiringSource: "indexer" | "mock" = isIndexerConnected && alertsAggByRuleQ.data?.data ? "indexer" : "mock";
+  const topFiringSource: "indexer" | "server" = isIndexerConnected && alertsAggByRuleQ.data?.data ? "indexer" : "server";
 
   /** MITRE Tactic Trends from Indexer */
   const mitreTrends = useMemo(() => {
@@ -472,10 +408,10 @@ export default function Home() {
         }));
       }
     }
-    return MOCK_MITRE_TRENDS;
+    return [];
   }, [alertsAggByMitreQ.data, isIndexerConnected]);
 
-  const mitreSource: "indexer" | "mock" = isIndexerConnected && alertsAggByMitreQ.data?.data ? "indexer" : "mock";
+  const mitreSource: "indexer" | "server" = isIndexerConnected && alertsAggByMitreQ.data?.data ? "indexer" : "server";
 
   const isLoading = statusQ.isLoading;
 
@@ -499,7 +435,7 @@ export default function Home() {
           <GlassPanel className="lg:col-span-3 flex flex-col items-center justify-center py-6">
             <div className="flex items-center gap-2 mb-2">
               <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Cpu className="h-4 w-4 text-primary" /> Events Per Second</h3>
-              <SourceBadge source={isConnected ? "server" : "mock"} />
+              <SourceBadge source="server" />
             </div>
             <EpsGauge eps={epsData.eps} maxEps={10000} />
             <div className="grid grid-cols-2 gap-4 mt-4 w-full text-center">
@@ -542,7 +478,7 @@ export default function Home() {
           <GlassPanel className="lg:col-span-3">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Fleet Status</h3>
-              <SourceBadge source={isConnected ? "server" : "mock"} />
+              <SourceBadge source="server" />
             </div>
             <ResponsiveContainer width="100%" height={210}>
               <PieChart>
@@ -704,7 +640,7 @@ export default function Home() {
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /> Event Ingestion — Last 24h</h3>
               <div className="flex items-center gap-2">
-                <SourceBadge source={isConnected ? "server" : "mock"} />
+                <SourceBadge source="server" />
                 {(isConnected && statsHourlyQ.data) ? <RawJsonViewer data={statsHourlyQ.data as Record<string, unknown>} title="Hourly Stats" /> : null}
               </div>
             </div>
@@ -729,7 +665,7 @@ export default function Home() {
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Clock className="h-4 w-4 text-primary" /> Fleet Agents</h3>
               <div className="flex items-center gap-2">
-                <SourceBadge source={isConnected ? "server" : "mock"} />
+                <SourceBadge source="server" />
                 {(isConnected && agentsQ.data) ? <RawJsonViewer data={agentsQ.data as Record<string, unknown>} title="Agents Data" /> : null}
               </div>
             </div>

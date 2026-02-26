@@ -4,7 +4,6 @@ import { StatCard } from "@/components/shared/StatCard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
-import { MOCK_MITRE_TACTICS, MOCK_MITRE_TECHNIQUES, MOCK_MITRE_GROUPS, MOCK_RULES } from "@/lib/mockData";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -62,49 +61,10 @@ const TIME_RANGES = [
   { label: "30d", value: "30d", ms: 2592000000 },
 ];
 
-// Mock Indexer data for MITRE tactic alert counts
-const MOCK_MITRE_ALERT_DATA = {
-  tacticAlerts: [
-    { tactic: "Defense Evasion", alerts: 1847, delta: 12 },
-    { tactic: "Discovery", alerts: 1523, delta: -5 },
-    { tactic: "Persistence", alerts: 1234, delta: 8 },
-    { tactic: "Credential Access", alerts: 987, delta: 23 },
-    { tactic: "Execution", alerts: 876, delta: -3 },
-    { tactic: "Privilege Escalation", alerts: 654, delta: 15 },
-    { tactic: "Initial Access", alerts: 543, delta: 31 },
-    { tactic: "Lateral Movement", alerts: 321, delta: -8 },
-    { tactic: "Command & Control", alerts: 234, delta: 45 },
-    { tactic: "Collection", alerts: 178, delta: 2 },
-    { tactic: "Exfiltration", alerts: 89, delta: -12 },
-    { tactic: "Impact", alerts: 67, delta: 56 },
-  ],
-  timeline: Array.from({ length: 24 }, (_, i) => ({
-    time: `${String(i).padStart(2, "0")}:00`,
-    "Defense Evasion": Math.floor(Math.random() * 120 + 40),
-    "Discovery": Math.floor(Math.random() * 100 + 30),
-    "Persistence": Math.floor(Math.random() * 80 + 20),
-    "Credential Access": Math.floor(Math.random() * 60 + 15),
-    "Execution": Math.floor(Math.random() * 50 + 10),
-    "Initial Access": Math.floor(Math.random() * 30 + 5),
-  })),
-  topTechniques: [
-    { id: "T1055", name: "Process Injection", tactic: "Defense Evasion", alerts: 456 },
-    { id: "T1082", name: "System Information Discovery", tactic: "Discovery", alerts: 389 },
-    { id: "T1053", name: "Scheduled Task/Job", tactic: "Persistence", alerts: 312 },
-    { id: "T1110", name: "Brute Force", tactic: "Credential Access", alerts: 287 },
-    { id: "T1059", name: "Command and Scripting Interpreter", tactic: "Execution", alerts: 234 },
-    { id: "T1078", name: "Valid Accounts", tactic: "Initial Access", alerts: 198 },
-    { id: "T1548", name: "Abuse Elevation Control", tactic: "Privilege Escalation", alerts: 167 },
-    { id: "T1021", name: "Remote Services", tactic: "Lateral Movement", alerts: 145 },
-    { id: "T1071", name: "Application Layer Protocol", tactic: "Command & Control", alerts: 123 },
-    { id: "T1005", name: "Data from Local System", tactic: "Collection", alerts: 98 },
-  ],
-};
 
-function SourceBadge({ source }: { source: "indexer" | "server" | "mock" }) {
+function SourceBadge({ source }: { source: "indexer" | "server" }) {
   const cfg = source === "indexer" ? { bg: "bg-green-500/10", text: "text-green-400", label: "Indexer" }
-    : source === "server" ? { bg: "bg-blue-500/10", text: "text-blue-400", label: "Server API" }
-    : { bg: "bg-yellow-500/10", text: "text-yellow-400", label: "Mock" };
+    : { bg: "bg-blue-500/10", text: "text-blue-400", label: "Server API" };
   return <span className={`text-[9px] px-1.5 py-0.5 rounded ${cfg.bg} ${cfg.text} font-mono`}>{cfg.label}</span>;
 }
 
@@ -162,22 +122,22 @@ export default function MitreAttack() {
 
   const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); utils.indexer.invalidate(); }, [utils]);
 
-  // ── Tactics (real or fallback) ────────────────────────────────────────
+  // ── Tactics (real or empty) ────────────────────────────────────────
   const mitreTactics = useMemo(() => {
     if (isConnected && tacticsQ.data) return extractItems(tacticsQ.data);
-    return MOCK_MITRE_TACTICS.data.affected_items as unknown as Array<Record<string, unknown>>;
+    return [];
   }, [tacticsQ.data, isConnected]);
 
-  // ── Techniques (real or fallback) ─────────────────────────────────────
+  // ── Techniques (real or empty) ─────────────────────────────────────
   const mitreTechniques = useMemo(() => {
     if (isConnected && techniquesQ.data) return extractItems(techniquesQ.data);
-    return MOCK_MITRE_TECHNIQUES.data.affected_items as unknown as Array<Record<string, unknown>>;
+    return [];
   }, [techniquesQ.data, isConnected]);
 
-  // ── Threat Groups (real or fallback) ──────────────────────────────────
+  // ── Threat Groups (real or empty) ──────────────────────────────────
   const threatGroups = useMemo(() => {
     if (isConnected && groupsQ.data) return extractItems(groupsQ.data);
-    return MOCK_MITRE_GROUPS.data.affected_items as unknown as Array<Record<string, unknown>>;
+    return [];
   }, [groupsQ.data, isConnected]);
 
   // ── Build technique map from rules (real or fallback) ─────────────────
@@ -186,7 +146,7 @@ export default function MitreAttack() {
     if (isConnected && rulesQ.data) {
       rules = extractItems(rulesQ.data);
     } else {
-      rules = MOCK_RULES.data.affected_items as unknown as Array<Record<string, unknown>>;
+      rules = [];
     }
 
     const techMap = new Map<string, MitreTechnique>();
@@ -218,8 +178,7 @@ export default function MitreAttack() {
     return { techniques: Array.from(techMap.values()), tacticCounts, totalTechniques: techMap.size, totalRulesWithMitre: rulesWithMitre };
   }, [rulesQ.data, isConnected]);
 
-  // ── Indexer MITRE data (real or mock) ─────────────────────────────────
-  const mitreSource: "indexer" | "mock" = indexerHealthy && mitreAggQ.data ? "indexer" : "mock";
+  // ── Indexer MITRE data (real or empty) ─────────────────────────────────
   const { indexerTacticAlerts, indexerTimeline, indexerTopTechniques, totalMitreAlerts } = useMemo(() => {
     if (indexerHealthy && mitreAggQ.data) {
       const raw = mitreAggQ.data as Record<string, unknown>;
@@ -246,10 +205,10 @@ export default function MitreAttack() {
       }
     }
     return {
-      indexerTacticAlerts: MOCK_MITRE_ALERT_DATA.tacticAlerts,
-      indexerTimeline: MOCK_MITRE_ALERT_DATA.timeline,
-      indexerTopTechniques: MOCK_MITRE_ALERT_DATA.topTechniques,
-      totalMitreAlerts: MOCK_MITRE_ALERT_DATA.tacticAlerts.reduce((s, t) => s + t.alerts, 0),
+      indexerTacticAlerts: [] as Array<{ tactic: string; alerts: number; delta: number }>,
+      indexerTimeline: [] as Array<Record<string, string | number>>,
+      indexerTopTechniques: [] as Array<{ id: string; name: string; tactic: string; alerts: number }>,
+      totalMitreAlerts: 0,
     };
   }, [mitreAggQ.data, indexerHealthy]);
 
@@ -360,7 +319,7 @@ export default function MitreAttack() {
           {/* ── ATT&CK Matrix Tab ──────────────────────────────────────── */}
           <TabsContent value="matrix" className="space-y-4 mt-4">
             <GlassPanel>
-              <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Target className="h-4 w-4 text-primary" /> Tactic Distribution <SourceBadge source={isConnected ? "server" : "mock"} /></h3>
+              <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Target className="h-4 w-4 text-primary" /> Tactic Distribution <SourceBadge source="server" /></h3>
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={tacticChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.04 286 / 20%)" />
@@ -415,7 +374,7 @@ export default function MitreAttack() {
             <GlassPanel>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Flame className="h-4 w-4 text-primary" /> Detection Coverage Heatmap</h3>
-                <SourceBadge source={isConnected ? "server" : "mock"} />
+                <SourceBadge source="server" />
               </div>
               <p className="text-xs text-muted-foreground mb-4">Each cell represents a tactic. Color intensity reflects the percentage of techniques within that tactic that have at least one detection rule mapped.</p>
 
@@ -481,7 +440,7 @@ export default function MitreAttack() {
                     {tr.label}
                   </Button>
                 ))}
-                <SourceBadge source={mitreSource} />
+                <SourceBadge source="indexer" />
               </div>
             </GlassPanel>
 
@@ -585,7 +544,7 @@ export default function MitreAttack() {
           {/* ── Threat Groups Tab ─────────────────────────────────────── */}
           <TabsContent value="groups" className="space-y-4 mt-4">
             <GlassPanel>
-              <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Target className="h-4 w-4 text-primary" /> Threat Groups ({threatGroups.length}) <SourceBadge source={isConnected ? "server" : "mock"} /></h3>
+              <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Target className="h-4 w-4 text-primary" /> Threat Groups ({threatGroups.length}) <SourceBadge source="server" /></h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                 {threatGroups.map((group, i) => (
                   <div key={i} className="bg-secondary/20 rounded-lg p-3 border border-border/20 hover:bg-secondary/30 transition-colors">
