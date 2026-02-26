@@ -1109,3 +1109,18 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Agent badge glow effect for active agents with box-shadow
 - [x] Verify TypeScript clean (0 errors), 210 tests passing
 - [x] Save checkpoint
+
+## Phase: Sound Effects & Replay Button for Agent Activity Console
+- [x] Build Web Audio API synthesizer for procedural sound effects (no audio files needed)
+- [x] Step complete sound: subtle click/tick (short sine wave burst)
+- [x] Agent activate sound: soft rising tone (frequency sweep)
+- [x] Analysis done chime: pleasant two-tone chime (major interval)
+- [x] Error sound: low buzz (sawtooth wave)
+- [x] Safety validation sound: confirmation beep
+- [x] Add mute/unmute toggle button with persistent preference (localStorage)
+- [x] Build replay button for completed agent activity sequences
+- [x] Replay re-renders steps sequentially with original timing
+- [x] Replay triggers sound effects at each step
+- [x] Replay button shows on completed (non-loading) messages with agent steps
+- [x] Verify TypeScript clean (0 errors), 221 tests passing (11 new sound engine tests)
+- [x] Save checkpoint

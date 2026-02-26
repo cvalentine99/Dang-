@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
+import { SoundEngine } from "@/lib/soundEngine";
 import {
   Send, Bot, User, ChevronDown, ChevronRight, FileJson, Lightbulb, Loader2,
   AlertTriangle, Database, Search, Sparkles, Copy, Check, Shield, ShieldAlert,
   ShieldOff, Terminal, Zap, Activity, Clock, CheckCircle2, XCircle, Eye,
+  Volume2, VolumeX, RotateCcw,
 } from "lucide-react";
 import { Streamdown } from "streamdown";
 
@@ -59,33 +61,65 @@ const AGENT_CONFIG: Record<string, { label: string; icon: typeof Bot; color: str
   safety_validator:   { label: "Safety Validator",   icon: Shield,    color: "#34d399", bgClass: "bg-emerald-500/15 border-emerald-500/30 text-emerald-400" },
 };
 
-// ── Agent Activity Console ──────────────────────────────────────────────────
+// ── Sound-Enabled Agent Activity Console ───────────────────────────────────
 
-function AgentActivityConsole({ steps, isLive }: { steps: AgentStep[]; isLive: boolean }): React.JSX.Element {
+function AgentActivityConsole({
+  steps,
+  isLive,
+  isReplay = false,
+  onReplayRequest,
+  canReplay = false,
+}: {
+  steps: AgentStep[];
+  isLive: boolean;
+  isReplay?: boolean;
+  onReplayRequest?: () => void;
+  canReplay?: boolean;
+}): React.JSX.Element {
   const [expanded, setExpanded] = useState(true);
   const consoleRef = useRef<HTMLDivElement>(null);
   const [visibleCount, setVisibleCount] = useState(steps.length);
+  const prevStepCountRef = useRef(0);
 
   useEffect(() => {
-    if (consoleRef.current && isLive) {
+    if (consoleRef.current && (isLive || isReplay)) {
       consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
     }
-  }, [steps, isLive, visibleCount]);
+  }, [steps, isLive, isReplay, visibleCount]);
 
-  // Staggered reveal for non-live mode (when response arrives)
+  // Play sounds when new steps appear during live analysis
   useEffect(() => {
-    if (!isLive && steps.length > 0) {
+    if (!isLive && !isReplay) return;
+    const prevCount = prevStepCountRef.current;
+    if (steps.length > prevCount) {
+      const newStep = steps[steps.length - 1];
+      SoundEngine.playForStep(newStep.agent, newStep.status);
+    }
+    prevStepCountRef.current = steps.length;
+  }, [steps.length, isLive, isReplay]);
+
+  // Staggered reveal for non-live, non-replay mode (when response arrives)
+  useEffect(() => {
+    if (!isLive && !isReplay && steps.length > 0) {
       setVisibleCount(0);
       let i = 0;
       const timer = setInterval(() => {
         i++;
         setVisibleCount(i);
-        if (i >= steps.length) clearInterval(timer);
+        // Play step sound during staggered reveal
+        if (steps[i - 1]) {
+          SoundEngine.playForStep(steps[i - 1].agent, steps[i - 1].status);
+        }
+        if (i >= steps.length) {
+          clearInterval(timer);
+          // Play analysis done chime after all steps revealed
+          setTimeout(() => SoundEngine.analysisDone(), 200);
+        }
       }, 80);
       return () => clearInterval(timer);
     }
     setVisibleCount(steps.length);
-  }, [isLive, steps.length]);
+  }, [isLive, isReplay, steps.length]);
 
   const statusIcon = (status: string) => {
     switch (status) {
@@ -114,9 +148,30 @@ function AgentActivityConsole({ steps, isLive }: { steps: AgentStep[]; isLive: b
             <span className="text-[10px] text-green-400 font-mono">LIVE</span>
           </span>
         )}
-        {!isLive && steps.length > 0 && (
-          <span className="text-[10px] text-muted-foreground font-mono ml-auto">
-            {steps.length} step{steps.length !== 1 ? "s" : ""}
+        {isReplay && (
+          <span className="flex items-center gap-1 ml-auto">
+            <RotateCcw className="w-3 h-3 text-amber-400 animate-spin-slow" />
+            <span className="text-[10px] text-amber-400 font-mono">REPLAY</span>
+          </span>
+        )}
+        {!isLive && !isReplay && steps.length > 0 && (
+          <span className="flex items-center gap-2 ml-auto">
+            <span className="text-[10px] text-muted-foreground font-mono">
+              {steps.length} step{steps.length !== 1 ? "s" : ""}
+            </span>
+            {canReplay && onReplayRequest && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReplayRequest();
+                }}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-purple-500/20 bg-purple-500/5 text-purple-300 hover:bg-purple-500/15 hover:border-purple-500/30 transition-all text-[10px]"
+                title="Replay agent activity"
+              >
+                <RotateCcw className="w-2.5 h-2.5" />
+                <span>Replay</span>
+              </button>
+            )}
           </span>
         )}
       </button>
@@ -125,10 +180,10 @@ function AgentActivityConsole({ steps, isLive }: { steps: AgentStep[]; isLive: b
           ref={consoleRef}
           className="bg-black/60 border-t border-white/5 px-3 py-2 max-h-64 overflow-y-auto font-mono text-[11px] space-y-0.5"
         >
-          {steps.length === 0 && isLive && (
+          {steps.length === 0 && (isLive || isReplay) && (
             <div className="flex items-center gap-2 text-muted-foreground py-2">
               <Loader2 className="w-3 h-3 animate-spin" />
-              <span className="animate-typing-dots">Initializing pipeline</span>
+              <span className="animate-typing-dots">{isReplay ? "Replaying pipeline" : "Initializing pipeline"}</span>
             </div>
           )}
           {displaySteps.map((step, i) => {
@@ -140,8 +195,8 @@ function AgentActivityConsole({ steps, isLive }: { steps: AgentStep[]; isLive: b
               <div
                 key={i}
                 className={`flex items-start gap-2 py-1 rounded-sm transition-all duration-500 animate-step-slide-in ${
-                  isLatest && isLive ? "bg-white/[0.03]" : ""
-                } ${isRunning && isLive ? "agent-step-glow" : ""}`}
+                  isLatest && (isLive || isReplay) ? "bg-white/[0.03]" : ""
+                } ${isRunning && (isLive || isReplay) ? "agent-step-glow" : ""}`}
                 style={{ animationDelay: `${i * 80}ms` }}
               >
                 {/* Timestamp */}
@@ -165,16 +220,16 @@ function AgentActivityConsole({ steps, isLive }: { steps: AgentStep[]; isLive: b
                 {/* Agent badge */}
                 <span
                   className={`flex-shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] transition-all duration-300 ${
-                    isRunning && isLive ? "agent-badge-pulse" : ""
+                    isRunning && (isLive || isReplay) ? "agent-badge-pulse" : ""
                   }`}
                   style={{
                     borderColor: `${config.color}${isRunning ? "80" : "40"}`,
                     backgroundColor: `${config.color}${isRunning ? "25" : "10"}`,
                     color: config.color,
-                    boxShadow: isRunning && isLive ? `0 0 12px ${config.color}30` : "none",
+                    boxShadow: isRunning && (isLive || isReplay) ? `0 0 12px ${config.color}30` : "none",
                   }}
                 >
-                  <AgentIcon className={`w-2.5 h-2.5 ${isRunning && isLive ? "animate-spin-slow" : ""}`} />
+                  <AgentIcon className={`w-2.5 h-2.5 ${isRunning && (isLive || isReplay) ? "animate-spin-slow" : ""}`} />
                   {config.label}
                 </span>
 
@@ -191,7 +246,7 @@ function AgentActivityConsole({ steps, isLive }: { steps: AgentStep[]; isLive: b
               </div>
             );
           })}
-          {isLive && (
+          {(isLive || isReplay) && (
             <div className="flex items-center gap-1 text-green-400/60 pt-1">
               <span className="animate-cursor-blink">▌</span>
             </div>
@@ -351,8 +406,19 @@ function CopyButton({ text }: { text: string }): React.JSX.Element {
 
 // ── Message Component ───────────────────────────────────────────────────────
 
-function ChatMessageBubble({ message }: { message: ChatMessage }): React.JSX.Element {
+function ChatMessageBubble({
+  message,
+  replayingId,
+  replaySteps,
+  onReplayRequest,
+}: {
+  message: ChatMessage;
+  replayingId: string | null;
+  replaySteps: AgentStep[];
+  onReplayRequest: (messageId: string, steps: AgentStep[]) => void;
+}): React.JSX.Element {
   const isUser = message.role === "user";
+  const isReplaying = replayingId === message.id;
 
   return (
     <div className={`flex gap-3 ${isUser ? "flex-row-reverse" : ""}`}>
@@ -389,9 +455,22 @@ function ChatMessageBubble({ message }: { message: ChatMessage }): React.JSX.Ele
           />
         )}
 
-        {/* Agent Activity Console */}
+        {/* Agent Activity Console — show replay steps if replaying, otherwise original */}
         {!isUser && message.agentSteps && message.agentSteps.length > 0 && (
-          <AgentActivityConsole steps={message.agentSteps} isLive={false} />
+          isReplaying ? (
+            <AgentActivityConsole
+              steps={replaySteps}
+              isLive={false}
+              isReplay={true}
+            />
+          ) : (
+            <AgentActivityConsole
+              steps={message.agentSteps}
+              isLive={false}
+              canReplay={true}
+              onReplayRequest={() => onReplayRequest(message.id, message.agentSteps!)}
+            />
+          )
         )}
 
         {/* Reasoning badge */}
@@ -723,6 +802,36 @@ function WelcomeScreen(): React.JSX.Element {
   );
 }
 
+// ── Sound Toggle Button ─────────────────────────────────────────────────────
+
+function SoundToggle(): React.JSX.Element {
+  const [muted, setMutedState] = useState(SoundEngine.isMuted());
+
+  const handleToggle = () => {
+    const newMuted = SoundEngine.toggleMute();
+    setMutedState(newMuted);
+    // Play a quick test sound when unmuting so user knows it works
+    if (!newMuted) {
+      SoundEngine.stepComplete();
+    }
+  };
+
+  return (
+    <button
+      onClick={handleToggle}
+      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition-all ${
+        muted
+          ? "border-white/10 text-muted-foreground hover:bg-white/5"
+          : "border-purple-500/20 bg-purple-500/5 text-purple-300 hover:bg-purple-500/15"
+      }`}
+      title={muted ? "Unmute sound effects" : "Mute sound effects"}
+    >
+      {muted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+      <span className="hidden sm:inline">{muted ? "Muted" : "Sound"}</span>
+    </button>
+  );
+}
+
 // ── Main Analyst Chat Page ──────────────────────────────────────────────────
 
 export default function AnalystChat(): React.JSX.Element {
@@ -730,6 +839,8 @@ export default function AnalystChat(): React.JSX.Element {
   const [input, setInput] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [liveSteps, setLiveSteps] = useState<AgentStep[]>([]);
+  const [replayingId, setReplayingId] = useState<string | null>(null);
+  const [replaySteps, setReplaySteps] = useState<AgentStep[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -738,7 +849,7 @@ export default function AnalystChat(): React.JSX.Element {
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isAnalyzing, liveSteps]);
+  }, [messages, isAnalyzing, liveSteps, replaySteps]);
 
   // Listen for suggestion clicks
   useEffect(() => {
@@ -779,6 +890,34 @@ export default function AnalystChat(): React.JSX.Element {
 
     return () => clearInterval(interval);
   }, [isAnalyzing]);
+
+  // Replay handler: re-animate steps one by one with timing
+  const handleReplay = useCallback((messageId: string, steps: AgentStep[]) => {
+    if (replayingId) return; // Already replaying
+    setReplayingId(messageId);
+    setReplaySteps([]);
+
+    let i = 0;
+    const timer = setInterval(() => {
+      if (i < steps.length) {
+        setReplaySteps(prev => [...prev, steps[i]]);
+        i++;
+      } else {
+        clearInterval(timer);
+        // Play analysis done chime at end of replay
+        setTimeout(() => {
+          SoundEngine.analysisDone();
+          // Clear replay state after a brief pause
+          setTimeout(() => {
+            setReplayingId(null);
+            setReplaySteps([]);
+          }, 800);
+        }, 300);
+      }
+    }, 600); // Slightly faster than original for replay
+
+    return () => clearInterval(timer);
+  }, [replayingId]);
 
   const handleSend = useCallback(async (overrideText?: string) => {
     const text = overrideText ?? input.trim();
@@ -823,7 +962,11 @@ export default function AnalystChat(): React.JSX.Element {
       };
 
       setMessages(prev => [...prev, assistantMsg]);
+      // The analysis done chime will play via the staggered reveal in AgentActivityConsole
     } catch (err) {
+      // Play error sound
+      SoundEngine.errorTone();
+
       const errorMsg: ChatMessage = {
         id: `error-${Date.now()}`,
         role: "assistant",
@@ -870,6 +1013,7 @@ export default function AnalystChat(): React.JSX.Element {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <SoundToggle />
             {messages.length > 0 && (
               <button
                 onClick={() => setMessages([])}
@@ -895,7 +1039,13 @@ export default function AnalystChat(): React.JSX.Element {
         ) : (
           <div className="max-w-4xl mx-auto space-y-6">
             {messages.map(msg => (
-              <ChatMessageBubble key={msg.id} message={msg} />
+              <ChatMessageBubble
+                key={msg.id}
+                message={msg}
+                replayingId={replayingId}
+                replaySteps={replaySteps}
+                onReplayRequest={handleReplay}
+              />
             ))}
             {isAnalyzing && <LiveAnalysisConsole steps={liveSteps} />}
             <div ref={messagesEndRef} />
