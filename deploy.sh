@@ -9,6 +9,7 @@
 #   ./deploy.sh --wazuh-host        # Wazuh installed via packages (no Docker)
 #   ./deploy.sh --proxy caddy       # Add HTTPS via Caddy (auto Let's Encrypt)
 #   ./deploy.sh --proxy nginx       # Add HTTPS via Nginx (bring your own certs)
+#   ./deploy.sh --update            # Pull latest code, rebuild, and restart
 #   ./deploy.sh --rebuild           # Force rebuild without cache
 #   ./deploy.sh --stop              # Stop all services
 #   ./deploy.sh --logs              # Follow logs
@@ -54,7 +55,7 @@ parse_args() {
         WAZUH_HOST_MODE=true
         shift
         ;;
-      --rebuild|--stop|--logs|--status|--generate-certs)
+      --update|--rebuild|--stop|--logs|--status|--generate-certs)
         # These are handled by the case statement in main
         break
         ;;
@@ -556,6 +557,75 @@ cmd_start() {
   fi
 }
 
+cmd_update() {
+  setup_compose_files
+
+  echo -e "${PURPLE}╔══════════════════════════════════════════════════════════════╗${NC}"
+  echo -e "${PURPLE}║${NC}  ${GREEN}Dang! SIEM — Update${NC}                                        ${PURPLE}║${NC}"
+  echo -e "${PURPLE}╚══════════════════════════════════════════════════════════════╝${NC}"
+  echo ""
+
+  # ── 1. Pull latest code ────────────────────────────────────────────────
+  log "Pulling latest code..."
+  if git rev-parse --is-inside-work-tree &> /dev/null; then
+    local branch
+    branch=$(git rev-parse --abbrev-ref HEAD)
+    local before
+    before=$(git rev-parse HEAD)
+
+    git pull origin "$branch" --ff-only 2>&1 || {
+      err "git pull failed. Resolve conflicts manually, then re-run ./deploy.sh --update"
+      exit 1
+    }
+
+    local after
+    after=$(git rev-parse HEAD)
+    if [ "$before" = "$after" ]; then
+      ok "Already up to date (${branch})"
+    else
+      local count
+      count=$(git rev-list --count "${before}..${after}")
+      ok "Pulled ${count} new commit(s) on ${branch}"
+      echo ""
+      git --no-pager log --oneline "${before}..${after}"
+      echo ""
+    fi
+  else
+    warn "Not a git repo — skipping code pull"
+  fi
+
+  # ── 2. Rebuild the app image ───────────────────────────────────────────
+  log "Rebuilding Docker image..."
+  docker compose $COMPOSE_FILES build --no-cache app
+  ok "Image rebuilt"
+
+  # ── 3. Restart app container (DB stays up) ─────────────────────────────
+  log "Restarting app container..."
+  docker compose $COMPOSE_FILES up -d --no-deps app
+  ok "App container restarted"
+
+  # ── 4. Health check ────────────────────────────────────────────────────
+  log "Waiting for health check..."
+  local retries=0
+  local max_retries=12
+  sleep 5
+  while [ $retries -lt $max_retries ]; do
+    if docker compose $COMPOSE_FILES exec -T app curl -sf http://localhost:3000/api/health > /dev/null 2>&1; then
+      ok "Application is healthy!"
+      break
+    fi
+    retries=$((retries + 1))
+    sleep 5
+  done
+
+  if [ $retries -eq $max_retries ]; then
+    warn "Health check did not pass within 60s. Check logs with: ./deploy.sh --logs"
+  else
+    echo ""
+    ok "Update complete!"
+  fi
+}
+
 cmd_stop() {
   setup_compose_files
   log "Stopping Dang! SIEM..."
@@ -607,6 +677,9 @@ for arg in "${ALL_ARGS[@]}"; do
 done
 
 case "${CMD:-start}" in
+  --update)
+    cmd_update
+    ;;
   --stop)
     cmd_stop
     ;;
