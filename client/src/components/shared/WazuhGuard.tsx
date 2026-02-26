@@ -1,6 +1,7 @@
 import { trpc } from "@/lib/trpc";
-import { Shield, AlertTriangle, Wifi, WifiOff } from "lucide-react";
+import { Shield, AlertTriangle, Settings2, Wifi, WifiOff } from "lucide-react";
 import { ReactNode } from "react";
+import { useLocation } from "wouter";
 
 interface WazuhGuardProps {
   children: ReactNode;
@@ -15,6 +16,7 @@ export function WazuhGuard({ children }: WazuhGuardProps) {
     retry: 1,
     staleTime: 60_000,
   });
+  const [, setLocation] = useLocation();
 
   const isConnected = data?.configured === true && data?.data != null;
 
@@ -39,9 +41,19 @@ export function WazuhGuard({ children }: WazuhGuardProps) {
               <span>Wazuh API Not Connected</span>
               <span className="text-muted-foreground ml-1">
                 {!data?.configured
-                  ? "— Set WAZUH_HOST, WAZUH_USER, WAZUH_PASS in Secrets"
-                  : `— ${(data as Record<string, unknown>)?.error ?? "Connection failed"}`}
+                  ? "— Configure connection in"
+                  : `— ${(data as Record<string, unknown>)?.error ?? "Connection failed — check credentials in"}`}
               </span>
+              <button
+                onClick={() => setLocation("/admin/settings")}
+                className="inline-flex items-center gap-1 ml-1 underline underline-offset-2 hover:text-foreground transition-colors"
+              >
+                <Settings2 className="h-3 w-3" />
+                Admin Settings
+              </button>
+              {!data?.configured && (
+                <span className="text-muted-foreground ml-1">or set WAZUH_HOST, WAZUH_USER, WAZUH_PASS env vars</span>
+              )}
             </>
           )}
         </div>

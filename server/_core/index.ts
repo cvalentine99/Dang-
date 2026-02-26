@@ -113,54 +113,57 @@ async function startServer() {
       }
     }
 
-    // 2. Wazuh Manager API check
+    // 2. Wazuh Manager API check — authenticates and calls /manager/info
     async function checkWazuhManager(): Promise<CheckResult> {
       try {
-        const { getEffectiveWazuhConfig } = await import("../wazuh/wazuhClient");
+        const { getEffectiveWazuhConfig, wazuhGet } = await import("../wazuh/wazuhClient");
         const config = await getEffectiveWazuhConfig();
         if (!config) return { status: "not_configured" };
 
         const wStart = Date.now();
-        // Use a lightweight TCP connect test instead of full API call for health check
-        const net = await import("net");
-        await new Promise<void>((resolve, reject) => {
-          const socket = net.createConnection({ host: config.host, port: config.port, timeout: HEALTH_CHECK_TIMEOUT });
-          socket.on("connect", () => { socket.destroy(); resolve(); });
-          socket.on("timeout", () => { socket.destroy(); reject(new Error(`Cannot reach ${config.host}:${config.port} (timeout)`)); });
-          socket.on("error", (err) => { socket.destroy(); reject(err); });
-        });
+        const data = await wazuhGet(config, { path: "/manager/status" });
+        const daemons = (data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+        const daemonItems = (daemons?.affected_items as Array<Record<string, string>>) ?? [];
+        const daemonMap: Record<string, string> = {};
+        for (const item of daemonItems) {
+          if (item.daemon && item.status) daemonMap[item.daemon] = item.status;
+        }
 
         return {
           status: "connected",
           latencyMs: Date.now() - wStart,
-          details: { host: config.host, port: config.port },
+          details: {
+            host: config.host,
+            port: config.port,
+            ...(Object.keys(daemonMap).length > 0 ? { daemons: daemonMap } : {}),
+          },
         };
       } catch (err) {
         return { status: "error", error: (err as Error).message.substring(0, 200) };
       }
     }
 
-    // 3. Wazuh Indexer (OpenSearch) check
+    // 3. Wazuh Indexer (OpenSearch) check — authenticates and calls /_cluster/health
     async function checkWazuhIndexer(): Promise<CheckResult> {
       try {
-        const { getEffectiveIndexerConfig } = await import("../indexer/indexerClient");
+        const { getEffectiveIndexerConfig, indexerHealth } = await import("../indexer/indexerClient");
         const config = await getEffectiveIndexerConfig();
         if (!config) return { status: "not_configured" };
 
         const iStart = Date.now();
-        // Use a lightweight TCP connect test
-        const net = await import("net");
-        await new Promise<void>((resolve, reject) => {
-          const socket = net.createConnection({ host: config.host, port: config.port, timeout: HEALTH_CHECK_TIMEOUT });
-          socket.on("connect", () => { socket.destroy(); resolve(); });
-          socket.on("timeout", () => { socket.destroy(); reject(new Error(`Cannot reach ${config.host}:${config.port} (timeout)`)); });
-          socket.on("error", (err) => { socket.destroy(); reject(err); });
-        });
+        const health = await indexerHealth(config);
 
         return {
           status: "connected",
           latencyMs: Date.now() - iStart,
-          details: { host: config.host, port: config.port },
+          details: {
+            host: config.host,
+            port: config.port,
+            clusterName: health.cluster_name as string,
+            clusterStatus: health.status as string,
+            numberOfNodes: health.number_of_nodes as number,
+            activeShards: health.active_shards as number,
+          },
         };
       } catch (err) {
         return { status: "error", error: (err as Error).message.substring(0, 200) };

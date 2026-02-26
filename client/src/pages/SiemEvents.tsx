@@ -91,6 +91,22 @@ export default function SiemEvents() {
   const statusQ = trpc.wazuh.status.useQuery();
   const isConfigured = !!(statusQ.data as Record<string, unknown>)?.configured;
 
+  // Indexer connectivity — drives real alert data
+  const indexerStatusQ = trpc.indexer.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
+  const isIndexerConnected = indexerStatusQ.data?.configured === true && indexerStatusQ.data?.healthy === true;
+
+  // Real alert search from indexer
+  const alertsSearchQ = trpc.indexer.alertsSearch.useQuery({
+    from: `now-${timeRange}`,
+    to: "now",
+    size: pageSize,
+    offset: page * pageSize,
+    query: searchQuery || undefined,
+    ruleLevelMin: severityFilter === "critical" ? 14 : severityFilter === "high" ? 10 : severityFilter === "medium" ? 7 : severityFilter === "low" ? 4 : undefined,
+    sortField: sortField === "level" ? "rule.level" : "timestamp",
+    sortOrder: sortDir,
+  }, { retry: false, staleTime: 15_000, enabled: isIndexerConnected });
+
   const rulesQ = trpc.wazuh.rules.useQuery(
     { limit: 500, offset: 0 },
     { enabled: isConfigured }
@@ -129,7 +145,17 @@ export default function SiemEvents() {
   });
 
   // ─── Data ────────────────────────────────────────────────────────────────
-  const events: SiemEvent[] = MOCK_SIEM_EVENTS;
+  const { events, totalEvents } = useMemo(() => {
+    if (isIndexerConnected && alertsSearchQ.data?.data) {
+      const resp = alertsSearchQ.data.data as unknown as Record<string, unknown>;
+      const hits = (resp.hits as Record<string, unknown>) ?? {};
+      const hitArr = (hits.hits as Array<Record<string, unknown>>) ?? [];
+      const total = typeof hits.total === "object" ? Number((hits.total as Record<string, unknown>).value ?? 0) : Number(hits.total ?? 0);
+      const mapped = hitArr.map((h) => h._source as unknown as SiemEvent);
+      return { events: mapped, totalEvents: total };
+    }
+    return { events: MOCK_SIEM_EVENTS as SiemEvent[], totalEvents: MOCK_SIEM_EVENTS.length };
+  }, [alertsSearchQ.data, isIndexerConnected]);
   const logSources = MOCK_LOG_SOURCES;
   const rules = useFallback(rulesQ.data, MOCK_RULES, isConfigured);
   const agents = useFallback(agentsQ.data, MOCK_AGENTS, isConfigured);
@@ -139,54 +165,62 @@ export default function SiemEvents() {
     : [];
 
   // ─── Filtering ───────────────────────────────────────────────────────────
+  // When indexer is connected, search/severity/sort/pagination are server-side.
+  // Client-side filtering still applies for source, agent, and MITRE filters.
   const filteredEvents = useMemo(() => {
     let result = [...events];
 
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (e) =>
-          e.rule.description.toLowerCase().includes(q) ||
-          e.full_log.toLowerCase().includes(q) ||
-          e.agent.name.toLowerCase().includes(q) ||
-          e.agent.ip.includes(q) ||
-          (e.data as Record<string, unknown>)?.srcip?.toString().includes(q) ||
-          e.decoder.name.toLowerCase().includes(q) ||
-          e.rule.id.toString().includes(q) ||
-          e.id.includes(q)
-      );
-    }
+    // Only apply client-side search/severity when using mock data
+    if (!isIndexerConnected) {
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        result = result.filter(
+          (e) =>
+            e.rule.description.toLowerCase().includes(q) ||
+            e.full_log.toLowerCase().includes(q) ||
+            e.agent.name.toLowerCase().includes(q) ||
+            e.agent.ip.includes(q) ||
+            (e.data as Record<string, unknown>)?.srcip?.toString().includes(q) ||
+            e.decoder.name.toLowerCase().includes(q) ||
+            e.rule.id.toString().includes(q) ||
+            e.id.includes(q)
+        );
+      }
 
-    if (severityFilter !== "all") {
-      result = result.filter((e) => LEVEL_TO_SEVERITY(e.rule.level) === severityFilter);
+      if (severityFilter !== "all") {
+        result = result.filter((e) => LEVEL_TO_SEVERITY(e.rule.level) === severityFilter);
+      }
     }
 
     if (sourceFilter !== "all") {
-      result = result.filter((e) => e.decoder.name === sourceFilter || e.decoder.parent === sourceFilter);
+      result = result.filter((e) => e.decoder?.name === sourceFilter || e.decoder?.parent === sourceFilter);
     }
 
     if (agentFilter !== "all") {
-      result = result.filter((e) => e.agent.id === agentFilter);
+      result = result.filter((e) => e.agent?.id === agentFilter);
     }
 
     if (mitreFilter !== "all") {
-      result = result.filter((e) => (e.rule.mitre.id as string[]).includes(mitreFilter) || (e.rule.mitre.tactic as string[]).includes(mitreFilter));
+      result = result.filter((e) => (e.rule?.mitre?.id as string[] | undefined)?.includes(mitreFilter) || (e.rule?.mitre?.tactic as string[] | undefined)?.includes(mitreFilter));
     }
 
-    result.sort((a, b) => {
-      if (sortField === "timestamp") {
-        return sortDir === "desc"
-          ? new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-          : new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-      }
-      return sortDir === "desc" ? b.rule.level - a.rule.level : a.rule.level - b.rule.level;
-    });
+    if (!isIndexerConnected) {
+      result.sort((a, b) => {
+        if (sortField === "timestamp") {
+          return sortDir === "desc"
+            ? new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+            : new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+        }
+        return sortDir === "desc" ? b.rule.level - a.rule.level : a.rule.level - b.rule.level;
+      });
+    }
 
     return result;
-  }, [events, searchQuery, severityFilter, sourceFilter, agentFilter, mitreFilter, sortField, sortDir]);
+  }, [events, isIndexerConnected, searchQuery, severityFilter, sourceFilter, agentFilter, mitreFilter, sortField, sortDir]);
 
-  const pagedEvents = filteredEvents.slice(page * pageSize, (page + 1) * pageSize);
-  const totalPages = Math.ceil(filteredEvents.length / pageSize);
+  // When using indexer, server already paginated; for mock data, paginate client-side
+  const pagedEvents = isIndexerConnected ? filteredEvents : filteredEvents.slice(page * pageSize, (page + 1) * pageSize);
+  const totalPages = Math.ceil((isIndexerConnected ? totalEvents : filteredEvents.length) / pageSize);
 
   // ─── Correlation Engine ──────────────────────────────────────────────────
   const getRelatedEvents = useCallback(
@@ -456,7 +490,7 @@ export default function SiemEvents() {
 
       {/* ── KPI Row ───────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <StatCard label="Total Events" value={events.length.toLocaleString()} icon={Layers} />
+        <StatCard label="Total Events" value={(isIndexerConnected ? totalEvents : events.length).toLocaleString()} icon={Layers} />
         <StatCard
           label="Critical"
           value={stats.severityCounts.critical}
@@ -714,8 +748,8 @@ export default function SiemEvents() {
 
         <div className="mt-2 flex items-center justify-between">
           <span className="text-xs text-slate-500">
-            Showing {pagedEvents.length} of {filteredEvents.length} events
-            {filteredEvents.length !== events.length && ` (filtered from ${events.length} total)`}
+            Showing {pagedEvents.length} of {isIndexerConnected ? totalEvents.toLocaleString() : filteredEvents.length} events
+            {!isIndexerConnected && filteredEvents.length !== events.length && ` (filtered from ${events.length} total)`}
           </span>
           <ExportButton
             getData={() => filteredEvents.map(e => ({
