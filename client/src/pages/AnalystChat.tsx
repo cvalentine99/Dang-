@@ -64,25 +64,43 @@ const AGENT_CONFIG: Record<string, { label: string; icon: typeof Bot; color: str
 function AgentActivityConsole({ steps, isLive }: { steps: AgentStep[]; isLive: boolean }): React.JSX.Element {
   const [expanded, setExpanded] = useState(true);
   const consoleRef = useRef<HTMLDivElement>(null);
+  const [visibleCount, setVisibleCount] = useState(steps.length);
 
   useEffect(() => {
     if (consoleRef.current && isLive) {
       consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
     }
-  }, [steps, isLive]);
+  }, [steps, isLive, visibleCount]);
+
+  // Staggered reveal for non-live mode (when response arrives)
+  useEffect(() => {
+    if (!isLive && steps.length > 0) {
+      setVisibleCount(0);
+      let i = 0;
+      const timer = setInterval(() => {
+        i++;
+        setVisibleCount(i);
+        if (i >= steps.length) clearInterval(timer);
+      }, 80);
+      return () => clearInterval(timer);
+    }
+    setVisibleCount(steps.length);
+  }, [isLive, steps.length]);
 
   const statusIcon = (status: string) => {
     switch (status) {
       case "running": return <Loader2 className="w-3 h-3 animate-spin text-blue-400" />;
-      case "complete": return <CheckCircle2 className="w-3 h-3 text-green-400" />;
-      case "error": return <XCircle className="w-3 h-3 text-red-400" />;
-      case "blocked": return <ShieldOff className="w-3 h-3 text-red-400" />;
+      case "complete": return <CheckCircle2 className="w-3 h-3 text-green-400 animate-scale-in" />;
+      case "error": return <XCircle className="w-3 h-3 text-red-400 animate-shake" />;
+      case "blocked": return <ShieldOff className="w-3 h-3 text-red-400 animate-shake" />;
       default: return <Clock className="w-3 h-3 text-muted-foreground" />;
     }
   };
 
+  const displaySteps = steps.slice(0, visibleCount);
+
   return (
-    <div className="mt-3 border border-white/5 rounded-lg overflow-hidden">
+    <div className="mt-3 border border-white/5 rounded-lg overflow-hidden backdrop-blur-sm">
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
@@ -105,27 +123,40 @@ function AgentActivityConsole({ steps, isLive }: { steps: AgentStep[]; isLive: b
       {expanded && (
         <div
           ref={consoleRef}
-          className="bg-black/60 border-t border-white/5 px-3 py-2 max-h-64 overflow-y-auto font-mono text-[11px] space-y-1"
+          className="bg-black/60 border-t border-white/5 px-3 py-2 max-h-64 overflow-y-auto font-mono text-[11px] space-y-0.5"
         >
           {steps.length === 0 && isLive && (
-            <div className="flex items-center gap-2 text-muted-foreground">
+            <div className="flex items-center gap-2 text-muted-foreground py-2">
               <Loader2 className="w-3 h-3 animate-spin" />
-              <span>Initializing pipeline...</span>
+              <span className="animate-typing-dots">Initializing pipeline</span>
             </div>
           )}
-          {steps.map((step, i) => {
+          {displaySteps.map((step, i) => {
             const config = AGENT_CONFIG[step.agent] || AGENT_CONFIG.orchestrator;
             const AgentIcon = config.icon;
+            const isLatest = i === displaySteps.length - 1;
+            const isRunning = step.status === "running";
             return (
               <div
                 key={i}
-                className={`flex items-start gap-2 py-1 transition-all duration-300 ${
-                  i === steps.length - 1 && isLive ? "animate-fade-in" : ""
-                }`}
+                className={`flex items-start gap-2 py-1 rounded-sm transition-all duration-500 animate-step-slide-in ${
+                  isLatest && isLive ? "bg-white/[0.03]" : ""
+                } ${isRunning && isLive ? "agent-step-glow" : ""}`}
+                style={{ animationDelay: `${i * 80}ms` }}
               >
                 {/* Timestamp */}
-                <span className="text-muted-foreground flex-shrink-0 w-16 text-right">
-                  {step.durationMs != null ? `${step.durationMs}ms` : "..."}
+                <span className="text-muted-foreground flex-shrink-0 w-16 text-right tabular-nums">
+                  {step.durationMs != null ? (
+                    <span className={step.durationMs > 2000 ? "text-yellow-400" : step.durationMs > 5000 ? "text-red-400" : ""}>
+                      {step.durationMs}ms
+                    </span>
+                  ) : (
+                    <span className="inline-flex gap-0.5">
+                      <span className="w-1 h-1 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <span className="w-1 h-1 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <span className="w-1 h-1 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "300ms" }} />
+                    </span>
+                  )}
                 </span>
 
                 {/* Status icon */}
@@ -133,10 +164,17 @@ function AgentActivityConsole({ steps, isLive }: { steps: AgentStep[]; isLive: b
 
                 {/* Agent badge */}
                 <span
-                  className="flex-shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px]"
-                  style={{ borderColor: `${config.color}40`, backgroundColor: `${config.color}10`, color: config.color }}
+                  className={`flex-shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] transition-all duration-300 ${
+                    isRunning && isLive ? "agent-badge-pulse" : ""
+                  }`}
+                  style={{
+                    borderColor: `${config.color}${isRunning ? "80" : "40"}`,
+                    backgroundColor: `${config.color}${isRunning ? "25" : "10"}`,
+                    color: config.color,
+                    boxShadow: isRunning && isLive ? `0 0 12px ${config.color}30` : "none",
+                  }}
                 >
-                  <AgentIcon className="w-2.5 h-2.5" />
+                  <AgentIcon className={`w-2.5 h-2.5 ${isRunning && isLive ? "animate-spin-slow" : ""}`} />
                   {config.label}
                 </span>
 
@@ -147,7 +185,7 @@ function AgentActivityConsole({ steps, isLive }: { steps: AgentStep[]; isLive: b
                     <span className="text-muted-foreground ml-1.5">— {step.detail}</span>
                   )}
                   {step.dataPoints != null && step.dataPoints > 0 && (
-                    <span className="text-cyan-400 ml-1.5">[{step.dataPoints} pts]</span>
+                    <span className="text-cyan-400 ml-1.5 animate-data-count">[{step.dataPoints} pts]</span>
                   )}
                 </div>
               </div>
@@ -155,7 +193,7 @@ function AgentActivityConsole({ steps, isLive }: { steps: AgentStep[]; isLive: b
           })}
           {isLive && (
             <div className="flex items-center gap-1 text-green-400/60 pt-1">
-              <span className="animate-pulse">▌</span>
+              <span className="animate-cursor-blink">▌</span>
             </div>
           )}
         </div>
@@ -411,35 +449,212 @@ function SuggestionChip({ text }: { text: string }): React.JSX.Element {
   );
 }
 
-// ── Live Analysis Indicator (replaces old simple spinner) ───────────────────
+// ── Agent Status Grid (shows all 5 agents with live state) ─────────────────
+
+function AgentStatusGrid({ steps }: { steps: AgentStep[] }): React.JSX.Element {
+  const agentOrder: Array<AgentStep["agent"]> = [
+    "orchestrator", "graph_retriever", "indexer_retriever", "synthesizer", "safety_validator",
+  ];
+
+  const agentState = (agent: string): "idle" | "running" | "complete" | "error" => {
+    const agentSteps = steps.filter(s => s.agent === agent);
+    if (agentSteps.length === 0) return "idle";
+    const last = agentSteps[agentSteps.length - 1];
+    return last.status === "running" ? "running" : last.status === "error" ? "error" : "complete";
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 mb-3">
+      {agentOrder.map((agent, i) => {
+        const config = AGENT_CONFIG[agent];
+        const AgentIcon = config.icon;
+        const state = agentState(agent);
+        const isActive = state === "running";
+        const isDone = state === "complete";
+        const isError = state === "error";
+
+        return (
+          <React.Fragment key={agent}>
+            {i > 0 && (
+              <div className={`w-6 h-px transition-all duration-700 ${
+                isDone || isActive ? "bg-gradient-to-r from-white/20 to-white/10" : "bg-white/5"
+              }`} />
+            )}
+            <div
+              className={`relative flex items-center gap-1.5 px-2 py-1 rounded-md border text-[10px] font-mono transition-all duration-500 ${
+                isActive
+                  ? "border-opacity-80 scale-105 agent-node-active"
+                  : isDone
+                  ? "border-opacity-40 opacity-80"
+                  : isError
+                  ? "border-red-500/40 bg-red-500/10"
+                  : "border-white/5 bg-white/[0.02] opacity-40"
+              }`}
+              style={{
+                borderColor: isActive ? `${config.color}80` : isDone ? `${config.color}40` : undefined,
+                backgroundColor: isActive ? `${config.color}20` : isDone ? `${config.color}08` : undefined,
+                color: isActive || isDone ? config.color : undefined,
+                boxShadow: isActive ? `0 0 20px ${config.color}25, 0 0 40px ${config.color}10` : "none",
+              }}
+            >
+              {isActive && (
+                <span
+                  className="absolute inset-0 rounded-md animate-ping-slow opacity-30"
+                  style={{ border: `1px solid ${config.color}` }}
+                />
+              )}
+              <AgentIcon className={`w-3 h-3 ${isActive ? "animate-spin-slow" : ""}`} />
+              <span className="hidden sm:inline">{config.label}</span>
+              {isDone && <CheckCircle2 className="w-2.5 h-2.5 text-green-400 animate-scale-in" />}
+              {isError && <XCircle className="w-2.5 h-2.5 text-red-400" />}
+            </div>
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Animated Progress Ring ──────────────────────────────────────────────────
+
+function ProgressRing({ progress, size = 32 }: { progress: number; size?: number }): React.JSX.Element {
+  const radius = (size - 4) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (progress / 100) * circumference;
+
+  return (
+    <svg width={size} height={size} className="-rotate-90">
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="rgba(255,255,255,0.05)"
+        strokeWidth={2}
+      />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="url(#progressGradient)"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+        className="transition-all duration-700 ease-out"
+      />
+      <defs>
+        <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#a78bfa" />
+          <stop offset="50%" stopColor="#22d3ee" />
+          <stop offset="100%" stopColor="#fbbf24" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+// ── Data Stream Effect ──────────────────────────────────────────────────────
+
+function DataStreamEffect(): React.JSX.Element {
+  const chars = "01";
+  const [streams] = useState(() =>
+    Array.from({ length: 12 }, () => ({
+      delay: Math.random() * 3,
+      duration: 1.5 + Math.random() * 2,
+      left: Math.random() * 100,
+      char: chars[Math.floor(Math.random() * chars.length)],
+    }))
+  );
+
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-[0.06]">
+      {streams.map((s, i) => (
+        <span
+          key={i}
+          className="absolute text-[10px] font-mono text-green-400 animate-data-rain"
+          style={{
+            left: `${s.left}%`,
+            animationDelay: `${s.delay}s`,
+            animationDuration: `${s.duration}s`,
+          }}
+        >
+          {s.char}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// ── Live Analysis Indicator ────────────────────────────────────────────────
 
 function LiveAnalysisConsole({ steps }: { steps: AgentStep[] }): React.JSX.Element {
+  const progress = Math.min(100, (steps.length / 8) * 100);
+  const activeAgent = steps.length > 0 ? steps[steps.length - 1].agent : null;
+  const activeConfig = activeAgent ? AGENT_CONFIG[activeAgent] : null;
+
   return (
-    <div className="flex gap-3">
-      <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center bg-cyan-500/10 border border-cyan-500/20">
+    <div className="flex gap-3 animate-fade-in">
+      <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center bg-cyan-500/10 border border-cyan-500/20 relative">
         <Bot className="w-4 h-4 text-cyan-300" />
+        <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse border border-black/50" />
       </div>
       <div className="flex-1 min-w-0 max-w-[85%]">
-        <div className="glass-panel rounded-xl px-4 py-3">
-          <div className="flex items-center gap-2 mb-2">
-            <Loader2 className="w-4 h-4 text-purple-400 animate-spin" />
-            <span className="text-sm text-foreground font-medium">Analyzing...</span>
-            <span className="flex items-center gap-1 ml-auto">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-[10px] text-green-400 font-mono">PIPELINE ACTIVE</span>
+        <div className="glass-panel rounded-xl px-4 py-3 relative overflow-hidden">
+          <DataStreamEffect />
+
+          {/* Header with progress ring */}
+          <div className="relative flex items-center gap-3 mb-3">
+            <ProgressRing progress={progress} />
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-foreground font-medium">Analyzing</span>
+                <span className="animate-typing-dots text-sm text-muted-foreground">...</span>
+              </div>
+              {activeConfig && (
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span
+                    className="text-[10px] font-mono px-1.5 py-0.5 rounded border animate-fade-in"
+                    style={{
+                      borderColor: `${activeConfig.color}50`,
+                      backgroundColor: `${activeConfig.color}15`,
+                      color: activeConfig.color,
+                    }}
+                  >
+                    {activeConfig.label}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    Phase {steps.length > 0 ? steps[steps.length - 1].phase : 1}/4
+                  </span>
+                </div>
+              )}
+            </div>
+            <span className="flex items-center gap-1.5">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" />
+              </span>
+              <span className="text-[10px] text-green-400 font-mono">LIVE</span>
             </span>
           </div>
 
-          {/* Live progress bar */}
-          <div className="h-1 rounded-full bg-white/5 overflow-hidden mb-3">
+          {/* Agent Status Grid */}
+          <AgentStatusGrid steps={steps} />
+
+          {/* Shimmer progress bar */}
+          <div className="h-1 rounded-full bg-white/5 overflow-hidden">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-purple-500 via-cyan-500 to-amber-500 transition-all duration-1000"
-              style={{ width: `${Math.min(100, (steps.length / 6) * 100)}%` }}
+              className="h-full rounded-full bg-gradient-to-r from-purple-500 via-cyan-500 to-amber-500 animate-shimmer-slide transition-all duration-700 ease-out"
+              style={{
+                width: `${progress}%`,
+                backgroundSize: "200% 100%",
+              }}
             />
           </div>
         </div>
 
-        {/* Live agent activity */}
+        {/* Live agent activity console */}
         <AgentActivityConsole steps={steps} isLive={true} />
       </div>
     </div>

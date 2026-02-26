@@ -1093,3 +1093,19 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Confidence percentage display
 - [x] Safety status indicator (clean/filtered/blocked)
 - [x] Expandable provenance details panel
+
+## Phase: Agent Activity Console Loading Animation
+- [x] Review current loading state in AnalystChat
+- [x] Build animated agent step progression (sequential agent activation with pulse/glow effects)
+- [x] Add terminal-style typing animation for step descriptions
+- [x] Add animated progress ring (SVG circular progress)
+- [x] Add matrix-style data stream background effect (binary rain)
+- [x] Add agent status grid showing all 5 agents with active/idle/complete/error states
+- [x] Add staggered step reveal with slide-in animations (80ms per step)
+- [x] Add shimmer gradient progress bar
+- [x] Add CSS keyframes: step-slide-in, scale-in, shake, spin-slow, ping-slow, cursor-blink, typing-dots, shimmer-slide, data-rain, data-count, agent-glow, badge-pulse
+- [x] Duration-aware coloring (yellow >2s, red >5s)
+- [x] Bouncing dots for in-progress timestamps
+- [x] Agent badge glow effect for active agents with box-shadow
+- [x] Verify TypeScript clean (0 errors), 210 tests passing
+- [x] Save checkpoint
