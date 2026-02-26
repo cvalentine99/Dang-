@@ -1,350 +1,188 @@
 /**
- * Attack Path Detection Service
+ * Risk Analysis Service — API Safety & Trust Analysis
  *
- * Detects multi-hop attack paths through the Knowledge Graph by traversing
- * relationships between vulnerabilities, software packages, endpoints,
- * identities, and security events.
- *
- * Kill chain stages modeled:
- *   Vulnerability → Software Package → Endpoint → Identity → Security Event
- *   (Initial Access)  (Exploitation)   (Foothold)  (Lateral)  (Impact)
+ * Replaces the old attack-path-through-agents model with API-centric
+ * risk analysis. Traverses the 4-layer Knowledge Graph to identify:
+ *   - Dangerous endpoint chains (DELETE cascades, privilege escalation paths)
+ *   - Trust score anomalies
+ *   - LLM safety boundary violations
+ *   - Error-prone endpoint clusters
  */
 
-import { eq, desc, sql, and, gte } from "drizzle-orm";
+import { eq, desc, sql, and, or } from "drizzle-orm";
 import { getDb } from "../db";
 import {
-  graphEndpoints,
-  graphSoftwarePackages,
-  graphVulnerabilities,
-  graphIdentities,
-  graphSecurityEvents,
+  kgEndpoints,
+  kgResources,
+  kgUseCases,
+  kgErrorPatterns,
 } from "../../drizzle/schema";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
-export interface AttackPathHop {
+export interface RiskPathHop {
   nodeId: string;
-  nodeType: "vulnerability" | "software_package" | "endpoint" | "identity" | "security_event";
+  nodeType: "endpoint" | "resource" | "use_case" | "error_pattern";
   label: string;
   stage: string;
-  severity?: string;
+  riskLevel?: string;
   properties: Record<string, unknown>;
 }
 
-export interface AttackPath {
+export interface RiskPath {
   id: string;
-  hops: AttackPathHop[];
-  score: number;           // 0-100 severity score
-  maxCvss: number;
-  killChainStages: string[];
+  hops: RiskPathHop[];
+  score: number;
+  riskLevel: string;
   summary: string;
 }
 
-export interface AttackPathResult {
-  paths: AttackPath[];
+export interface RiskPathResult {
+  paths: RiskPath[];
   totalPaths: number;
   maxScore: number;
   criticalPaths: number;
 }
 
-// ── Scoring ─────────────────────────────────────────────────────────────────
-
-function severityToScore(severity: string | null): number {
-  switch (severity?.toLowerCase()) {
-    case "critical": return 95;
-    case "high": return 75;
-    case "medium": return 50;
-    case "low": return 25;
-    case "info": return 10;
-    default: return 0;
-  }
-}
-
-function cvssToScore(cvss: number | null): number {
-  if (!cvss) return 0;
-  return Math.round((cvss / 10) * 100);
-}
-
-function computePathScore(hops: AttackPathHop[], maxCvss: number): number {
-  // Score based on: CVSS severity, number of hops (more hops = more complex = higher risk),
-  // and presence of high-severity security events
-  let score = cvssToScore(maxCvss);
-
-  // Bonus for longer chains (more attack surface)
-  score += Math.min(20, hops.length * 4);
-
-  // Bonus for having security events (active exploitation evidence)
-  const hasEvents = hops.some(h => h.nodeType === "security_event");
-  if (hasEvents) score += 15;
-
-  // Bonus for admin identities in the path
-  const hasAdmin = hops.some(h =>
-    h.nodeType === "identity" && h.properties.isAdmin
-  );
-  if (hasAdmin) score += 10;
-
-  return Math.min(100, score);
-}
-
-// ── Path Detection ──────────────────────────────────────────────────────────
+// ── Risk Path Detection ────────────────────────────────────────────────────
 
 /**
- * Detect attack paths starting from high-severity vulnerabilities.
- * Traversal: Vulnerability → Package → Endpoint → Identity → Security Events
+ * Detect risk paths through the API ontology.
+ * Finds chains of dangerous endpoints within the same resource.
  */
-export async function detectAttackPaths(
-  options: {
-    minCvss?: number;
-    limit?: number;
-    endpointId?: number;
-  } = {}
-): Promise<AttackPathResult> {
+export async function detectRiskPaths(options?: {
+  minScore?: number;
+  limit?: number;
+}): Promise<RiskPathResult> {
   const db = await getDb();
   if (!db) return { paths: [], totalPaths: 0, maxScore: 0, criticalPaths: 0 };
 
-  const minCvss = options.minCvss ?? 5.0;
-  const limit = options.limit ?? 20;
+  const minScore = options?.minScore ?? 50;
+  const limit = options?.limit ?? 20;
 
-  // Step 1: Find high-severity vulnerabilities as entry points
-  const vulnConditions = [gte(graphVulnerabilities.cvssScore, String(minCvss))];
-  if (options.endpointId) {
-    vulnConditions.push(eq(graphVulnerabilities.endpointId, options.endpointId));
+  // Get all DESTRUCTIVE and MUTATING endpoints
+  const dangerous = await db.select().from(kgEndpoints)
+    .where(or(eq(kgEndpoints.riskLevel, "DESTRUCTIVE"), eq(kgEndpoints.riskLevel, "MUTATING")))
+    .orderBy(desc(kgEndpoints.trustScore));
+
+  // Group by resource to find risk chains
+  const byResource = new Map<string, typeof dangerous>();
+  for (const ep of dangerous) {
+    const list = byResource.get(ep.resource) ?? [];
+    list.push(ep);
+    byResource.set(ep.resource, list);
   }
 
-  const vulns = await db
-    .select()
-    .from(graphVulnerabilities)
-    .where(vulnConditions.length === 1 ? vulnConditions[0] : and(...vulnConditions))
-    .orderBy(desc(graphVulnerabilities.cvssScore))
-    .limit(limit * 2); // Fetch more to allow filtering
+  const paths: RiskPath[] = [];
+  let pathId = 0;
 
-  const paths: AttackPath[] = [];
-  const seenEndpoints = new Set<number>();
+  for (const [resource, endpoints] of Array.from(byResource)) {
+    if (endpoints.length < 1) continue;
 
-  for (const vuln of vulns) {
-    if (paths.length >= limit) break;
+    // Score: DESTRUCTIVE = 40pts each, MUTATING = 20pts each
+    const score = endpoints.reduce((sum: number, ep: any) => {
+      return sum + (ep.riskLevel === "DESTRUCTIVE" ? 40 : 20);
+    }, 0);
 
-    const hops: AttackPathHop[] = [];
-    let maxCvss = parseFloat(vuln.cvssScore ?? "0");
+    const normalizedScore = Math.min(100, score);
+    if (normalizedScore < minScore) continue;
 
-    // Hop 1: Vulnerability (Initial Access)
+    const hops: RiskPathHop[] = [];
+
+    // Resource node
     hops.push({
-      nodeId: `vuln-${vuln.id}`,
-      nodeType: "vulnerability",
-      label: vuln.cveId,
-      stage: "Initial Access",
-      severity: vuln.severity ?? undefined,
-      properties: {
-        cveId: vuln.cveId,
-        cvssScore: vuln.cvssScore,
-        severity: vuln.severity,
-        title: vuln.title,
-        packageName: vuln.packageName,
-      },
+      nodeId: `resource-${resource}`,
+      nodeType: "resource",
+      label: resource,
+      stage: "Resource",
+      riskLevel: endpoints.some((e: any) => e.riskLevel === "DESTRUCTIVE") ? "DESTRUCTIVE" : "MUTATING",
+      properties: { endpointCount: endpoints.length },
     });
 
-    // Hop 2: Software Package (Exploitation Vector)
-    if (vuln.packageId) {
-      const pkgs = await db
-        .select()
-        .from(graphSoftwarePackages)
-        .where(eq(graphSoftwarePackages.id, vuln.packageId))
-        .limit(1);
-
-      if (pkgs.length > 0) {
-        const pkg = pkgs[0];
-        hops.push({
-          nodeId: `package-${pkg.id}`,
-          nodeType: "software_package",
-          label: `${pkg.packageName}@${pkg.version ?? "?"}`,
-          stage: "Exploitation",
-          properties: {
-            packageName: pkg.packageName,
-            version: pkg.version,
-            architecture: pkg.architecture,
-            vendor: pkg.vendor,
-          },
-        });
-      }
-    }
-
-    // Hop 3: Endpoint (Foothold)
-    if (vuln.endpointId && !seenEndpoints.has(vuln.endpointId)) {
-      seenEndpoints.add(vuln.endpointId);
-
-      const endpoints = await db
-        .select()
-        .from(graphEndpoints)
-        .where(eq(graphEndpoints.id, vuln.endpointId))
-        .limit(1);
-
-      if (endpoints.length > 0) {
-        const ep = endpoints[0];
-        hops.push({
-          nodeId: `endpoint-${ep.id}`,
-          nodeType: "endpoint",
-          label: ep.hostname ?? ep.agentId,
-          stage: "Foothold",
-          properties: {
-            agentId: ep.agentId,
-            hostname: ep.hostname,
-            ipAddress: ep.ipAddress,
-            osName: ep.osName,
-            agentStatus: ep.agentStatus,
-          },
-        });
-
-        // Hop 4: Identities on this endpoint (Lateral Movement potential)
-        const identities = await db
-          .select()
-          .from(graphIdentities)
-          .where(eq(graphIdentities.endpointId, ep.id))
-          .limit(5);
-
-        for (const ident of identities) {
-          hops.push({
-            nodeId: `identity-${ident.id}`,
-            nodeType: "identity",
-            label: ident.username,
-            stage: ident.isAdmin ? "Privilege Escalation" : "Lateral Movement",
-            properties: {
-              username: ident.username,
-              uid: ident.uid,
-              isAdmin: ident.isAdmin,
-              shell: ident.shell,
-            },
-          });
-        }
-
-        // Hop 5: Security events on this endpoint (Impact evidence)
-        const events = await db
-          .select()
-          .from(graphSecurityEvents)
-          .where(eq(graphSecurityEvents.endpointId, ep.id))
-          .orderBy(desc(graphSecurityEvents.ruleLevel))
-          .limit(3);
-
-        for (const ev of events) {
-          hops.push({
-            nodeId: `event-${ev.id}`,
-            nodeType: "security_event",
-            label: `Rule ${ev.ruleId}: ${ev.ruleDescription ?? ""}`.slice(0, 80),
-            stage: ev.mitreTactic ?? "Impact",
-            severity: (ev.ruleLevel ?? 0) >= 12 ? "critical" : (ev.ruleLevel ?? 0) >= 8 ? "high" : (ev.ruleLevel ?? 0) >= 4 ? "medium" : "low",
-            properties: {
-              ruleId: ev.ruleId,
-              ruleDescription: ev.ruleDescription,
-              mitreTactic: ev.mitreTactic,
-              mitreTechnique: ev.mitreTechnique,
-              severityLevel: ev.ruleLevel,
-              eventTimestamp: ev.eventTimestamp,
-            },
-          });
-        }
-      }
-    }
-
-    // Only include paths with at least 3 hops (vuln → package/endpoint → something else)
-    if (hops.length >= 3) {
-      const score = computePathScore(hops, maxCvss);
-      const stages = Array.from(new Set(hops.map(h => h.stage)));
-
-      paths.push({
-        id: `path-${vuln.id}-${vuln.endpointId ?? 0}`,
-        hops,
-        score,
-        maxCvss,
-        killChainStages: stages,
-        summary: buildPathSummary(hops, vuln.cveId, maxCvss),
+    // Endpoint nodes
+    for (const ep of endpoints.slice(0, 5)) {
+      hops.push({
+        nodeId: `endpoint-${ep.id}`,
+        nodeType: "endpoint",
+        label: `${ep.method} ${ep.path}`,
+        stage: ep.operationType,
+        riskLevel: ep.riskLevel,
+        properties: {
+          method: ep.method,
+          path: ep.path,
+          summary: ep.summary,
+          operationType: ep.operationType,
+          allowedForLlm: ep.allowedForLlm,
+        },
       });
     }
+
+    const destructiveCount = endpoints.filter((e: any) => e.riskLevel === "DESTRUCTIVE").length;
+    const mutatingCount = endpoints.filter((e: any) => e.riskLevel === "MUTATING").length;
+
+    paths.push({
+      id: `risk-${++pathId}`,
+      hops,
+      score: normalizedScore,
+      riskLevel: destructiveCount > 0 ? "DESTRUCTIVE" : "MUTATING",
+      summary: `${resource}: ${destructiveCount} destructive + ${mutatingCount} mutating endpoints. ${endpoints.some((e: any) => e.llmAllowed) ? "⚠ Some LLM-accessible" : "✓ All LLM-blocked"}.`,
+    });
   }
 
   // Sort by score descending
   paths.sort((a, b) => b.score - a.score);
+  const limited = paths.slice(0, limit);
 
   return {
-    paths: paths.slice(0, limit),
+    paths: limited,
     totalPaths: paths.length,
-    maxScore: paths.length > 0 ? paths[0].score : 0,
-    criticalPaths: paths.filter(p => p.score >= 75).length,
+    maxScore: limited[0]?.score ?? 0,
+    criticalPaths: limited.filter(p => p.score >= 80).length,
   };
-}
-
-function buildPathSummary(hops: AttackPathHop[], cveId: string, cvss: number): string {
-  const endpoint = hops.find(h => h.nodeType === "endpoint");
-  const pkg = hops.find(h => h.nodeType === "software_package");
-  const adminIdent = hops.find(h => h.nodeType === "identity" && h.properties.isAdmin);
-  const events = hops.filter(h => h.nodeType === "security_event");
-
-  let summary = `${cveId} (CVSS ${cvss})`;
-  if (pkg) summary += ` via ${pkg.label}`;
-  if (endpoint) summary += ` on ${endpoint.label}`;
-  if (adminIdent) summary += ` — admin user "${adminIdent.label}" exposed`;
-  if (events.length > 0) summary += ` — ${events.length} related alert(s)`;
-
-  return summary;
 }
 
 /**
- * Get attack paths formatted as graph data for D3 visualization.
+ * Get risk path data formatted for D3 graph visualization.
  */
-export async function getAttackPathGraphData(
-  options: { minCvss?: number; limit?: number } = {}
-): Promise<{
-  nodes: Array<{ id: string; type: string; label: string; stage: string; severity?: string; properties: Record<string, unknown> }>;
-  edges: Array<{ source: string; target: string; relationship: string; isAttackPath: boolean }>;
-  paths: AttackPath[];
+export async function getRiskPathGraphData(options?: {
+  minScore?: number;
+  limit?: number;
+}): Promise<{
+  nodes: Array<{ id: string; type: string; label: string; riskLevel: string; properties: Record<string, unknown> }>;
+  edges: Array<{ source: string; target: string; relationship: string }>;
+  paths: RiskPath[];
 }> {
-  const result = await detectAttackPaths(options);
+  const result = await detectRiskPaths(options);
 
-  const nodeMap = new Map<string, AttackPathHop>();
-  const edges: Array<{ source: string; target: string; relationship: string; isAttackPath: boolean }> = [];
+  const nodeMap = new Map<string, { id: string; type: string; label: string; riskLevel: string; properties: Record<string, unknown> }>();
+  const edges: Array<{ source: string; target: string; relationship: string }> = [];
 
   for (const path of result.paths) {
-    // Add all nodes
+    let prevNodeId: string | null = null;
     for (const hop of path.hops) {
       if (!nodeMap.has(hop.nodeId)) {
-        nodeMap.set(hop.nodeId, hop);
+        nodeMap.set(hop.nodeId, {
+          id: hop.nodeId,
+          type: hop.nodeType,
+          label: hop.label,
+          riskLevel: hop.riskLevel ?? "SAFE",
+          properties: hop.properties,
+        });
       }
-    }
-
-    // Create edges between consecutive hops
-    for (let i = 0; i < path.hops.length - 1; i++) {
-      const from = path.hops[i];
-      const to = path.hops[i + 1];
-      const relationship = getRelationship(from.nodeType, to.nodeType);
-      edges.push({
-        source: from.nodeId,
-        target: to.nodeId,
-        relationship,
-        isAttackPath: true,
-      });
+      if (prevNodeId && prevNodeId !== hop.nodeId) {
+        edges.push({
+          source: prevNodeId,
+          target: hop.nodeId,
+          relationship: "CONTAINS_RISK",
+        });
+      }
+      prevNodeId = hop.nodeId;
     }
   }
 
-  const nodes = Array.from(nodeMap.values()).map(hop => ({
-    id: hop.nodeId,
-    type: hop.nodeType,
-    label: hop.label,
-    stage: hop.stage,
-    severity: hop.severity,
-    properties: hop.properties,
-  }));
-
-  return { nodes, edges, paths: result.paths };
-}
-
-function getRelationship(fromType: string, toType: string): string {
-  const key = `${fromType}->${toType}`;
-  const map: Record<string, string> = {
-    "vulnerability->software_package": "EXPLOITS",
-    "software_package->endpoint": "INSTALLED_ON",
-    "vulnerability->endpoint": "AFFECTS",
-    "endpoint->identity": "HAS_USER",
-    "endpoint->security_event": "TRIGGERED",
-    "identity->security_event": "CAUSED",
-    "security_event->endpoint": "TRIGGERED_ON",
+  return {
+    nodes: Array.from(nodeMap.values()),
+    edges,
+    paths: result.paths,
   };
-  return map[key] ?? "CONNECTED_TO";
 }

@@ -1,28 +1,34 @@
 /**
- * Graph Router — tRPC procedures for HybridRAG Knowledge Graph
+ * Graph Router — tRPC procedures for 4-Layer Knowledge Graph
  *
  * Provides endpoints for:
- * - ETL pipeline management (sync, status)
- * - Graph queries (stats, endpoint graph, overview, search)
+ * - KG sync pipeline management (sync status, re-extract)
+ * - Graph queries (stats, overview, search, risk analysis)
+ * - Resource/endpoint/use-case/error exploration
  * - Analyst chat (agentic LLM pipeline)
  * - Investigation sessions (CRUD)
+ * - Answer provenance & trust auditing
  */
 
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
-import { runFullSync, syncEntityType, getSyncStatus } from "./etlService";
+import { runFullSync, syncLayer, getSyncStatus } from "./etlService";
 import {
   getGraphStats,
-  getEndpointGraph,
   getOverviewGraph,
   searchGraph,
-  getVulnerabilityAttackSurface,
-  getMitreDistribution,
-  getVulnerabilitySeverityDistribution,
+  getEndpointsByResource,
+  getEndpointDetail,
+  getRiskAnalysis,
+  getResourceOverview,
+  getUseCases,
+  getErrorPatterns,
+  getEndpoints,
+  getAnswerProvenance,
 } from "./graphQueryService";
 import { runAnalystPipeline, type AnalystMessage } from "./agenticPipeline";
 import { getInvestigationReportData, generateMarkdownReport, generateHtmlReport } from "./reportService";
-import { detectAttackPaths, getAttackPathGraphData } from "./attackPathService";
+import { detectRiskPaths, getRiskPathGraphData } from "./attackPathService";
 import { getDb } from "../db";
 import {
   investigationSessions,
@@ -31,69 +37,136 @@ import {
 import { eq, desc, and, sql } from "drizzle-orm";
 
 export const graphRouter = router({
-  // ── ETL Pipeline ────────────────────────────────────────────────────────
+  // ── KG Sync Pipeline ──────────────────────────────────────────────────
 
-  /** Run a full ETL sync across all entity types. */
+  /** Run a full KG re-extraction from the OpenAPI spec. */
   etlFullSync: protectedProcedure.mutation(async () => {
     return runFullSync();
   }),
 
-  /** Sync a single entity type. */
-  etlSyncEntity: protectedProcedure
-    .input(z.object({ entityType: z.string() }))
+  /** Sync a single KG layer. */
+  etlSyncLayer: protectedProcedure
+    .input(z.object({ layerName: z.string() }))
     .mutation(async ({ input }) => {
-      return syncEntityType(input.entityType);
+      return syncLayer(input.layerName);
     }),
 
-  /** Get current sync status for all entity types. */
+  /** Get current sync status for all KG layers. */
   etlStatus: protectedProcedure.query(async () => {
     return getSyncStatus();
   }),
 
   // ── Graph Queries ───────────────────────────────────────────────────────
 
-  /** Get Knowledge Graph statistics (entity counts). */
+  /** Get Knowledge Graph statistics (entity counts, risk breakdown, method breakdown). */
   graphStats: protectedProcedure.query(async () => {
     return getGraphStats();
   }),
 
-  /** Get full graph data for a specific endpoint. */
-  endpointGraph: protectedProcedure
-    .input(z.object({ agentId: z.string() }))
-    .query(async ({ input }) => {
-      return getEndpointGraph(input.agentId);
-    }),
-
-  /** Get overview graph showing all endpoints and high-level connections. */
+  /** Get overview graph showing all 4 layers and their connections. */
   overviewGraph: protectedProcedure
-    .input(z.object({ limit: z.number().min(1).max(100).default(50) }).optional())
+    .input(z.object({
+      layer: z.enum(["all", "api_ontology", "operational_semantics", "schema_lineage", "error_failure"]).default("all"),
+      riskLevel: z.enum(["SAFE", "MUTATING", "DESTRUCTIVE"]).optional(),
+      limit: z.number().min(1).max(500).default(100),
+    }).optional())
     .query(async ({ input }) => {
-      return getOverviewGraph(input?.limit ?? 50);
+      return getOverviewGraph({
+        layer: input?.layer ?? "all",
+        riskLevel: input?.riskLevel,
+        limit: input?.limit ?? 100,
+      });
     }),
 
-  /** Search across all graph entities by keyword. */
+  /** Get all endpoints for a specific resource category. */
+  endpointsByResource: protectedProcedure
+    .input(z.object({ resource: z.string() }))
+    .query(async ({ input }) => {
+      return getEndpointsByResource(input.resource);
+    }),
+
+  /** Get full detail for a specific endpoint (params, responses). */
+  endpointDetail: protectedProcedure
+    .input(z.object({ endpointId: z.number() }))
+    .query(async ({ input }) => {
+      return getEndpointDetail(input.endpointId);
+    }),
+
+  /** Search across all KG layers by keyword. */
   searchGraph: protectedProcedure
     .input(z.object({ query: z.string().min(1), limit: z.number().min(1).max(100).default(50) }))
     .query(async ({ input }) => {
       return searchGraph(input.query, input.limit);
     }),
 
-  /** Get vulnerability attack surface for a specific CVE. */
-  vulnAttackSurface: protectedProcedure
-    .input(z.object({ cveId: z.string() }))
+  /** Get all resources with endpoint counts. */
+  resourceOverview: protectedProcedure.query(async () => {
+    return getResourceOverview();
+  }),
+
+  /** Get all use cases. */
+  useCases: protectedProcedure.query(async () => {
+    return getUseCases();
+  }),
+
+  /** Get all error patterns. */
+  errorPatterns: protectedProcedure.query(async () => {
+    return getErrorPatterns();
+  }),
+
+  /** Get endpoints with optional filtering. */
+  endpoints: protectedProcedure
+    .input(z.object({
+      resource: z.string().optional(),
+      method: z.string().optional(),
+      riskLevel: z.string().optional(),
+      llmAllowed: z.boolean().optional(),
+      limit: z.number().min(1).max(200).default(50),
+      offset: z.number().min(0).default(0),
+    }).optional())
     .query(async ({ input }) => {
-      return getVulnerabilityAttackSurface(input.cveId);
+      return getEndpoints(input ?? {});
     }),
 
-  /** Get MITRE ATT&CK tactic distribution. */
-  mitreDistribution: protectedProcedure.query(async () => {
-    return getMitreDistribution();
+  // ── Risk Analysis ─────────────────────────────────────────────────────
+
+  /** Get risk analysis: dangerous endpoints, resource risk map, LLM safety. */
+  riskAnalysis: protectedProcedure.query(async () => {
+    return getRiskAnalysis();
   }),
 
-  /** Get vulnerability severity distribution. */
-  vulnSeverityDistribution: protectedProcedure.query(async () => {
-    return getVulnerabilitySeverityDistribution();
-  }),
+  /** Detect risk paths through the API ontology. */
+  detectRiskPaths: protectedProcedure
+    .input(z.object({
+      minScore: z.number().min(0).max(100).default(50),
+      limit: z.number().min(1).max(50).default(20),
+    }).optional())
+    .query(async ({ input }) => {
+      return detectRiskPaths({
+        minScore: input?.minScore ?? 50,
+        limit: input?.limit ?? 20,
+      });
+    }),
+
+  /** Get risk path data formatted for D3 graph visualization. */
+  riskPathGraph: protectedProcedure
+    .input(z.object({
+      minScore: z.number().min(0).max(100).default(50),
+      limit: z.number().min(1).max(50).default(10),
+    }).optional())
+    .query(async ({ input }) => {
+      return getRiskPathGraphData({
+        minScore: input?.minScore ?? 50,
+        limit: input?.limit ?? 10,
+      });
+    }),
+
+  /** Get answer provenance records for trust auditing. */
+  answerProvenance: protectedProcedure
+    .input(z.object({ limit: z.number().min(1).max(100).default(20) }).optional())
+    .query(async ({ input }) => {
+      return getAnswerProvenance(input?.limit ?? 20);
+    }),
 
   // ── Analyst Chat (Agentic Pipeline) ───────────────────────────────────
 
@@ -182,7 +255,6 @@ export const graphRouter = router({
 
       if (sessions.length === 0) throw new Error("Investigation not found");
 
-      // Get notes
       const notes = await db.select()
         .from(investigationNotes)
         .where(eq(investigationNotes.sessionId, input.id))
@@ -241,7 +313,6 @@ export const graphRouter = router({
       const db = await getDb();
       if (!db) throw new Error("Database unavailable");
 
-      // Verify ownership
       const sessions = await db.select({ id: investigationSessions.id })
         .from(investigationSessions)
         .where(and(eq(investigationSessions.id, input.sessionId), eq(investigationSessions.userId, ctx.user.id)))
@@ -256,6 +327,19 @@ export const graphRouter = router({
       });
 
       return { id: Number(result[0].insertId) };
+    }),
+
+  /** Delete an investigation note. */
+  deleteInvestigationNote: protectedProcedure
+    .input(z.object({ noteId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database unavailable");
+
+      await db.delete(investigationNotes)
+        .where(and(eq(investigationNotes.id, input.noteId), eq(investigationNotes.userId, ctx.user.id)));
+
+      return { success: true };
     }),
 
   /** Export investigation as Markdown report. */
@@ -274,46 +358,5 @@ export const graphRouter = router({
       const data = await getInvestigationReportData(input.sessionId, ctx.user.id);
       if (!data) throw new Error("Investigation not found");
       return { html: generateHtmlReport(data), title: data.title };
-    }),
-
-  // ── Attack Path Detection ──────────────────────────────────────────────
-
-  /** Detect attack paths through the Knowledge Graph. */
-  detectAttackPaths: protectedProcedure
-    .input(z.object({
-      minCvss: z.number().min(0).max(10).default(5.0),
-      limit: z.number().min(1).max(50).default(20),
-    }).optional())
-    .query(async ({ input }) => {
-      return detectAttackPaths({
-        minCvss: input?.minCvss ?? 5.0,
-        limit: input?.limit ?? 20,
-      });
-    }),
-
-  /** Get attack path data formatted for D3 graph visualization. */
-  attackPathGraph: protectedProcedure
-    .input(z.object({
-      minCvss: z.number().min(0).max(10).default(5.0),
-      limit: z.number().min(1).max(50).default(10),
-    }).optional())
-    .query(async ({ input }) => {
-      return getAttackPathGraphData({
-        minCvss: input?.minCvss ?? 5.0,
-        limit: input?.limit ?? 10,
-      });
-    }),
-
-  /** Delete an investigation note. */
-  deleteInvestigationNote: protectedProcedure
-    .input(z.object({ noteId: z.number() }))
-    .mutation(async ({ ctx, input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("Database unavailable");
-
-      await db.delete(investigationNotes)
-        .where(and(eq(investigationNotes.id, input.noteId), eq(investigationNotes.userId, ctx.user.id)));
-
-      return { success: true };
     }),
 });

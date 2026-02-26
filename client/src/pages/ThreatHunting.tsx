@@ -6,15 +6,7 @@ import { ThreatBadge, threatLevelFromNumber } from "@/components/shared/ThreatBa
 import { PageHeader } from "@/components/shared/PageHeader";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { WazuhGuard, useWazuhStatus } from "@/components/shared/WazuhGuard";
-import {
-  MOCK_AGENTS,
-  MOCK_RULES,
-  MOCK_VULNERABILITIES,
-  MOCK_SYSCHECK_FILES,
-  MOCK_MANAGER_LOGS,
-  MOCK_MITRE_TECHNIQUES,
-  useFallback,
-} from "@/lib/mockData";
+
 import {
   Search,
   Crosshair,
@@ -143,12 +135,12 @@ export default function ThreatHunting() {
   const logsQ = trpc.wazuh.managerLogs.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 30_000 });
   const mitreQ = trpc.wazuh.mitreTechniques.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 60_000 });
 
-  const agents = useFallback(agentsQ.data, MOCK_AGENTS, isConnected);
-  const rules = useFallback(rulesQ.data, MOCK_RULES, isConnected);
-  const logs = useFallback(logsQ.data, MOCK_MANAGER_LOGS, isConnected);
-  const mitreTechniques = useFallback(mitreQ.data, MOCK_MITRE_TECHNIQUES, isConnected);
-  const vulns = MOCK_VULNERABILITIES; // Vulns require agentId, use mock for cross-search
-  const syscheck = MOCK_SYSCHECK_FILES; // Syscheck requires agentId, use mock for cross-search
+  const agents = agentsQ.data ?? { data: { affected_items: [] } };
+  const rules = rulesQ.data ?? { data: { affected_items: [] } };
+  const logs = logsQ.data ?? { data: { affected_items: [] } };
+  const mitreTechniques = mitreQ.data ?? { data: { affected_items: [] } };
+  const vulns = { data: { affected_items: [] as Record<string, unknown>[] } }; // Vulns require agentId, queried per-agent
+  const syscheck = { data: { affected_items: [] as Record<string, unknown>[] } }; // Syscheck requires agentId, queried per-agent
 
   // ── Correlation engine ────────────────────────────────────────────────────
   const correlationResults = useMemo<CorrelationHit[]>(() => {

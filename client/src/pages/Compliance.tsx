@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
-import { MOCK_SCA_POLICIES, MOCK_SCA_CHECKS, MOCK_AGENTS } from "@/lib/mockData";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -49,10 +49,9 @@ const TIME_RANGES = [
   { label: "30d", value: "30d", ms: 2592000000 },
 ];
 
-function SourceBadge({ source }: { source: "indexer" | "server" | "mock" }) {
+function SourceBadge({ source }: { source: "indexer" | "server" }) {
   const cfg = source === "indexer" ? { bg: "bg-green-500/10", text: "text-green-400", label: "Indexer" }
-    : source === "server" ? { bg: "bg-blue-500/10", text: "text-blue-400", label: "Server API" }
-    : { bg: "bg-yellow-500/10", text: "text-yellow-400", label: "Mock" };
+    : { bg: "bg-blue-500/10", text: "text-blue-400", label: "Server API" };
   return <span className={`text-[9px] px-1.5 py-0.5 rounded ${cfg.bg} ${cfg.text} font-mono`}>{cfg.label}</span>;
 }
 
@@ -88,14 +87,7 @@ function extractItems(raw: unknown): Array<Record<string, unknown>> {
   return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
 }
 
-// ── Mock compliance alert data for fallback ────────────────────────────
-const MOCK_COMPLIANCE_ALERTS = {
-  pci_dss: { total: 1247, byControl: [{ control: "10.6.1", count: 312 }, { control: "10.2.7", count: 245 }, { control: "11.4", count: 198 }, { control: "10.2.4", count: 156 }, { control: "6.5.1", count: 134 }, { control: "8.1.5", count: 112 }, { control: "2.2.4", count: 90 }], timeline: Array.from({ length: 24 }, (_, i) => ({ time: `${i}:00`, count: Math.floor(Math.random() * 80 + 20) })), bySeverity: [{ level: "Critical", count: 89 }, { level: "High", count: 312 }, { level: "Medium", count: 534 }, { level: "Low", count: 312 }] },
-  nist_800_53: { total: 2341, byControl: [{ control: "AU-6", count: 456 }, { control: "SI-4", count: 389 }, { control: "AC-7", count: 312 }, { control: "IA-5", count: 267 }, { control: "CM-6", count: 234 }, { control: "SC-7", count: 198 }, { control: "CA-7", count: 167 }], timeline: Array.from({ length: 24 }, (_, i) => ({ time: `${i}:00`, count: Math.floor(Math.random() * 120 + 40) })), bySeverity: [{ level: "Critical", count: 156 }, { level: "High", count: 534 }, { level: "Medium", count: 978 }, { level: "Low", count: 673 }] },
-  hipaa: { total: 876, byControl: [{ control: "164.312(b)", count: 234 }, { control: "164.312(a)(1)", count: 189 }, { control: "164.308(a)(5)(ii)(C)", count: 156 }, { control: "164.312(c)(1)", count: 134 }, { control: "164.312(e)(1)", count: 98 }, { control: "164.308(a)(1)(ii)(D)", count: 65 }], timeline: Array.from({ length: 24 }, (_, i) => ({ time: `${i}:00`, count: Math.floor(Math.random() * 50 + 10) })), bySeverity: [{ level: "Critical", count: 45 }, { level: "High", count: 198 }, { level: "Medium", count: 389 }, { level: "Low", count: 244 }] },
-  gdpr: { total: 654, byControl: [{ control: "II_5.1.f", count: 178 }, { control: "IV_35.7.d", count: 145 }, { control: "IV_32.2", count: 112 }, { control: "III_17", count: 98 }, { control: "IV_33.1", count: 67 }, { control: "II_5.1.d", count: 54 }], timeline: Array.from({ length: 24 }, (_, i) => ({ time: `${i}:00`, count: Math.floor(Math.random() * 40 + 8) })), bySeverity: [{ level: "Critical", count: 34 }, { level: "High", count: 145 }, { level: "Medium", count: 289 }, { level: "Low", count: 186 }] },
-  tsc: { total: 432, byControl: [{ control: "CC6.1", count: 112 }, { control: "CC7.2", count: 98 }, { control: "CC6.3", count: 78 }, { control: "CC7.1", count: 67 }, { control: "CC8.1", count: 45 }, { control: "CC6.8", count: 32 }], timeline: Array.from({ length: 24 }, (_, i) => ({ time: `${i}:00`, count: Math.floor(Math.random() * 30 + 5) })), bySeverity: [{ level: "Critical", count: 23 }, { level: "High", count: 98 }, { level: "Medium", count: 189 }, { level: "Low", count: 122 }] },
-};
+
 
 export default function Compliance() {
   const utils = trpc.useUtils();
@@ -122,7 +114,7 @@ export default function Compliance() {
   const agentsQ = trpc.wazuh.agents.useQuery({ limit: 100, offset: 0, status: "active" }, { retry: 1, staleTime: 30_000, enabled: isConnected });
   const agentList = useMemo(() => {
     if (isConnected && agentsQ.data) return extractItems(agentsQ.data);
-    return MOCK_AGENTS.data.affected_items.filter(a => a.status === "active") as unknown as Array<Record<string, unknown>>;
+    return [];
   }, [agentsQ.data, isConnected]);
 
   const scaQ = trpc.wazuh.scaPolicies.useQuery({ agentId }, { retry: 1, staleTime: 30_000, enabled: isConnected });
@@ -143,13 +135,13 @@ export default function Compliance() {
   // ── Policies (real or fallback) ───────────────────────────────────────
   const policies = useMemo(() => {
     if (isConnected && scaQ.data) return extractItems(scaQ.data);
-    return MOCK_SCA_POLICIES.data.affected_items as unknown as Array<Record<string, unknown>>;
+    return [];
   }, [scaQ.data, isConnected]);
 
   // ── Checks (real or fallback) ─────────────────────────────────────────
   const checks = useMemo(() => {
     if (isConnected && checksQ.data) return extractItems(checksQ.data);
-    if (selectedPolicy) return MOCK_SCA_CHECKS.data.affected_items as unknown as Array<Record<string, unknown>>;
+
     return [];
   }, [checksQ.data, isConnected, selectedPolicy]);
 
@@ -184,7 +176,7 @@ export default function Compliance() {
   const pagedChecks = filteredChecks.slice(page * pageSize, (page + 1) * pageSize);
 
   // ── Indexer compliance data (real or mock fallback) ────────────────────
-  const complianceSource: "indexer" | "mock" = indexerHealthy && complianceQ.data ? "indexer" : "mock";
+  const complianceSource: "indexer" | "server" = indexerHealthy && complianceQ.data ? "indexer" : "server";
   const complianceData = useMemo(() => {
     if (indexerHealthy && complianceQ.data) {
       const raw = complianceQ.data as Record<string, unknown>;
@@ -207,9 +199,7 @@ export default function Compliance() {
         return { total: totalHits, byControl, bySeverity: mergedSeverity, timeline };
       }
     }
-    // Fallback to mock
-    const fw = selectedFramework as keyof typeof MOCK_COMPLIANCE_ALERTS;
-    return MOCK_COMPLIANCE_ALERTS[fw] ?? MOCK_COMPLIANCE_ALERTS.pci_dss;
+    return { total: 0, byControl: [] as Array<{ control: string; count: number }>, bySeverity: [] as Array<{ level: string; count: number }>, timeline: [] as Array<{ time: string; count: number }> };
   }, [complianceQ.data, indexerHealthy, selectedFramework]);
 
   const currentFw = FRAMEWORKS.find(f => f.id === selectedFramework) ?? FRAMEWORKS[0];
@@ -281,7 +271,6 @@ export default function Compliance() {
                 {FRAMEWORKS.map(fw => {
                   const matchingPolicy = policies.find(p => String(p.policy_id ?? "").toLowerCase().includes(fw.id.replace(/_/g, "")) || String(p.name ?? "").toLowerCase().includes(fw.id.replace(/_/g, " ")));
                   const score = matchingPolicy ? Number(matchingPolicy.score ?? 0) : null;
-                  const mockData = MOCK_COMPLIANCE_ALERTS[fw.id as keyof typeof MOCK_COMPLIANCE_ALERTS];
                   return (
                     <button key={fw.id} onClick={() => { setSelectedFramework(fw.id as typeof selectedFramework); setActiveTab("framework-alerts"); }} className="bg-secondary/20 rounded-lg p-4 border border-border/20 text-center hover:border-primary/30 hover:bg-primary/5 transition-all cursor-pointer">
                       <span className="text-2xl">{fw.icon}</span>
@@ -289,7 +278,7 @@ export default function Compliance() {
                       {score !== null ? (
                         <p className={`text-lg font-bold mt-1 ${score >= 80 ? "text-threat-low" : score >= 60 ? "text-threat-medium" : "text-threat-critical"}`}>{score}%</p>
                       ) : <p className="text-xs text-muted-foreground mt-1">No policy</p>}
-                      <p className="text-[10px] text-muted-foreground mt-1">{mockData?.total?.toLocaleString() ?? 0} alerts</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">{complianceData.total?.toLocaleString() ?? 0} alerts</p>
                     </button>
                   );
                 })}

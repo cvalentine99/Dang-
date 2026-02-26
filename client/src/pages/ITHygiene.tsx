@@ -6,19 +6,7 @@ import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { ExportButton } from "@/components/shared/ExportButton";
 import { EXPORT_COLUMNS } from "@/lib/exportUtils";
-import {
-  MOCK_PACKAGES,
-  MOCK_PORTS,
-  MOCK_PROCESSES,
-  MOCK_NETIFACE,
-  MOCK_NETADDR,
-  MOCK_HOTFIXES,
-  MOCK_AGENTS,
-  MOCK_BROWSER_EXTENSIONS,
-  MOCK_SERVICES,
-  MOCK_USERS,
-  MOCK_GROUPS,
-} from "@/lib/mockData";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -144,9 +132,7 @@ export default function ITHygiene() {
   );
   const agentList = useMemo(() => {
     if (isConnected && agentsQ.data) return extractItems(agentsQ.data).items;
-    return MOCK_AGENTS.data.affected_items.filter(
-      (a) => a.status === "active"
-    ) as unknown as Array<Record<string, unknown>>;
+    return [];
   }, [agentsQ.data, isConnected]);
 
   // ── Software column queries ──────────────────────────────────────────────
@@ -234,118 +220,52 @@ export default function ITHygiene() {
   // ── Fallback-aware data extraction ───────────────────────────────────────
   const packagesData = useMemo(() => {
     if (isConnected && packagesQ.data) return extractItems(packagesQ.data);
-    let items = MOCK_PACKAGES.data
-      .affected_items as unknown as Array<Record<string, unknown>>;
-    if (search) {
-      const q = search.toLowerCase();
-      items = items.filter((p) =>
-        String(p.name ?? "")
-          .toLowerCase()
-          .includes(q)
-      );
-    }
-    return { items, total: items.length };
+    return { items: [] as Array<Record<string, unknown>>, total: 0 };
   }, [packagesQ.data, isConnected, search]);
 
   const portsData = useMemo(() => {
     if (isConnected && portsQ.data) return extractItems(portsQ.data);
-    return {
-      items: MOCK_PORTS.data
-        .affected_items as unknown as Array<Record<string, unknown>>,
-      total: MOCK_PORTS.data.total_affected_items,
-    };
+    return { items: [] as Array<Record<string, unknown>>, total: 0 };
   }, [portsQ.data, isConnected]);
 
   const processesData = useMemo(() => {
     if (isConnected && processesQ.data) return extractItems(processesQ.data);
-    let items = MOCK_PROCESSES.data
-      .affected_items as unknown as Array<Record<string, unknown>>;
-    if (search) {
-      const q = search.toLowerCase();
-      items = items.filter(
-        (p) =>
-          String(p.name ?? "")
-            .toLowerCase()
-            .includes(q) ||
-          String(p.cmd ?? "")
-            .toLowerCase()
-            .includes(q)
-      );
-    }
-    return { items, total: items.length };
+    return { items: [] as Array<Record<string, unknown>>, total: 0 };
   }, [processesQ.data, isConnected, search]);
 
   const netifaceData = useMemo(() => {
     if (isConnected && netifaceQ.data) return extractItems(netifaceQ.data);
-    return {
-      items: MOCK_NETIFACE.data
-        .affected_items as unknown as Array<Record<string, unknown>>,
-      total: MOCK_NETIFACE.data.total_affected_items,
-    };
+    return { items: [] as Array<Record<string, unknown>>, total: 0 };
   }, [netifaceQ.data, isConnected]);
 
   const netaddrData = useMemo(() => {
     if (isConnected && netaddrQ.data) return extractItems(netaddrQ.data);
-    return {
-      items: MOCK_NETADDR.data
-        .affected_items as unknown as Array<Record<string, unknown>>,
-      total: MOCK_NETADDR.data.total_affected_items,
-    };
+    return { items: [] as Array<Record<string, unknown>>, total: 0 };
   }, [netaddrQ.data, isConnected]);
 
   const hotfixesData = useMemo(() => {
     if (isConnected && hotfixesQ.data) return extractItems(hotfixesQ.data);
-    return {
-      items: MOCK_HOTFIXES.data
-        .affected_items as unknown as Array<Record<string, unknown>>,
-      total: MOCK_HOTFIXES.data.total_affected_items,
-    };
+    return { items: [] as Array<Record<string, unknown>>, total: 0 };
   }, [hotfixesQ.data, isConnected]);
 
   const extensionsData = useMemo(() => {
     if (isConnected && extensionsQ.data) return extractItems(extensionsQ.data);
-    return {
-      items: MOCK_BROWSER_EXTENSIONS.data
-        .affected_items as unknown as Array<Record<string, unknown>>,
-      total: MOCK_BROWSER_EXTENSIONS.data.total_affected_items,
-    };
+    return { items: [] as Array<Record<string, unknown>>, total: 0 };
   }, [extensionsQ.data, isConnected]);
 
   const servicesData = useMemo(() => {
     if (isConnected && servicesQ.data) return extractItems(servicesQ.data);
-    let items = MOCK_SERVICES.data
-      .affected_items as unknown as Array<Record<string, unknown>>;
-    if (search && tab === "services") {
-      const q = search.toLowerCase();
-      items = items.filter(
-        (s) =>
-          String(s.name ?? "")
-            .toLowerCase()
-            .includes(q) ||
-          String(s.display_name ?? "")
-            .toLowerCase()
-            .includes(q)
-      );
-    }
-    return { items, total: items.length };
+    return { items: [] as Array<Record<string, unknown>>, total: 0 };
   }, [servicesQ.data, isConnected, search, tab]);
 
   const usersData = useMemo(() => {
     if (isConnected && usersQ.data) return extractItems(usersQ.data);
-    return {
-      items: MOCK_USERS.data
-        .affected_items as unknown as Array<Record<string, unknown>>,
-      total: MOCK_USERS.data.total_affected_items,
-    };
+    return { items: [] as Array<Record<string, unknown>>, total: 0 };
   }, [usersQ.data, isConnected]);
 
   const groupsData = useMemo(() => {
     if (isConnected && groupsQ.data) return extractItems(groupsQ.data);
-    return {
-      items: MOCK_GROUPS.data
-        .affected_items as unknown as Array<Record<string, unknown>>,
-      total: MOCK_GROUPS.data.total_affected_items,
-    };
+    return { items: [] as Array<Record<string, unknown>>, total: 0 };
   }, [groupsQ.data, isConnected]);
 
   const isLoading = statusQ.isLoading;

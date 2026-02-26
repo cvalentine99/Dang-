@@ -48,23 +48,13 @@ import {
   Plus,
   MinusCircle,
   ArrowUpDown,
+  Loader2,
 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import {
-  MOCK_AGENTS,
-  MOCK_AGENT_PACKAGES,
-  MOCK_AGENT_SERVICES,
-  MOCK_AGENT_USERS,
-  MOCK_PACKAGES,
-  MOCK_SERVICES,
-  MOCK_USERS,
-} from "@/lib/mockData";
 
 type DriftStatus = "present" | "absent" | "version_mismatch" | "state_mismatch";
-
-// Extended for baseline comparison
 type BaselineDriftStatus = DriftStatus | "new" | "removed" | "changed";
 
 interface DriftItem {
@@ -84,50 +74,19 @@ interface BaselineDriftItem {
   category: "packages" | "services" | "users";
 }
 
-// ── Snapshot helpers ────────────────────────────────────────────────────
-
-function collectAgentSnapshot(agentIds: string[]) {
-  const packages: Record<string, Array<{ name: string; version: string }>> = {};
-  const services: Record<string, Array<{ name: string; state: string }>> = {};
-  const users: Record<string, Array<{ name: string; shell: string }>> = {};
-
-  for (const id of agentIds) {
-    const pkgData = MOCK_AGENT_PACKAGES[id] ?? { data: { affected_items: MOCK_PACKAGES.data.affected_items } };
-    packages[id] = pkgData.data.affected_items.map((p: Record<string, unknown>) => ({
-      name: String(p.name),
-      version: String(p.version ?? "unknown"),
-    }));
-
-    const svcData = MOCK_AGENT_SERVICES[id] ?? { data: { affected_items: MOCK_SERVICES.data.affected_items } };
-    services[id] = svcData.data.affected_items.map((s: Record<string, unknown>) => ({
-      name: String(s.name),
-      state: String(s.state ?? "unknown"),
-    }));
-
-    const usrData = MOCK_AGENT_USERS[id] ?? { data: { affected_items: MOCK_USERS.data.affected_items } };
-    users[id] = usrData.data.affected_items.map((u: Record<string, unknown>) => ({
-      name: String(u.name),
-      shell: String(u.shell ?? "unknown"),
-    }));
-  }
-
-  return { packages, services, users };
-}
-
-// ── Drift detection helpers ──────────────────────────────────────────────
+// ── Drift detection helpers (pure functions, no mock data) ──────────────
 
 function computePackageDrift(
   agentIds: string[],
-  _isConnected: boolean
+  agentPackages: Record<string, Array<{ name: string; version: string }>>
 ): DriftItem[] {
   const allPackages = new Map<string, Record<string, { version: string }>>();
 
   for (const id of agentIds) {
-    const data = MOCK_AGENT_PACKAGES[id] ?? { data: { affected_items: MOCK_PACKAGES.data.affected_items } };
-    for (const pkg of data.data.affected_items) {
-      const name = String(pkg.name);
-      if (!allPackages.has(name)) allPackages.set(name, {});
-      allPackages.get(name)![id] = { version: String(pkg.version ?? "unknown") };
+    const pkgs = agentPackages[id] ?? [];
+    for (const pkg of pkgs) {
+      if (!allPackages.has(pkg.name)) allPackages.set(pkg.name, {});
+      allPackages.get(pkg.name)![id] = { version: pkg.version };
     }
   }
 
@@ -173,16 +132,15 @@ function computePackageDrift(
 
 function computeServiceDrift(
   agentIds: string[],
-  _isConnected: boolean
+  agentServices: Record<string, Array<{ name: string; state: string }>>
 ): DriftItem[] {
   const allServices = new Map<string, Record<string, { state: string }>>();
 
   for (const id of agentIds) {
-    const data = MOCK_AGENT_SERVICES[id] ?? { data: { affected_items: MOCK_SERVICES.data.affected_items } };
-    for (const svc of data.data.affected_items) {
-      const name = String(svc.name);
-      if (!allServices.has(name)) allServices.set(name, {});
-      allServices.get(name)![id] = { state: String(svc.state ?? "unknown") };
+    const svcs = agentServices[id] ?? [];
+    for (const svc of svcs) {
+      if (!allServices.has(svc.name)) allServices.set(svc.name, {});
+      allServices.get(svc.name)![id] = { state: svc.state };
     }
   }
 
@@ -228,16 +186,15 @@ function computeServiceDrift(
 
 function computeUserDrift(
   agentIds: string[],
-  _isConnected: boolean
+  agentUsers: Record<string, Array<{ name: string; shell: string }>>
 ): DriftItem[] {
   const allUsers = new Map<string, Record<string, { shell: string }>>();
 
   for (const id of agentIds) {
-    const data = MOCK_AGENT_USERS[id] ?? { data: { affected_items: MOCK_USERS.data.affected_items } };
-    for (const user of data.data.affected_items) {
-      const name = String(user.name);
-      if (!allUsers.has(name)) allUsers.set(name, {});
-      allUsers.get(name)![id] = { shell: String(user.shell ?? "unknown") };
+    const usrs = agentUsers[id] ?? [];
+    for (const user of usrs) {
+      if (!allUsers.has(user.name)) allUsers.set(user.name, {});
+      allUsers.get(user.name)![id] = { shell: user.shell };
     }
   }
 
@@ -280,7 +237,10 @@ function computeUserDrift(
 function computeBaselineDrift(
   baselineSnapshot: Record<string, unknown>,
   agentIds: string[],
-  agentNameMap: Record<string, string>
+  agentNameMap: Record<string, string>,
+  currentPackages: Record<string, Array<{ name: string; version: string }>>,
+  currentServices: Record<string, Array<{ name: string; state: string }>>,
+  currentUsers: Record<string, Array<{ name: string; shell: string }>>
 ): BaselineDriftItem[] {
   const drifts: BaselineDriftItem[] = [];
   const snap = baselineSnapshot as {
@@ -294,14 +254,10 @@ function computeBaselineDrift(
 
     // Packages
     const baselinePkgs = snap.packages?.[agentId] ?? [];
-    const currentPkgData = MOCK_AGENT_PACKAGES[agentId] ?? { data: { affected_items: MOCK_PACKAGES.data.affected_items } };
-    const currentPkgs = currentPkgData.data.affected_items.map((p: Record<string, unknown>) => ({
-      name: String(p.name),
-      version: String(p.version ?? "unknown"),
-    }));
+    const currentPkgs = currentPackages[agentId] ?? [];
 
     const baselinePkgMap = new Map(baselinePkgs.map((p) => [p.name, p.version]));
-    const currentPkgMap = new Map(currentPkgs.map((p: { name: string; version: string }) => [p.name, p.version]));
+    const currentPkgMap = new Map(currentPkgs.map((p) => [p.name, p.version]));
 
     for (const [name, ver] of Array.from(currentPkgMap)) {
       if (!baselinePkgMap.has(name)) {
@@ -318,14 +274,10 @@ function computeBaselineDrift(
 
     // Services
     const baselineSvcs = snap.services?.[agentId] ?? [];
-    const currentSvcData = MOCK_AGENT_SERVICES[agentId] ?? { data: { affected_items: MOCK_SERVICES.data.affected_items } };
-    const currentSvcs = currentSvcData.data.affected_items.map((s: Record<string, unknown>) => ({
-      name: String(s.name),
-      state: String(s.state ?? "unknown"),
-    }));
+    const currentSvcs = currentServices[agentId] ?? [];
 
     const baselineSvcMap = new Map(baselineSvcs.map((s) => [s.name, s.state]));
-    const currentSvcMap = new Map(currentSvcs.map((s: { name: string; state: string }) => [s.name, s.state]));
+    const currentSvcMap = new Map(currentSvcs.map((s) => [s.name, s.state]));
 
     for (const [name, state] of Array.from(currentSvcMap)) {
       if (!baselineSvcMap.has(name)) {
@@ -342,14 +294,10 @@ function computeBaselineDrift(
 
     // Users
     const baselineUsrs = snap.users?.[agentId] ?? [];
-    const currentUsrData = MOCK_AGENT_USERS[agentId] ?? { data: { affected_items: MOCK_USERS.data.affected_items } };
-    const currentUsrs = currentUsrData.data.affected_items.map((u: Record<string, unknown>) => ({
-      name: String(u.name),
-      shell: String(u.shell ?? "unknown"),
-    }));
+    const currentUsrs = currentUsers[agentId] ?? [];
 
     const baselineUsrMap = new Map(baselineUsrs.map((u) => [u.name, u.shell]));
-    const currentUsrMap = new Map(currentUsrs.map((u: { name: string; shell: string }) => [u.name, u.shell]));
+    const currentUsrMap = new Map(currentUsrs.map((u) => [u.name, u.shell]));
 
     for (const [name, shell] of Array.from(currentUsrMap)) {
       if (!baselineUsrMap.has(name)) {
@@ -365,113 +313,67 @@ function computeBaselineDrift(
     }
   }
 
-  return drifts.sort((a, b) => {
-    const order = { removed: 0, new: 1, changed: 2 };
-    if (order[a.changeType] !== order[b.changeType]) return order[a.changeType] - order[b.changeType];
-    return a.name.localeCompare(b.name);
-  });
+  return drifts;
 }
 
-// ── Status cell component ────────────────────────────────────────────────
+// ── Sub-components ──────────────────────────────────────────────────────
 
 function DriftCell({ status, detail }: { status: DriftStatus; detail: string }) {
-  const config = {
-    present: {
-      icon: CheckCircle2,
-      bg: "bg-[oklch(0.765_0.177_163.223)]/10",
-      border: "border-[oklch(0.765_0.177_163.223)]/30",
-      text: "text-[oklch(0.765_0.177_163.223)]",
-      label: "Present",
-    },
-    absent: {
-      icon: XCircle,
-      bg: "bg-[oklch(0.637_0.237_25.331)]/10",
-      border: "border-[oklch(0.637_0.237_25.331)]/30",
-      text: "text-[oklch(0.637_0.237_25.331)]",
-      label: "Absent",
-    },
-    version_mismatch: {
-      icon: ArrowLeftRight,
-      bg: "bg-[oklch(0.795_0.184_86.047)]/10",
-      border: "border-[oklch(0.795_0.184_86.047)]/30",
-      text: "text-[oklch(0.795_0.184_86.047)]",
-      label: "Version Drift",
-    },
-    state_mismatch: {
-      icon: ArrowLeftRight,
-      bg: "bg-[oklch(0.795_0.184_86.047)]/10",
-      border: "border-[oklch(0.795_0.184_86.047)]/30",
-      text: "text-[oklch(0.795_0.184_86.047)]",
-      label: "State Drift",
-    },
-  };
-
-  const c = config[status];
-  const Icon = c.icon;
+  const icon =
+    status === "absent" ? (
+      <XCircle className="h-3.5 w-3.5 text-[oklch(0.637_0.237_25.331)]" />
+    ) : status === "version_mismatch" || status === "state_mismatch" ? (
+      <ArrowLeftRight className="h-3.5 w-3.5 text-[oklch(0.795_0.184_86.047)]" />
+    ) : (
+      <CheckCircle2 className="h-3.5 w-3.5 text-[oklch(0.765_0.177_163.223)]" />
+    );
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div
-          className={`flex items-center gap-1.5 px-2 py-1 rounded-md border ${c.bg} ${c.border} cursor-default`}
-        >
-          <Icon className={`h-3 w-3 ${c.text} shrink-0`} />
-          <span className={`text-[10px] font-mono truncate max-w-[120px] ${c.text}`}>
-            {detail === "—" ? "—" : detail}
-          </span>
-        </div>
-      </TooltipTrigger>
-      <TooltipContent>
-        <p className="text-xs">{c.label}: {detail}</p>
-      </TooltipContent>
-    </Tooltip>
+    <div className="flex items-center gap-2">
+      {icon}
+      <span
+        className={`font-mono text-[10px] ${
+          status === "absent"
+            ? "text-muted-foreground"
+            : status === "version_mismatch" || status === "state_mismatch"
+              ? "text-[oklch(0.795_0.184_86.047)]"
+              : "text-foreground"
+        }`}
+      >
+        {detail}
+      </span>
+    </div>
   );
 }
-
-// ── Baseline change type badge ──────────────────────────────────────────
 
 function ChangeTypeBadge({ type }: { type: "new" | "removed" | "changed" }) {
-  const config = {
-    new: {
-      icon: Plus,
-      bg: "bg-[oklch(0.765_0.177_163.223)]/15",
-      border: "border-[oklch(0.765_0.177_163.223)]/40",
-      text: "text-[oklch(0.765_0.177_163.223)]",
-      label: "New",
-    },
-    removed: {
-      icon: MinusCircle,
-      bg: "bg-[oklch(0.637_0.237_25.331)]/15",
-      border: "border-[oklch(0.637_0.237_25.331)]/40",
-      text: "text-[oklch(0.637_0.237_25.331)]",
-      label: "Removed",
-    },
-    changed: {
-      icon: ArrowUpDown,
-      bg: "bg-[oklch(0.795_0.184_86.047)]/15",
-      border: "border-[oklch(0.795_0.184_86.047)]/40",
-      text: "text-[oklch(0.795_0.184_86.047)]",
-      label: "Changed",
-    },
-  };
-  const c = config[type];
-  const Icon = c.icon;
+  if (type === "new")
+    return (
+      <Badge className="text-[9px] px-1.5 py-0 h-4 bg-[oklch(0.765_0.177_163.223)]/15 text-[oklch(0.765_0.177_163.223)] border-[oklch(0.765_0.177_163.223)]/30 gap-1">
+        <Plus className="h-2.5 w-2.5" /> New
+      </Badge>
+    );
+  if (type === "removed")
+    return (
+      <Badge className="text-[9px] px-1.5 py-0 h-4 bg-[oklch(0.637_0.237_25.331)]/15 text-[oklch(0.637_0.237_25.331)] border-[oklch(0.637_0.237_25.331)]/30 gap-1">
+        <MinusCircle className="h-2.5 w-2.5" /> Removed
+      </Badge>
+    );
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${c.bg} ${c.border} ${c.text}`}>
-      <Icon className="h-3 w-3" />
-      {c.label}
-    </span>
+    <Badge className="text-[9px] px-1.5 py-0 h-4 bg-[oklch(0.795_0.184_86.047)]/15 text-[oklch(0.795_0.184_86.047)] border-[oklch(0.795_0.184_86.047)]/30 gap-1">
+      <ArrowUpDown className="h-2.5 w-2.5" /> Changed
+    </Badge>
   );
 }
 
-// ── Main component ───────────────────────────────────────────────────────
+// ── Main Component ──────────────────────────────────────────────────────
 
 interface DriftComparisonProps {
   isConnected: boolean;
 }
 
 export default function DriftComparison({ isConnected }: DriftComparisonProps) {
-  const [selectedAgents, setSelectedAgents] = useState<string[]>(["001", "002"]);
+  const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [driftTab, setDriftTab] = useState<"packages" | "services" | "users">("packages");
   const [showDriftOnly, setShowDriftOnly] = useState(false);
 
@@ -483,6 +385,101 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
   const [baselineDescription, setBaselineDescription] = useState("");
   const [activeBaselineId, setActiveBaselineId] = useState<number | null>(null);
   const [baselineCategoryFilter, setBaselineCategoryFilter] = useState<"all" | "packages" | "services" | "users">("all");
+
+  // ── Real Wazuh API queries ──────────────────────────────────────────
+  const agentsQ = trpc.wazuh.agents.useQuery(
+    { limit: 500, offset: 0 },
+    { enabled: isConnected, staleTime: 30_000 }
+  );
+
+  const activeAgents = useMemo(() => {
+    const d = (agentsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+    const items = (d?.affected_items as Array<Record<string, unknown>>) ?? [];
+    return items.filter((a) => a.status === "active");
+  }, [agentsQ.data]);
+
+  // Auto-select first 2 agents when data loads
+  useEffect(() => {
+    if (activeAgents.length >= 2 && selectedAgents.length === 0) {
+      setSelectedAgents([String(activeAgents[0].id), String(activeAgents[1].id)]);
+    }
+  }, [activeAgents, selectedAgents.length]);
+
+  // Fetch per-agent syscollector data for all selected agents
+  // We use individual queries per agent since the Wazuh API requires agentId per call
+  const agentDataQueries = useMemo(() => selectedAgents, [selectedAgents.join(",")]);
+
+  // Per-agent package queries
+  const pkgQueries = agentDataQueries.map((agentId) =>
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    trpc.wazuh.agentPackages.useQuery(
+      { agentId, limit: 500, offset: 0 },
+      { enabled: isConnected && selectedAgents.length >= 2, staleTime: 60_000 }
+    )
+  );
+
+  // Per-agent service queries
+  const svcQueries = agentDataQueries.map((agentId) =>
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    trpc.wazuh.agentServices.useQuery(
+      { agentId, limit: 500, offset: 0 },
+      { enabled: isConnected && selectedAgents.length >= 2, staleTime: 60_000 }
+    )
+  );
+
+  // Per-agent user queries
+  const usrQueries = agentDataQueries.map((agentId) =>
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    trpc.wazuh.agentUsers.useQuery(
+      { agentId, limit: 500, offset: 0 },
+      { enabled: isConnected && selectedAgents.length >= 2, staleTime: 60_000 }
+    )
+  );
+
+  const isLoadingData = pkgQueries.some(q => q.isLoading) || svcQueries.some(q => q.isLoading) || usrQueries.some(q => q.isLoading);
+
+  // Build per-agent data maps from real API responses
+  const agentPackages = useMemo(() => {
+    const map: Record<string, Array<{ name: string; version: string }>> = {};
+    agentDataQueries.forEach((agentId, i) => {
+      const raw = pkgQueries[i]?.data;
+      const d = (raw as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+      const items = (d?.affected_items as Array<Record<string, unknown>>) ?? [];
+      map[agentId] = items.map((p: Record<string, unknown>) => ({
+        name: String(p.name ?? ""),
+        version: String(p.version ?? "unknown"),
+      }));
+    });
+    return map;
+  }, [agentDataQueries, ...pkgQueries.map(q => q.data)]);
+
+  const agentServicesMap = useMemo(() => {
+    const map: Record<string, Array<{ name: string; state: string }>> = {};
+    agentDataQueries.forEach((agentId, i) => {
+      const raw = svcQueries[i]?.data;
+      const d = (raw as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+      const items = (d?.affected_items as Array<Record<string, unknown>>) ?? [];
+      map[agentId] = items.map((s: Record<string, unknown>) => ({
+        name: String(s.name ?? ""),
+        state: String(s.state ?? "unknown"),
+      }));
+    });
+    return map;
+  }, [agentDataQueries, ...svcQueries.map(q => q.data)]);
+
+  const agentUsersMap = useMemo(() => {
+    const map: Record<string, Array<{ name: string; shell: string }>> = {};
+    agentDataQueries.forEach((agentId, i) => {
+      const raw = usrQueries[i]?.data;
+      const d = (raw as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+      const items = (d?.affected_items as Array<Record<string, unknown>>) ?? [];
+      map[agentId] = items.map((u: Record<string, unknown>) => ({
+        name: String(u.name ?? ""),
+        shell: String(u.shell ?? "unknown"),
+      }));
+    });
+    return map;
+  }, [agentDataQueries, ...usrQueries.map(q => q.data)]);
 
   // tRPC queries for baselines
   const baselinesQ = trpc.baselines.list.useQuery(undefined, {
@@ -514,12 +511,6 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
     onError: (err) => toast.error(`Failed to delete: ${err.message}`),
   });
 
-  const activeAgents = useMemo(() => {
-    return MOCK_AGENTS.data.affected_items.filter(
-      (a) => a.status === "active"
-    );
-  }, []);
-
   const toggleAgent = (id: string) => {
     setSelectedAgents((prev) => {
       if (prev.includes(id)) {
@@ -532,16 +523,16 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
   };
 
   const packageDrift = useMemo(
-    () => (selectedAgents.length >= 2 ? computePackageDrift(selectedAgents, isConnected) : []),
-    [selectedAgents, isConnected]
+    () => (selectedAgents.length >= 2 && !isLoadingData ? computePackageDrift(selectedAgents, agentPackages) : []),
+    [selectedAgents, isLoadingData, agentPackages]
   );
   const serviceDrift = useMemo(
-    () => (selectedAgents.length >= 2 ? computeServiceDrift(selectedAgents, isConnected) : []),
-    [selectedAgents, isConnected]
+    () => (selectedAgents.length >= 2 && !isLoadingData ? computeServiceDrift(selectedAgents, agentServicesMap) : []),
+    [selectedAgents, isLoadingData, agentServicesMap]
   );
   const userDrift = useMemo(
-    () => (selectedAgents.length >= 2 ? computeUserDrift(selectedAgents, isConnected) : []),
-    [selectedAgents, isConnected]
+    () => (selectedAgents.length >= 2 && !isLoadingData ? computeUserDrift(selectedAgents, agentUsersMap) : []),
+    [selectedAgents, isLoadingData, agentUsersMap]
   );
 
   const currentDrift = driftTab === "packages" ? packageDrift : driftTab === "services" ? serviceDrift : userDrift;
@@ -555,19 +546,26 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
 
   const agentNameMap = useMemo(() => {
     const m: Record<string, string> = {};
-    for (const a of MOCK_AGENTS.data.affected_items) {
-      m[a.id] = a.name;
+    for (const a of activeAgents) {
+      m[String(a.id)] = String(a.name ?? a.id);
     }
     return m;
-  }, []);
+  }, [activeAgents]);
 
   // Baseline drift computation
   const baselineDrifts = useMemo(() => {
     if (!baselineDetailQ.data?.baseline?.snapshotData) return [];
     const baseline = baselineDetailQ.data.baseline;
     const baselineAgentIds = baseline.agentIds as string[];
-    return computeBaselineDrift(baseline.snapshotData, baselineAgentIds, agentNameMap);
-  }, [baselineDetailQ.data, agentNameMap]);
+    return computeBaselineDrift(
+      baseline.snapshotData,
+      baselineAgentIds,
+      agentNameMap,
+      agentPackages,
+      agentServicesMap,
+      agentUsersMap
+    );
+  }, [baselineDetailQ.data, agentNameMap, agentPackages, agentServicesMap, agentUsersMap]);
 
   const filteredBaselineDrifts = useMemo(() => {
     if (baselineCategoryFilter === "all") return baselineDrifts;
@@ -578,10 +576,14 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
   const baselineSvcDrifts = baselineDrifts.filter((d) => d.category === "services").length;
   const baselineUsrDrifts = baselineDrifts.filter((d) => d.category === "users").length;
 
-  // Save baseline handler
+  // Save baseline handler — snapshots current real data
   const handleSaveBaseline = () => {
     if (!baselineName.trim()) return;
-    const snapshot = collectAgentSnapshot(selectedAgents);
+    const snapshot = {
+      packages: agentPackages,
+      services: agentServicesMap,
+      users: agentUsersMap,
+    };
     createBaselineMut.mutate({
       name: baselineName.trim(),
       description: baselineDescription.trim() || undefined,
@@ -597,6 +599,31 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
     setShowLoadDialog(false);
   };
 
+  // ── Not connected state ──
+  if (!isConnected) {
+    return (
+      <GlassPanel>
+        <div className="text-center py-12 text-muted-foreground">
+          <GitCompare className="h-10 w-10 mx-auto mb-3 opacity-30" />
+          <p className="text-sm font-medium">Wazuh Not Connected</p>
+          <p className="text-xs mt-1">Configure Wazuh connection in Admin Settings to enable drift comparison.</p>
+        </div>
+      </GlassPanel>
+    );
+  }
+
+  // ── Loading agents ──
+  if (agentsQ.isLoading) {
+    return (
+      <GlassPanel>
+        <div className="text-center py-12 text-muted-foreground">
+          <Loader2 className="h-8 w-8 mx-auto mb-3 animate-spin text-primary" />
+          <p className="text-sm">Loading agents from Wazuh…</p>
+        </div>
+      </GlassPanel>
+    );
+  }
+
   return (
     <div className="space-y-5">
       {/* ── Agent Selector ──────────────────────────────────────────── */}
@@ -610,43 +637,51 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
             {selectedAgents.length} selected (2–5 agents)
           </span>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
-          {activeAgents.map((agent) => {
-            const isSelected = selectedAgents.includes(agent.id);
-            const isDisabledAdd = !isSelected && selectedAgents.length >= 5;
-            const isDisabledRemove = isSelected && selectedAgents.length <= 2;
-            const disabled = isDisabledAdd || isDisabledRemove;
+        {activeAgents.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <p className="text-sm">No active agents found</p>
+            <p className="text-xs mt-1">Ensure agents are connected and reporting to Wazuh.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+            {activeAgents.map((agent: Record<string, unknown>) => {
+              const id = String(agent.id);
+              const isSelected = selectedAgents.includes(id);
+              const isDisabledAdd = !isSelected && selectedAgents.length >= 5;
+              const isDisabledRemove = isSelected && selectedAgents.length <= 2;
+              const disabled = isDisabledAdd || isDisabledRemove;
 
-            return (
-              <button
-                key={agent.id}
-                onClick={() => !disabled && toggleAgent(agent.id)}
-                disabled={disabled}
-                className={`glass-card p-3 text-left transition-all duration-200 flex items-center gap-3 ${
-                  isSelected
-                    ? "ring-1 ring-primary/50 bg-primary/5 border-primary/30"
-                    : disabled
-                      ? "opacity-40 cursor-not-allowed"
-                      : "hover:bg-secondary/30 border-border/30"
-                }`}
-              >
-                <Checkbox
-                  checked={isSelected}
+              return (
+                <button
+                  key={id}
+                  onClick={() => !disabled && toggleAgent(id)}
                   disabled={disabled}
-                  className="pointer-events-none"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-foreground truncate">
-                    {agent.name}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground font-mono">
-                    {agent.id} · {agent.ip}
-                  </p>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+                  className={`glass-card p-3 text-left transition-all duration-200 flex items-center gap-3 ${
+                    isSelected
+                      ? "ring-1 ring-primary/50 bg-primary/5 border-primary/30"
+                      : disabled
+                        ? "opacity-40 cursor-not-allowed"
+                        : "hover:bg-secondary/30 border-border/30"
+                  }`}
+                >
+                  <Checkbox
+                    checked={isSelected}
+                    disabled={disabled}
+                    className="pointer-events-none"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-foreground truncate">
+                      {String(agent.name ?? agent.id)}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground font-mono">
+                      {id} · {String(agent.ip ?? "—")}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </GlassPanel>
 
       {/* ── View Mode Toggle + Baseline Actions ─────────────────────── */}
@@ -688,6 +723,7 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
             size="sm"
             className="text-xs gap-1.5 border-border/40 bg-transparent hover:bg-primary/10 hover:text-primary"
             onClick={() => setShowSaveDialog(true)}
+            disabled={selectedAgents.length < 2 || isLoadingData}
           >
             <Save className="h-3.5 w-3.5" />
             Save as Baseline
@@ -704,8 +740,20 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
         </div>
       </div>
 
+      {/* ── Loading indicator for syscollector data ── */}
+      {isLoadingData && selectedAgents.length >= 2 && (
+        <GlassPanel>
+          <div className="flex items-center justify-center gap-3 py-6">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            <span className="text-sm text-muted-foreground">
+              Fetching syscollector data for {selectedAgents.length} agents…
+            </span>
+          </div>
+        </GlassPanel>
+      )}
+
       {/* ── LIVE COMPARISON VIEW ─────────────────────────────────────── */}
-      {viewMode === "live" && (
+      {viewMode === "live" && !isLoadingData && (
         <>
           {/* KPI row */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -830,9 +878,11 @@ export default function DriftComparison({ isConnected }: DriftComparisonProps) {
                               colSpan={selectedAgents.length + 2}
                               className="text-center py-8 text-muted-foreground"
                             >
-                              {showDriftOnly
-                                ? "No drift detected — all items are consistent across selected agents."
-                                : "Select at least 2 agents to begin comparison."}
+                              {selectedAgents.length < 2
+                                ? "Select at least 2 agents to begin comparison."
+                                : showDriftOnly
+                                  ? "No drift detected — all items are consistent across selected agents."
+                                  : "No data available for this category."}
                             </td>
                           </tr>
                         ) : (

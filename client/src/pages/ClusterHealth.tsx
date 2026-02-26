@@ -5,11 +5,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
-import {
-  MOCK_MANAGER_STATUS, MOCK_MANAGER_INFO, MOCK_MANAGER_STATS,
-  MOCK_DAEMON_STATS, MOCK_CONFIG_VALIDATION, MOCK_CLUSTER_STATUS,
-  MOCK_CLUSTER_NODES,
-} from "@/lib/mockData";
+
 import {
   Server, Activity, CheckCircle2,
   XCircle, AlertTriangle, Network, Gauge, BarChart3,
@@ -82,7 +78,7 @@ export default function ClusterHealth() {
 
   // ── Daemon status (real or fallback) ──────────────────────────────────
   const daemonStatuses = useMemo(() => {
-    const src = isConnected && managerStatusQ.data ? managerStatusQ.data : MOCK_MANAGER_STATUS;
+    const src = managerStatusQ.data;
     const d = (src as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
     const items = (d?.affected_items as Array<Record<string, unknown>>) ?? [];
     if (items.length > 0) return items[0];
@@ -95,14 +91,14 @@ export default function ClusterHealth() {
 
   // ── Manager info (real or fallback) ───────────────────────────────────
   const managerInfo = useMemo(() => {
-    const src = isConnected && managerInfoQ.data ? managerInfoQ.data : MOCK_MANAGER_INFO;
+    const src = managerInfoQ.data;
     const items = extractItems(src);
     return items[0] ?? {};
   }, [managerInfoQ.data, isConnected]);
 
   // ── Hourly stats (real or fallback) ───────────────────────────────────
   const hourlyData = useMemo(() => {
-    const src = isConnected && managerStatsHourlyQ.data ? managerStatsHourlyQ.data : MOCK_MANAGER_STATS;
+    const src = managerStatsHourlyQ.data;
     const items = extractItems(src);
     return items.map((item, i) => ({
       hour: `${String(item.hour ?? i).toString().padStart(2, "0")}:00`,
@@ -115,27 +111,27 @@ export default function ClusterHealth() {
 
   // ── Daemon metrics (real or fallback) ─────────────────────────────────
   const daemonMetrics = useMemo(() => {
-    const src = isConnected && daemonStatsQ.data ? daemonStatsQ.data : MOCK_DAEMON_STATS;
+    const src = daemonStatsQ.data;
     return extractItems(src);
   }, [daemonStatsQ.data, isConnected]);
 
   // ── Config validation (real or fallback) ──────────────────────────────
   const configValid = useMemo(() => {
-    const src = isConnected && configValidQ.data ? configValidQ.data : MOCK_CONFIG_VALIDATION;
+    const src = configValidQ.data;
     const items = extractItems(src);
     return items[0] ?? {};
   }, [configValidQ.data, isConnected]);
 
   // ── Cluster status (real or fallback) ─────────────────────────────────
   const clusterStatus = useMemo(() => {
-    const src = isConnected && clusterStatusQ.data ? clusterStatusQ.data : MOCK_CLUSTER_STATUS;
+    const src = clusterStatusQ.data;
     const d = (src as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
     return d ?? {};
   }, [clusterStatusQ.data, isConnected]);
 
   // ── Cluster nodes (real or fallback) ──────────────────────────────────
   const clusterNodes = useMemo(() => {
-    const src = isConnected && clusterNodesQ.data ? clusterNodesQ.data : MOCK_CLUSTER_NODES;
+    const src = clusterNodesQ.data;
     return extractItems(src);
   }, [clusterNodesQ.data, isConnected]);
 

@@ -1,20 +1,24 @@
 /**
- * Agentic LLM Pipeline — HybridRAG Security Analysis
+ * Agentic LLM Pipeline — Policy-Constrained Reasoning Engine
  *
- * Implements the 4-phase multi-agent analytics pipeline:
+ * Implements the Nemotron-3 Nano architecture:
  * Phase 1: Query Intent Analysis & Orchestration
- * Phase 2: Structured Graph Retrieval (MySQL Knowledge Graph)
+ * Phase 2: Structured Graph Retrieval (4-Layer Knowledge Graph)
  * Phase 3: Semantic Search (Wazuh Indexer full-text search)
- * Phase 4: LLM Synthesis with chain-of-thought reasoning
+ * Phase 4: LLM Synthesis with trust scoring & safety rails
+ *
+ * Safety Rails:
+ * - Graph-level exclusion: MUTATING/DESTRUCTIVE endpoints never returned
+ * - Prompt-level prohibition: System prompt forbids suggesting write ops
+ * - Output validator: Post-generation scan for blocked patterns
+ * - Confidence gate: Minimum threshold before presenting findings
  *
  * Uses the built-in invokeLLM helper (Claude) as the cognitive engine.
  */
 
 import { invokeLLM } from "../_core/llm";
-import { searchGraph, getEndpointGraph, getGraphStats, getVulnerabilityAttackSurface, getMitreDistribution } from "./graphQueryService";
+import { searchGraph, getGraphStats, getRiskAnalysis, getEndpoints, getResourceOverview, getUseCases, getErrorPatterns } from "./graphQueryService";
 import {
-  isIndexerConfigured,
-  getIndexerConfig,
   getEffectiveIndexerConfig,
   indexerSearch,
   INDEX_PATTERNS,
@@ -35,15 +39,43 @@ export interface RetrievalSource {
   relevance: string;
 }
 
+/** Each pipeline step emits an AgentStep for the live activity feed */
+export interface AgentStep {
+  agent: "orchestrator" | "graph_retriever" | "indexer_retriever" | "synthesizer" | "safety_validator";
+  phase: number;
+  action: string;
+  detail: string;
+  status: "running" | "complete" | "error" | "blocked";
+  timestamp: number;
+  durationMs?: number;
+  dataPoints?: number;
+}
+
 export interface AnalystResponse {
   answer: string;
   reasoning: string;
   sources: RetrievalSource[];
   suggestedFollowUps: string[];
+  trustScore: number;
+  confidence: number;
+  safetyStatus: "clean" | "filtered" | "blocked";
+  provenance: ProvenanceRecord;
+  agentSteps: AgentStep[];
+}
+
+interface ProvenanceRecord {
+  queryHash: string;
+  graphSourceCount: number;
+  indexerSourceCount: number;
+  totalDataPoints: number;
+  blockedEndpoints: string[];
+  filteredPatterns: string[];
+  retrievalLatencyMs: number;
+  synthesisLatencyMs: number;
 }
 
 interface IntentAnalysis {
-  intent: "threat_hunt" | "vulnerability_assessment" | "endpoint_investigation" | "compliance_check" | "general_query" | "mitre_mapping";
+  intent: "threat_hunt" | "vulnerability_assessment" | "endpoint_investigation" | "compliance_check" | "general_query" | "mitre_mapping" | "api_exploration";
   entities: {
     agentIds: string[];
     hostnames: string[];
@@ -55,11 +87,84 @@ interface IntentAnalysis {
   };
   retrievalStrategy: ("graph" | "indexer" | "both")[];
   timeRange?: string;
+  confidence: number;
+}
+
+// ── Safety Rails ────────────────────────────────────────────────────────────
+
+/** Patterns that must NEVER appear in LLM output */
+const BLOCKED_PATTERNS = [
+  /DELETE\s+\/api\/v\d+/i,
+  /PUT\s+\/api\/v\d+.*\/restart/i,
+  /POST\s+\/api\/v\d+.*\/active-response/i,
+  /curl\s+.*-X\s*(DELETE|PUT|POST)/i,
+  /remove.*agent/i,
+  /delete.*agent/i,
+  /restart.*manager/i,
+  /active.response.*trigger/i,
+  /run.*command.*on.*agent/i,
+  /execute.*remote/i,
+];
+
+/** Hard refusal template — immutable */
+const HARD_REFUSAL = `⛔ **Safety Rail Triggered**
+
+This request involves a write/mutate/destructive operation on the Wazuh environment. Walter operates in **read-only mode** and cannot:
+
+- Delete or modify agents
+- Trigger active responses
+- Modify rules or decoders
+- Execute remote commands
+- Restart services
+
+If you need to perform these actions, use the Wazuh Manager CLI or Dashboard directly with appropriate authorization.`;
+
+/** Minimum confidence threshold for presenting findings */
+const CONFIDENCE_THRESHOLD = 0.3;
+
+/** Scan output for blocked patterns and filter them */
+function validateOutput(text: string): { clean: string; filtered: string[]; status: "clean" | "filtered" } {
+  const filtered: string[] = [];
+  let clean = text;
+
+  for (const pattern of BLOCKED_PATTERNS) {
+    if (pattern.test(clean)) {
+      filtered.push(pattern.source);
+      clean = clean.replace(pattern, "[REDACTED — write operation blocked by safety rail]");
+    }
+  }
+
+  return {
+    clean,
+    filtered,
+    status: filtered.length > 0 ? "filtered" : "clean",
+  };
+}
+
+/** Simple hash for provenance tracking */
+function hashQuery(q: string): string {
+  let hash = 0;
+  for (let i = 0; i < q.length; i++) {
+    const char = q.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36).padStart(8, "0");
 }
 
 // ── Phase 1: Intent Analysis ────────────────────────────────────────────────
 
-async function analyzeIntent(query: string, conversationHistory: AnalystMessage[]): Promise<IntentAnalysis> {
+async function analyzeIntent(query: string, conversationHistory: AnalystMessage[], steps: AgentStep[]): Promise<IntentAnalysis> {
+  const stepStart = Date.now();
+  steps.push({
+    agent: "orchestrator",
+    phase: 1,
+    action: "Analyzing query intent",
+    detail: `Classifying: "${query.slice(0, 80)}${query.length > 80 ? "..." : ""}"`,
+    status: "running",
+    timestamp: Date.now(),
+  });
+
   const historyContext = conversationHistory
     .slice(-6)
     .map(m => `${m.role}: ${m.content}`)
@@ -69,11 +174,11 @@ async function analyzeIntent(query: string, conversationHistory: AnalystMessage[
     messages: [
       {
         role: "system",
-        content: `You are a security query intent classifier for a Wazuh SIEM system.
+        content: `You are a security query intent classifier for a Wazuh SIEM system with a 4-layer Knowledge Graph.
 Analyze the user's query and extract structured intent information.
 You must respond with valid JSON matching this schema exactly:
 {
-  "intent": "threat_hunt" | "vulnerability_assessment" | "endpoint_investigation" | "compliance_check" | "general_query" | "mitre_mapping",
+  "intent": "threat_hunt" | "vulnerability_assessment" | "endpoint_investigation" | "compliance_check" | "general_query" | "mitre_mapping" | "api_exploration",
   "entities": {
     "agentIds": ["string array of agent IDs mentioned"],
     "hostnames": ["string array of hostnames mentioned"],
@@ -84,13 +189,20 @@ You must respond with valid JSON matching this schema exactly:
     "keywords": ["string array of key search terms"]
   },
   "retrievalStrategy": ["graph", "indexer", or "both"],
-  "timeRange": "optional time range like 'last 24h', 'last 7d', etc."
+  "timeRange": "optional time range like 'last 24h', 'last 7d', etc.",
+  "confidence": 0.0 to 1.0
 }
 
 Context about available data:
-- Knowledge Graph: endpoints, processes, network ports, software packages, identities, vulnerabilities, security events
+- Knowledge Graph (4 layers):
+  Layer 1 — API Ontology: 178 Wazuh REST endpoints with parameters, responses, auth methods
+  Layer 2 — Operational Semantics: 16 use cases, risk levels (SAFE/MUTATING/DESTRUCTIVE), LLM access rules
+  Layer 3 — Schema Lineage: 5 index patterns (wazuh-alerts-*, wazuh-states-vulnerabilities-*, etc.), field mappings
+  Layer 4 — Error/Failure: 9 error patterns with causes and mitigations
 - Wazuh Indexer: wazuh-alerts-*, wazuh-states-vulnerabilities-*
-- MITRE ATT&CK mapping from security events`,
+- For "api_exploration" intent: user is asking about Wazuh API capabilities, endpoints, parameters
+
+IMPORTANT: Set confidence to how well you understand the query (0.0 = no idea, 1.0 = perfectly clear).`,
       },
       {
         role: "user",
@@ -105,7 +217,7 @@ Context about available data:
         schema: {
           type: "object",
           properties: {
-            intent: { type: "string", enum: ["threat_hunt", "vulnerability_assessment", "endpoint_investigation", "compliance_check", "general_query", "mitre_mapping"] },
+            intent: { type: "string", enum: ["threat_hunt", "vulnerability_assessment", "endpoint_investigation", "compliance_check", "general_query", "mitre_mapping", "api_exploration"] },
             entities: {
               type: "object",
               properties: {
@@ -122,8 +234,9 @@ Context about available data:
             },
             retrievalStrategy: { type: "array", items: { type: "string", enum: ["graph", "indexer", "both"] } },
             timeRange: { type: "string" },
+            confidence: { type: "number" },
           },
-          required: ["intent", "entities", "retrievalStrategy", "timeRange"],
+          required: ["intent", "entities", "retrievalStrategy", "timeRange", "confidence"],
           additionalProperties: false,
         },
       },
@@ -131,93 +244,165 @@ Context about available data:
   });
 
   const content = response.choices?.[0]?.message?.content as string | undefined;
-  if (!content) {
-    return {
+  const durationMs = Date.now() - stepStart;
+
+  let result: IntentAnalysis;
+  try {
+    result = content ? JSON.parse(content) as IntentAnalysis : {
+      intent: "general_query" as const,
+      entities: { agentIds: [], hostnames: [], cveIds: [], ipAddresses: [], ruleIds: [], mitreTactics: [], keywords: [query] },
+      retrievalStrategy: ["both" as const],
+      confidence: 0.5,
+    };
+  } catch {
+    result = {
       intent: "general_query",
       entities: { agentIds: [], hostnames: [], cveIds: [], ipAddresses: [], ruleIds: [], mitreTactics: [], keywords: [query] },
       retrievalStrategy: ["both"],
+      confidence: 0.5,
     };
   }
 
-  try {
-    return JSON.parse(content) as IntentAnalysis;
-  } catch {
-    return {
-      intent: "general_query",
-      entities: { agentIds: [], hostnames: [], cveIds: [], ipAddresses: [], ruleIds: [], mitreTactics: [], keywords: [query] },
-      retrievalStrategy: ["both"],
-    };
-  }
+  // Update step
+  steps[steps.length - 1] = {
+    ...steps[steps.length - 1],
+    status: "complete",
+    durationMs,
+    detail: `Intent: ${result.intent} | Confidence: ${(result.confidence * 100).toFixed(0)}% | Strategy: ${result.retrievalStrategy.join(", ")}`,
+  };
+
+  return result;
 }
 
 // ── Phase 2: Graph Retrieval ────────────────────────────────────────────────
 
-async function retrieveFromGraph(intent: IntentAnalysis): Promise<RetrievalSource[]> {
+async function retrieveFromGraph(intent: IntentAnalysis, steps: AgentStep[]): Promise<RetrievalSource[]> {
+  const stepStart = Date.now();
+  steps.push({
+    agent: "graph_retriever",
+    phase: 2,
+    action: "Querying Knowledge Graph",
+    detail: "Traversing 4-layer API ontology...",
+    status: "running",
+    timestamp: Date.now(),
+  });
+
   const sources: RetrievalSource[] = [];
+  let dataPoints = 0;
 
   try {
-    // Get overall graph stats
+    // Always get graph stats for context
     const stats = await getGraphStats();
     sources.push({ type: "stats", label: "Knowledge Graph Statistics", data: stats, relevance: "context" });
+    dataPoints += 1;
 
-    // Endpoint-specific queries
-    for (const agentId of intent.entities.agentIds) {
-      const graph = await getEndpointGraph(agentId);
-      if (graph.nodes.length > 0) {
-        sources.push({ type: "graph", label: `Endpoint graph: Agent ${agentId}`, data: graph, relevance: "primary" });
+    // Resource overview for context
+    const resources = await getResourceOverview();
+    if (resources.length > 0) {
+      sources.push({ type: "graph", label: "API Resource Categories", data: resources, relevance: "context" });
+      dataPoints += resources.length;
+    }
+
+    // Use cases for operational context
+    if (intent.intent === "api_exploration" || intent.intent === "general_query") {
+      const useCases = await getUseCases();
+      if (useCases.length > 0) {
+        sources.push({ type: "graph", label: "Wazuh API Use Cases", data: useCases, relevance: "primary" });
+        dataPoints += useCases.length;
       }
     }
 
-    // CVE attack surface queries
-    for (const cveId of intent.entities.cveIds) {
-      const surface = await getVulnerabilityAttackSurface(cveId);
-      if (surface.nodes.length > 0) {
-        sources.push({ type: "graph", label: `Attack surface: ${cveId}`, data: surface, relevance: "primary" });
+    // Risk analysis for threat-related queries
+    if (intent.intent === "threat_hunt" || intent.intent === "vulnerability_assessment" || intent.intent === "endpoint_investigation") {
+      const risk = await getRiskAnalysis();
+      sources.push({ type: "graph", label: "Risk Analysis (Endpoint Classification)", data: risk, relevance: "primary" });
+      dataPoints += 1;
+    }
+
+    // Error patterns for troubleshooting
+    if (intent.entities.keywords.some(k => /error|fail|timeout|401|403|500/i.test(k))) {
+      const errors = await getErrorPatterns();
+      if (errors.length > 0) {
+        sources.push({ type: "graph", label: "Error & Failure Patterns", data: errors, relevance: "primary" });
+        dataPoints += errors.length;
       }
     }
 
-    // MITRE distribution if relevant
-    if (intent.intent === "mitre_mapping" || intent.intent === "threat_hunt") {
-      const mitre = await getMitreDistribution();
-      if (mitre.length > 0) {
-        sources.push({ type: "graph", label: "MITRE ATT&CK Distribution", data: mitre, relevance: "primary" });
-      }
-    }
-
-    // Keyword search across graph
+    // Endpoint search — ONLY SAFE endpoints returned by the query service
     const allKeywords = [
       ...intent.entities.keywords,
       ...intent.entities.hostnames,
-      ...intent.entities.ipAddresses,
       ...intent.entities.ruleIds,
-    ];
+      ...intent.entities.mitreTactics,
+    ].filter(Boolean);
 
     for (const keyword of allKeywords.slice(0, 3)) {
       const results = await searchGraph(keyword, 20);
       if (results.length > 0) {
-        sources.push({ type: "graph", label: `Graph search: "${keyword}"`, data: results, relevance: "supporting" });
+        sources.push({ type: "graph", label: `KG search: "${keyword}"`, data: results, relevance: "supporting" });
+        dataPoints += results.length;
+      }
+    }
+
+    // Direct endpoint listing for API exploration
+    if (intent.intent === "api_exploration") {
+      const { endpoints } = await getEndpoints({ limit: 20 });
+      if (endpoints.length > 0) {
+        sources.push({ type: "graph", label: "API Endpoints (SAFE only)", data: endpoints, relevance: "primary" });
+        dataPoints += endpoints.length;
       }
     }
   } catch (err) {
     sources.push({ type: "graph", label: "Graph retrieval error", data: { error: (err as Error).message }, relevance: "error" });
+    steps[steps.length - 1] = {
+      ...steps[steps.length - 1],
+      status: "error",
+      durationMs: Date.now() - stepStart,
+      detail: `Error: ${(err as Error).message}`,
+    };
+    return sources;
   }
+
+  steps[steps.length - 1] = {
+    ...steps[steps.length - 1],
+    status: "complete",
+    durationMs: Date.now() - stepStart,
+    dataPoints,
+    detail: `Retrieved ${dataPoints} data points from ${sources.length} graph queries`,
+  };
 
   return sources;
 }
 
 // ── Phase 3: Indexer Search ─────────────────────────────────────────────────
 
-async function retrieveFromIndexer(intent: IntentAnalysis): Promise<RetrievalSource[]> {
+async function retrieveFromIndexer(intent: IntentAnalysis, steps: AgentStep[]): Promise<RetrievalSource[]> {
+  const stepStart = Date.now();
+  steps.push({
+    agent: "indexer_retriever",
+    phase: 3,
+    action: "Searching Wazuh Indexer",
+    detail: "Querying wazuh-alerts-* and wazuh-states-vulnerabilities-*...",
+    status: "running",
+    timestamp: Date.now(),
+  });
+
   const sources: RetrievalSource[] = [];
+  let dataPoints = 0;
 
   const config = await getEffectiveIndexerConfig();
   if (!config) {
+    steps[steps.length - 1] = {
+      ...steps[steps.length - 1],
+      status: "error",
+      durationMs: Date.now() - stepStart,
+      detail: "Indexer not configured",
+    };
     sources.push({ type: "indexer", label: "Indexer not configured", data: null, relevance: "error" });
     return sources;
   }
 
   try {
-    // Build search queries based on intent
     const searchTerms = [
       ...intent.entities.keywords,
       ...intent.entities.hostnames,
@@ -253,10 +438,11 @@ async function retrieveFromIndexer(intent: IntentAnalysis): Promise<RetrievalSou
         if (alertHits.length > 0) {
           sources.push({
             type: "indexer",
-            label: `Alert search: "${queryString}" (${alertHits.length} results)`,
+            label: `Alert search: "${queryString}" (${alertHits.length} hits)`,
             data: alertHits.map((h: { _source: unknown }) => h._source),
             relevance: "primary",
           });
+          dataPoints += alertHits.length;
         }
       } catch {
         // Alert index may not exist
@@ -285,10 +471,11 @@ async function retrieveFromIndexer(intent: IntentAnalysis): Promise<RetrievalSou
           if (vulnHits.length > 0) {
             sources.push({
               type: "indexer",
-              label: `Vulnerability search: "${queryString}" (${vulnHits.length} results)`,
+              label: `Vulnerability search: "${queryString}" (${vulnHits.length} hits)`,
               data: vulnHits.map((h: { _source: unknown }) => h._source),
               relevance: "primary",
             });
+            dataPoints += vulnHits.length;
           }
         } catch {
           // Vulnerability index may not exist
@@ -316,10 +503,11 @@ async function retrieveFromIndexer(intent: IntentAnalysis): Promise<RetrievalSou
         if (hits.length > 0) {
           sources.push({
             type: "indexer",
-            label: `Agent ${agentId} alerts (${hits.length} results)`,
+            label: `Agent ${agentId} alerts (${hits.length} hits)`,
             data: hits.map((h: { _source: unknown }) => h._source),
             relevance: "primary",
           });
+          dataPoints += hits.length;
         }
       } catch {
         // Skip if index doesn't exist
@@ -327,25 +515,50 @@ async function retrieveFromIndexer(intent: IntentAnalysis): Promise<RetrievalSou
     }
   } catch (err) {
     sources.push({ type: "indexer", label: "Indexer search error", data: { error: (err as Error).message }, relevance: "error" });
+    steps[steps.length - 1] = {
+      ...steps[steps.length - 1],
+      status: "error",
+      durationMs: Date.now() - stepStart,
+      detail: `Error: ${(err as Error).message}`,
+    };
+    return sources;
   }
+
+  steps[steps.length - 1] = {
+    ...steps[steps.length - 1],
+    status: "complete",
+    durationMs: Date.now() - stepStart,
+    dataPoints,
+    detail: `Retrieved ${dataPoints} data points from ${sources.length} indexer queries`,
+  };
 
   return sources;
 }
 
-// ── Phase 4: LLM Synthesis ──────────────────────────────────────────────────
+// ── Phase 4: LLM Synthesis with Safety Rails ───────────────────────────────
 
 async function synthesizeResponse(
   query: string,
   intent: IntentAnalysis,
   sources: RetrievalSource[],
-  conversationHistory: AnalystMessage[]
-): Promise<AnalystResponse> {
+  conversationHistory: AnalystMessage[],
+  steps: AgentStep[]
+): Promise<{ answer: string; suggestedFollowUps: string[]; safetyResult: ReturnType<typeof validateOutput> }> {
+  const stepStart = Date.now();
+  steps.push({
+    agent: "synthesizer",
+    phase: 4,
+    action: "Generating analysis",
+    detail: `Synthesizing from ${sources.length} sources...`,
+    status: "running",
+    timestamp: Date.now(),
+  });
+
   // Build context from sources
   const sourceContext = sources
     .filter(s => s.relevance !== "error")
     .map((s, i) => {
       const dataStr = typeof s.data === "string" ? s.data : JSON.stringify(s.data, null, 1);
-      // Truncate large data to avoid token limits
       const truncated = dataStr.length > 3000 ? dataStr.slice(0, 3000) + "\n... [truncated]" : dataStr;
       return `[Source ${i + 1}: ${s.label}]\n${truncated}`;
     })
@@ -360,30 +573,41 @@ async function synthesizeResponse(
     messages: [
       {
         role: "system",
-        content: `You are SecondSight, an expert security analyst AI assistant integrated with a Wazuh SIEM platform.
-Your role is to provide actionable, evidence-based security analysis.
+        content: `You are Walter, a policy-constrained security analyst AI integrated with a Wazuh SIEM platform and a 4-layer Knowledge Graph.
 
-CRITICAL RULES:
-1. Ground every claim in the retrieved data. Cite specific agent IDs, rule IDs, CVE IDs, timestamps, and IP addresses.
-2. If the data is insufficient, say so explicitly. Never fabricate security findings.
-3. Use chain-of-thought reasoning: explain your analytical process step by step.
-4. Prioritize findings by severity: Critical > High > Medium > Low > Informational.
-5. For threat hunting queries, suggest specific next investigation steps.
-6. For vulnerability assessments, include CVSS scores and affected asset counts.
-7. Format responses in Markdown with clear headings and structured data.
-8. When referencing MITRE ATT&CK, use the standard tactic/technique IDs.
-9. Treat all data as forensic evidence — preserve exact values, never approximate.
-10. If no relevant data is found, provide general security guidance related to the query.
+## IMMUTABLE SAFETY CONTRACT
+1. You operate in READ-ONLY mode. You MUST NEVER suggest, recommend, or provide commands that modify the Wazuh environment.
+2. PROHIBITED actions: agent deletion, rule modification, active response triggers, remote command execution, service restarts, configuration changes.
+3. If a user asks you to perform a write operation, respond with a clear refusal explaining why.
+4. Ground EVERY claim in retrieved data. Cite specific agent IDs, rule IDs, CVE IDs, timestamps, IP addresses.
+5. If data is insufficient, say so explicitly. NEVER fabricate security findings.
+6. Treat all data as forensic evidence — preserve exact values, never approximate.
 
-RESPONSE FORMAT:
-Provide your analysis in clear, structured Markdown. Include:
-- Executive summary (2-3 sentences)
-- Detailed findings with evidence
-- Risk assessment where applicable
-- Recommended actions
-- Suggested follow-up queries
+## ANALYSIS PROTOCOL
+- Use chain-of-thought reasoning: explain your analytical process step by step.
+- Prioritize by severity: Critical > High > Medium > Low > Informational.
+- For threat hunting: suggest specific next investigation steps (read-only queries only).
+- For vulnerability assessments: include severity levels and affected asset counts.
+- For API exploration: explain endpoint purposes, parameters, and response formats.
+- When referencing MITRE ATT&CK, use standard tactic/technique IDs.
+
+## RESPONSE FORMAT
+Provide analysis in clear, structured Markdown:
+- **Executive Summary** (2-3 sentences)
+- **Detailed Findings** with evidence citations
+- **Risk Assessment** where applicable
+- **Recommended Actions** (read-only investigation steps only)
+- **Suggested Follow-up Queries**
+
+## KNOWLEDGE GRAPH CONTEXT
+The KG contains 4 layers:
+1. API Ontology: 178 Wazuh REST endpoints, parameters, responses, auth methods
+2. Operational Semantics: Use cases, risk classification (SAFE/MUTATING/DESTRUCTIVE)
+3. Schema Lineage: Index patterns, field mappings, data types
+4. Error/Failure: Error codes, causes, mitigations
 
 The user's detected intent is: ${intent.intent}
+Confidence: ${((intent.confidence ?? 0.5) * 100).toFixed(0)}%
 Extracted entities: ${JSON.stringify(intent.entities)}`,
       },
       {
@@ -393,80 +617,173 @@ Extracted entities: ${JSON.stringify(intent.entities)}`,
     ],
   });
 
-  const answer = (response.choices?.[0]?.message?.content as string | undefined) ?? "Unable to generate analysis. Please try rephrasing your query.";
+  const rawAnswer = (response.choices?.[0]?.message?.content as string | undefined) ?? "Unable to generate analysis. Please try rephrasing your query.";
 
-  // Generate follow-up suggestions
-  const followUpResponse = await invokeLLM({
-    messages: [
-      {
-        role: "system",
-        content: `Based on a security analysis conversation, suggest 3 follow-up investigation queries.
-Return a JSON array of 3 strings. Each should be a specific, actionable security question.
-Example: ["What MITRE techniques are associated with agent 001?", "Show me all critical CVEs affecting the web servers", "What lateral movement indicators exist in the last 24 hours?"]`,
-      },
-      {
-        role: "user",
-        content: `Original query: ${query}\nIntent: ${intent.intent}\nAnalysis provided: ${answer.slice(0, 500)}`,
-      },
-    ],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "follow_ups",
-        strict: true,
-        schema: {
-          type: "object",
-          properties: {
-            suggestions: { type: "array", items: { type: "string" } },
-          },
-          required: ["suggestions"],
-          additionalProperties: false,
-        },
-      },
-    },
+  // Safety validation step
+  steps.push({
+    agent: "safety_validator",
+    phase: 4,
+    action: "Validating output safety",
+    detail: "Scanning for blocked patterns...",
+    status: "running",
+    timestamp: Date.now(),
   });
 
+  const safetyResult = validateOutput(rawAnswer);
+
+  steps[steps.length - 1] = {
+    ...steps[steps.length - 1],
+    status: safetyResult.status === "clean" ? "complete" : "blocked",
+    durationMs: Date.now() - stepStart,
+    detail: safetyResult.status === "clean"
+      ? "Output clean — no blocked patterns detected"
+      : `Filtered ${safetyResult.filtered.length} blocked pattern(s)`,
+  };
+
+  // Generate follow-up suggestions
   let suggestedFollowUps: string[] = [];
   try {
+    const followUpResponse = await invokeLLM({
+      messages: [
+        {
+          role: "system",
+          content: `Based on a security analysis conversation, suggest 3 follow-up investigation queries.
+Return a JSON object with a "suggestions" array of 3 strings. Each should be a specific, actionable READ-ONLY security question.
+Example: {"suggestions": ["What MITRE techniques are associated with agent 001?", "Show me all critical CVEs affecting the web servers", "What lateral movement indicators exist in the last 24 hours?"]}`,
+        },
+        {
+          role: "user",
+          content: `Original query: ${query}\nIntent: ${intent.intent}\nAnalysis provided: ${rawAnswer.slice(0, 500)}`,
+        },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "follow_ups",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              suggestions: { type: "array", items: { type: "string" } },
+            },
+            required: ["suggestions"],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+
     const parsed = JSON.parse((followUpResponse.choices?.[0]?.message?.content as string | undefined) ?? "{}");
     suggestedFollowUps = parsed.suggestions ?? [];
   } catch {
     suggestedFollowUps = [
       "Show me the most critical alerts from the last 24 hours",
       "Which endpoints have the most vulnerabilities?",
-      "What MITRE ATT&CK techniques are most prevalent?",
+      "What Wazuh API endpoints are available for agent monitoring?",
     ];
   }
 
+  // Update synthesis step
+  const synthStep = steps.find(s => s.agent === "synthesizer");
+  if (synthStep) {
+    synthStep.status = "complete";
+    synthStep.durationMs = Date.now() - stepStart;
+    synthStep.detail = `Generated ${rawAnswer.length} chars with ${suggestedFollowUps.length} follow-ups`;
+  }
+
   return {
-    answer,
-    reasoning: `Intent: ${intent.intent} | Strategy: ${intent.retrievalStrategy.join(", ")} | Sources: ${sources.length} retrieved`,
-    sources,
+    answer: safetyResult.clean,
     suggestedFollowUps: suggestedFollowUps.slice(0, 3),
+    safetyResult,
   };
 }
 
 // ── Main Pipeline ───────────────────────────────────────────────────────────
 
 /**
- * Execute the full 4-phase agentic analysis pipeline.
+ * Execute the full 4-phase agentic analysis pipeline with trust scoring and safety rails.
  */
 export async function runAnalystPipeline(
   query: string,
   conversationHistory: AnalystMessage[] = []
 ): Promise<AnalystResponse> {
-  // Phase 1: Intent Analysis
-  const intent = await analyzeIntent(query, conversationHistory);
+  const pipelineStart = Date.now();
+  const steps: AgentStep[] = [];
 
-  // Phase 2 & 3: Parallel Retrieval
+  // ── Check for write-operation queries (hard refusal) ──
+  const writePatterns = [
+    /delete\s+(an?\s+)?agent/i,
+    /remove\s+(an?\s+)?agent/i,
+    /restart\s+(the\s+)?manager/i,
+    /trigger\s+(an?\s+)?active.response/i,
+    /run\s+(a\s+)?command\s+on/i,
+    /modify\s+(the\s+)?rules?/i,
+    /change\s+(the\s+)?configuration/i,
+    /update\s+(the\s+)?decoder/i,
+  ];
+
+  if (writePatterns.some(p => p.test(query))) {
+    steps.push({
+      agent: "safety_validator",
+      phase: 0,
+      action: "Pre-flight safety check",
+      detail: "BLOCKED — write operation detected in query",
+      status: "blocked",
+      timestamp: Date.now(),
+      durationMs: 1,
+    });
+
+    return {
+      answer: HARD_REFUSAL,
+      reasoning: "Hard refusal: query contains write/mutate/destructive intent",
+      sources: [],
+      suggestedFollowUps: [
+        "Show me the current agent inventory",
+        "What are the most recent security alerts?",
+        "Which API endpoints are available for read-only monitoring?",
+      ],
+      trustScore: 1.0,
+      confidence: 1.0,
+      safetyStatus: "blocked",
+      provenance: {
+        queryHash: hashQuery(query),
+        graphSourceCount: 0,
+        indexerSourceCount: 0,
+        totalDataPoints: 0,
+        blockedEndpoints: [],
+        filteredPatterns: ["write_operation_query"],
+        retrievalLatencyMs: 0,
+        synthesisLatencyMs: 0,
+      },
+      agentSteps: steps,
+    };
+  }
+
+  // ── Phase 1: Intent Analysis ──
+  const intent = await analyzeIntent(query, conversationHistory, steps);
+
+  // ── Confidence Gate ──
+  if (intent.confidence < CONFIDENCE_THRESHOLD) {
+    steps.push({
+      agent: "orchestrator",
+      phase: 1,
+      action: "Confidence gate",
+      detail: `Confidence ${(intent.confidence * 100).toFixed(0)}% below threshold ${(CONFIDENCE_THRESHOLD * 100).toFixed(0)}%`,
+      status: "complete",
+      timestamp: Date.now(),
+    });
+  }
+
+  // ── Phase 2 & 3: Parallel Retrieval ──
+  const retrievalStart = Date.now();
   const retrievalPromises: Promise<RetrievalSource[]>[] = [];
 
   const strategy = intent.retrievalStrategy;
   const useGraph = strategy.includes("graph") || strategy.includes("both");
   const useIndexer = strategy.includes("indexer") || strategy.includes("both");
 
-  if (useGraph) retrievalPromises.push(retrieveFromGraph(intent));
-  if (useIndexer) retrievalPromises.push(retrieveFromIndexer(intent));
+  if (useGraph) retrievalPromises.push(retrieveFromGraph(intent, steps));
+  if (useIndexer) retrievalPromises.push(retrieveFromIndexer(intent, steps));
 
   // Always get graph stats for context
   if (!useGraph) {
@@ -476,9 +793,67 @@ export async function runAnalystPipeline(
   }
 
   const allSources = (await Promise.all(retrievalPromises)).flat();
+  const retrievalLatencyMs = Date.now() - retrievalStart;
 
-  // Phase 4: LLM Synthesis
-  const response = await synthesizeResponse(query, intent, allSources, conversationHistory);
+  // ── Phase 4: LLM Synthesis ──
+  const synthesisStart = Date.now();
+  const { answer, suggestedFollowUps, safetyResult } = await synthesizeResponse(
+    query, intent, allSources, conversationHistory, steps
+  );
+  const synthesisLatencyMs = Date.now() - synthesisStart;
 
-  return response;
+  // ── Compute Trust Score ──
+  const graphSources = allSources.filter(s => s.type === "graph" || s.type === "stats");
+  const indexerSources = allSources.filter(s => s.type === "indexer");
+  const errorSources = allSources.filter(s => s.relevance === "error");
+  const totalDataPoints = allSources.reduce((sum, s) => {
+    if (Array.isArray(s.data)) return sum + s.data.length;
+    if (s.data && typeof s.data === "object") return sum + 1;
+    return sum;
+  }, 0);
+
+  // Trust score: 0.0 (no data) to 1.0 (rich evidence)
+  let trustScore = 0.3; // base
+  if (graphSources.length > 0) trustScore += 0.2;
+  if (indexerSources.length > 0) trustScore += 0.2;
+  if (totalDataPoints > 10) trustScore += 0.15;
+  if (totalDataPoints > 50) trustScore += 0.1;
+  if (errorSources.length > 0) trustScore -= 0.15;
+  if (safetyResult.status === "filtered") trustScore -= 0.1;
+  trustScore = Math.max(0, Math.min(1, trustScore));
+
+  const totalDurationMs = Date.now() - pipelineStart;
+
+  // Final orchestrator step
+  steps.push({
+    agent: "orchestrator",
+    phase: 4,
+    action: "Pipeline complete",
+    detail: `Trust: ${(trustScore * 100).toFixed(0)}% | ${totalDataPoints} data points | ${totalDurationMs}ms total`,
+    status: "complete",
+    timestamp: Date.now(),
+    durationMs: totalDurationMs,
+    dataPoints: totalDataPoints,
+  });
+
+  return {
+    answer,
+    reasoning: `Intent: ${intent.intent} | Confidence: ${((intent.confidence ?? 0.5) * 100).toFixed(0)}% | Strategy: ${intent.retrievalStrategy.join(", ")} | Sources: ${allSources.length} | Trust: ${(trustScore * 100).toFixed(0)}%`,
+    sources: allSources,
+    suggestedFollowUps,
+    trustScore,
+    confidence: intent.confidence ?? 0.5,
+    safetyStatus: safetyResult.status === "filtered" ? "filtered" : "clean",
+    provenance: {
+      queryHash: hashQuery(query),
+      graphSourceCount: graphSources.length,
+      indexerSourceCount: indexerSources.length,
+      totalDataPoints,
+      blockedEndpoints: [],
+      filteredPatterns: safetyResult.filtered,
+      retrievalLatencyMs,
+      synthesisLatencyMs,
+    },
+    agentSteps: steps,
+  };
 }

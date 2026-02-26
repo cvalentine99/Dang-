@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
-import { MOCK_VULNERABILITIES, MOCK_AGENTS } from "@/lib/mockData";
+
 import { ExportButton } from "@/components/shared/ExportButton";
 import { AddNoteDialog } from "@/components/shared/AddNoteDialog";
 import { EXPORT_COLUMNS } from "@/lib/exportUtils";
@@ -66,9 +66,9 @@ function extractItems(raw: unknown): Array<Record<string, unknown>> {
   return (d?.affected_items as Array<Record<string, unknown>>) ?? [];
 }
 
-function SourceBadge({ source }: { source: "indexer" | "server" | "mock" }) {
-  const colors = { indexer: "bg-green-500/20 text-green-400 border-green-500/30", server: "bg-primary/20 text-primary border-primary/30", mock: "bg-secondary/50 text-muted-foreground border-border/30" };
-  const icons = { indexer: Database, server: Server, mock: Bug };
+function SourceBadge({ source }: { source: "indexer" | "server" }) {
+  const colors = { indexer: "bg-green-500/20 text-green-400 border-green-500/30", server: "bg-primary/20 text-primary border-primary/30" };
+  const icons = { indexer: Database, server: Server };
   const Icon = icons[source];
   return <span className={`inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded-full border ${colors[source]}`}><Icon className="h-2.5 w-2.5" />{source.toUpperCase()}</span>;
 }
@@ -106,7 +106,7 @@ export default function Vulnerabilities() {
   const agentsQ = trpc.wazuh.agents.useQuery({ limit: 100, offset: 0, status: "active" }, { retry: 1, staleTime: 30_000, enabled: isWazuhConnected });
   const agentList = useMemo(() => {
     if (isWazuhConnected && agentsQ.data) return extractItems(agentsQ.data);
-    return MOCK_AGENTS.data.affected_items.filter(a => a.status === "active") as unknown as Array<Record<string, unknown>>;
+    return [];
   }, [agentsQ.data, isWazuhConnected]);
 
   // ── Indexer: Fleet-wide aggregations ──────────────────────────────────────
@@ -141,16 +141,11 @@ export default function Vulnerabilities() {
         fleetSource: "indexer" as const,
       };
     }
-    // Mock fallback
-    const items = MOCK_VULNERABILITIES.data.affected_items as unknown as Array<Record<string, unknown>>;
-    const counts: Record<string, number> = {};
-    items.forEach(v => { const s = String(v.severity ?? "Untriaged"); counts[s] = (counts[s] ?? 0) + 1; });
-    const avgCvss = items.length > 0 ? (items.reduce((s, v) => s + Number(v.cvss3_score ?? v.cvss2_score ?? 0), 0) / items.length) : 0;
     return {
-      fleetSevDist: Object.entries(counts).map(([name, value]) => ({ name, value })),
-      fleetTotal: MOCK_VULNERABILITIES.data.total_affected_items,
-      fleetAvgCvss: avgCvss.toFixed(1),
-      fleetSource: "mock" as const,
+      fleetSevDist: [],
+      fleetTotal: 0,
+      fleetAvgCvss: "0.0",
+      fleetSource: "server" as const,
     };
   }, [isIndexerConnected, vulnSevQ.data]);
 
@@ -173,16 +168,9 @@ export default function Vulnerabilities() {
         agentSource: "indexer" as const,
       };
     }
-    // Mock fallback: group mock vulns by agent
-    const items = MOCK_VULNERABILITIES.data.affected_items as unknown as Array<Record<string, unknown>>;
-    const agentCounts: Record<string, number> = {};
-    items.forEach(() => { agentCounts["001"] = (agentCounts["001"] ?? 0) + 1; });
     return {
-      topAgents: Object.entries(agentCounts).map(([id, count]) => ({
-        id, name: "web-server-prod-01", count, avgCvss: "6.2",
-        sevBreakdown: [{ sev: "Critical", count: 3 }, { sev: "High", count: 5 }, { sev: "Medium", count: 8 }],
-      })),
-      agentSource: "mock" as const,
+      topAgents: [],
+      agentSource: "server" as const,
     };
   }, [isIndexerConnected, vulnAgentQ.data]);
 
@@ -201,13 +189,9 @@ export default function Vulnerabilities() {
         pkgSource: "indexer" as const,
       };
     }
-    // Mock fallback
-    const items = MOCK_VULNERABILITIES.data.affected_items as unknown as Array<Record<string, unknown>>;
-    const counts: Record<string, number> = {};
-    items.forEach(v => { const pkg = String(v.name ?? "unknown"); counts[pkg] = (counts[pkg] ?? 0) + 1; });
     return {
-      topPackages: Object.entries(counts).map(([name, count]) => ({ name, count, avgCvss: "5.5", sevBreakdown: [] })).sort((a, b) => b.count - a.count).slice(0, 15),
-      pkgSource: "mock" as const,
+      topPackages: [],
+      pkgSource: "server" as const,
     };
   }, [isIndexerConnected, vulnPkgQ.data]);
 
@@ -231,19 +215,9 @@ export default function Vulnerabilities() {
         cveSource: "indexer" as const,
       };
     }
-    // Mock fallback
-    const items = MOCK_VULNERABILITIES.data.affected_items as unknown as Array<Record<string, unknown>>;
-    const cveMap: Record<string, { count: number; sev: string; cvss: number }> = {};
-    items.forEach(v => {
-      const cve = String(v.cve ?? "");
-      if (!cveMap[cve]) cveMap[cve] = { count: 0, sev: String(v.severity ?? "Unknown"), cvss: Number(v.cvss3_score ?? 0) };
-      cveMap[cve].count++;
-    });
     return {
-      topCves: Object.entries(cveMap).map(([cve, d]) => ({
-        cve, count: d.count, severity: d.sev, affectedAgents: 1, avgCvss: d.cvss.toFixed(1), packages: [],
-      })).sort((a, b) => b.count - a.count).slice(0, 20),
-      cveSource: "mock" as const,
+      topCves: [],
+      cveSource: "server" as const,
     };
   }, [isIndexerConnected, vulnCveQ.data]);
 
@@ -254,9 +228,7 @@ export default function Vulnerabilities() {
       const d = (vulnsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
       return { agentVulns: items, agentTotal: Number(d?.total_affected_items ?? items.length), agentVulnSource: "server" as const };
     }
-    let items = MOCK_VULNERABILITIES.data.affected_items as unknown as Array<Record<string, unknown>>;
-    if (sevFilter !== "all") items = items.filter(v => String(v.severity ?? "").toLowerCase() === sevFilter);
-    return { agentVulns: items, agentTotal: items.length, agentVulnSource: "mock" as const };
+    return { agentVulns: [] as Array<Record<string, unknown>>, agentTotal: 0, agentVulnSource: "server" as const };
   }, [vulnsQ.data, isWazuhConnected, sevFilter]);
 
   // ── Indexer fleet-wide search results ─────────────────────────────────────
@@ -284,11 +256,7 @@ export default function Vulnerabilities() {
       });
       return { fleetVulns: mapped, fleetSearchTotal: total, fleetSearchSource: "indexer" as const };
     }
-    // Mock fallback
-    let items = MOCK_VULNERABILITIES.data.affected_items as unknown as Array<Record<string, unknown>>;
-    if (sevFilter !== "all") items = items.filter(v => String(v.severity ?? "").toLowerCase() === sevFilter);
-    if (search) { const q = search.toLowerCase(); items = items.filter(v => String(v.cve ?? "").toLowerCase().includes(q) || String(v.name ?? "").toLowerCase().includes(q)); }
-    return { fleetVulns: items, fleetSearchTotal: items.length, fleetSearchSource: "mock" as const };
+    return { fleetVulns: [] as Array<Record<string, unknown>>, fleetSearchTotal: 0, fleetSearchSource: "server" as const };
   }, [isIndexerConnected, vulnSearchQ.data, sevFilter, search]);
 
   // ── Computed KPIs ─────────────────────────────────────────────────────────

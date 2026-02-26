@@ -3,7 +3,7 @@ import { GlassPanel, StatCard, ThreatBadge, RawJsonViewer, RefreshControl } from
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { trpc } from "@/lib/trpc";
-import { MOCK_SIEM_EVENTS, MOCK_LOG_SOURCES, MOCK_RULES, MOCK_AGENTS, useFallback } from "@/lib/mockData";
+
 import { ExportButton } from "@/components/shared/ExportButton";
 import { EXPORT_COLUMNS } from "@/lib/exportUtils";
 import {
@@ -22,7 +22,27 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-type SiemEvent = (typeof MOCK_SIEM_EVENTS)[number];
+interface SiemEvent {
+  id: string;
+  timestamp: string;
+  agent: { id: string; name: string; ip: string };
+  rule: {
+    id: number;
+    level: number;
+    description: string;
+    groups: string[];
+    mitre: { id: string[]; tactic: string[]; technique: string[] };
+    pci_dss?: string[];
+    gdpr?: string[];
+    hipaa?: string[];
+    firedtimes?: number;
+  };
+  decoder: { name: string; parent: string };
+  data: Record<string, unknown>;
+  location: string;
+  full_log: string;
+  [key: string]: unknown;
+}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const SEVERITY_COLORS: Record<string, string> = {
@@ -128,11 +148,59 @@ export default function SiemEvents() {
     onError: (err) => toast.error(`Failed to delete: ${err.message}`),
   });
 
+  // ─── Indexer alerts query ─────────────────────────────────────────────────
+  const indexerStatusQ = trpc.indexer.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
+  const indexerHealthy = indexerStatusQ.data?.configured === true && indexerStatusQ.data?.healthy === true;
+  const timeRangeMs = useMemo(() => {
+    const map: Record<string, number> = { "1h": 3600000, "6h": 21600000, "24h": 86400000, "7d": 604800000 };
+    return map[timeRange] ?? 86400000;
+  }, [timeRange]);
+  const alertsSearchQ = trpc.indexer.alertsSearch.useQuery(
+    { from: new Date(Date.now() - timeRangeMs).toISOString(), to: new Date().toISOString(), size: 500, offset: 0, query: searchQuery || undefined, sortField: "timestamp", sortOrder: "desc" },
+    { retry: 1, staleTime: 15_000, enabled: indexerHealthy }
+  );
+
   // ─── Data ────────────────────────────────────────────────────────────────
-  const events: SiemEvent[] = MOCK_SIEM_EVENTS;
-  const logSources = MOCK_LOG_SOURCES;
-  const rules = useFallback(rulesQ.data, MOCK_RULES, isConfigured);
-  const agents = useFallback(agentsQ.data, MOCK_AGENTS, isConfigured);
+  const events: SiemEvent[] = useMemo(() => {
+    if (!alertsSearchQ.data) return [];
+    const hits = ((alertsSearchQ.data as Record<string, unknown>)?.hits as Record<string, unknown>)?.hits as Array<{ _source: Record<string, unknown> }> ?? [];
+    return hits.map((h) => {
+      const s = h._source;
+      const agent = (s.agent ?? {}) as Record<string, unknown>;
+      const rule = (s.rule ?? {}) as Record<string, unknown>;
+      const mitre = (rule.mitre ?? {}) as Record<string, unknown>;
+      const decoder = (s.decoder ?? {}) as Record<string, unknown>;
+      return {
+        id: String(s.id ?? h._source._id ?? Math.random()),
+        timestamp: String(s.timestamp ?? ""),
+        agent: { id: String(agent.id ?? ""), name: String(agent.name ?? ""), ip: String(agent.ip ?? "") },
+        rule: {
+          id: Number(rule.id ?? 0),
+          level: Number(rule.level ?? 0),
+          description: String(rule.description ?? ""),
+          groups: (rule.groups ?? []) as string[],
+          mitre: { id: (mitre.id ?? []) as string[], tactic: (mitre.tactic ?? []) as string[], technique: (mitre.technique ?? []) as string[] },
+          pci_dss: (rule.pci_dss ?? []) as string[],
+          gdpr: (rule.gdpr ?? []) as string[],
+          hipaa: (rule.hipaa ?? []) as string[],
+          firedtimes: Number(rule.firedtimes ?? 0),
+        },
+        decoder: { name: String(decoder.name ?? ""), parent: String(decoder.parent ?? "") },
+        data: (s.data ?? {}) as Record<string, unknown>,
+        location: String(s.location ?? ""),
+        full_log: String(s.full_log ?? ""),
+      } as SiemEvent;
+    });
+  }, [alertsSearchQ.data]);
+
+  const logSources = useMemo(() => {
+    const counts: Record<string, number> = {};
+    events.forEach(e => { const d = e.decoder.name || "unknown"; counts[d] = (counts[d] ?? 0) + 1; });
+    return Object.entries(counts).map(([name, count]) => ({ name, count, category: name })).sort((a, b) => b.count - a.count);
+  }, [events]);
+
+  const rules = rulesQ.data ?? { data: { affected_items: [] } };
+  const agents = agentsQ.data ?? { data: { affected_items: [] } };
 
   const agentList = (agents as Record<string, unknown>)?.data
     ? ((agents as Record<string, { affected_items: Array<{ id: string; name: string }> }>).data.affected_items || [])
@@ -830,7 +898,7 @@ export default function SiemEvents() {
                   {/* Rule ID */}
                   <div className="flex items-center text-xs font-mono text-slate-300">
                     {event.rule.id}
-                    {event.rule.firedtimes > 1 && (
+                    {(event.rule.firedtimes ?? 0) > 1 && (
                       <span className="ml-1 text-[10px] text-slate-500">×{event.rule.firedtimes}</span>
                     )}
                   </div>
@@ -1008,11 +1076,11 @@ export default function SiemEvents() {
                               </div>
                             </div>
                           )}
-                          {event.rule.pci_dss.length > 0 && (
+                          {(event.rule.pci_dss?.length ?? 0) > 0 && (
                             <div className="flex items-start gap-2">
                               <span className="text-slate-500 flex-shrink-0">PCI DSS</span>
                               <div className="flex flex-wrap gap-1">
-                                {event.rule.pci_dss.map((p) => (
+                                {event.rule.pci_dss?.map((p) => (
                                   <span key={p} className="px-1.5 py-0.5 bg-blue-500/20 text-blue-300 rounded text-[10px] font-mono">
                                     {p}
                                   </span>
@@ -1020,11 +1088,11 @@ export default function SiemEvents() {
                               </div>
                             </div>
                           )}
-                          {event.rule.gdpr.length > 0 && (
+                          {(event.rule.gdpr?.length ?? 0) > 0 && (
                             <div className="flex items-start gap-2">
                               <span className="text-slate-500 flex-shrink-0">GDPR</span>
                               <div className="flex flex-wrap gap-1">
-                                {event.rule.gdpr.map((g) => (
+                                {event.rule.gdpr?.map((g) => (
                                   <span key={g} className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 rounded text-[10px] font-mono">
                                     {g}
                                   </span>
@@ -1032,11 +1100,11 @@ export default function SiemEvents() {
                               </div>
                             </div>
                           )}
-                          {event.rule.hipaa.length > 0 && (
+                          {(event.rule.hipaa?.length ?? 0) > 0 && (
                             <div className="flex items-start gap-2">
                               <span className="text-slate-500 flex-shrink-0">HIPAA</span>
                               <div className="flex flex-wrap gap-1">
-                                {event.rule.hipaa.map((h) => (
+                                {event.rule.hipaa?.map((h) => (
                                   <span key={h} className="px-1.5 py-0.5 bg-amber-500/20 text-amber-300 rounded text-[10px] font-mono">
                                     {h}
                                   </span>

@@ -966,3 +966,130 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] All pages use RefreshControl with auto-refresh dropdown (Off/30s/1m/5m/15m)
 - [x] Fix pre-existing test failures from GitHub sync (connectionSettings, multiAgentSyscollector, graph limit)
 - [x] All 198 tests passing, TypeScript clean
+
+## Phase: Rewire App to Local Wazuh Backend (192.168.50.158)
+
+- [ ] Review current Wazuh client configuration and secrets
+- [ ] Update WAZUH_HOST secret to 192.168.50.158
+- [ ] Update WAZUH_INDEXER_HOST secret to 192.168.50.158
+- [ ] Verify Wazuh Manager API auth flow (POST /security/user/authenticate)
+- [ ] Verify Wazuh Indexer connection (GET /_cluster/health)
+- [ ] Update wazuhClient.ts for direct local connection
+- [ ] Update indexerClient.ts for direct local connection
+- [ ] Test Manager API connectivity from sandbox
+- [ ] Test Indexer API connectivity from sandbox
+- [ ] Fix any connection issues (TLS, auth, ports)
+- [ ] Run vitest suite and verify all tests pass
+- [ ] Save checkpoint
+
+## Phase: Replace ALL Mock Data with Real Wazuh API Calls
+
+### Audit & Planning
+- [x] Catalog every mock data import across all pages
+- [x] Map each mock usage to the correct Wazuh REST API endpoint
+
+### SOC Console (Home.tsx)
+- [x] Replace MOCK_AGENTS with GET /agents?select=id,name,status,os.name,os.version,version,lastKeepAlive,group
+- [x] Replace MOCK_ALERTS with Indexer alertsSearch (wazuh-alerts-*)
+- [x] Replace MOCK_MANAGER_STATUS with GET /manager/status + GET /manager/info
+- [x] Replace MOCK_RULES with GET /rules?limit=10&sort=-level
+- [x] Replace MOCK_MITRE_TACTICS with Indexer alertsAggByMitre
+
+### Fleet Command (AgentHealth.tsx)
+- [x] Replace MOCK_AGENTS with GET /agents
+- [x] Replace MOCK_AGENT_OS_SUMMARY with GET /agents/summary/os
+- [x] Replace MOCK_AGENT_GROUPS with GET /agents/groups
+
+### Alerts Timeline (AlertsTimeline.tsx)
+- [x] Replace MOCK_ALERTS with Indexer alertsSearch
+- [x] Replace MOCK_ALERT_LEVEL_DISTRIBUTION with Indexer alertsAggByLevel
+- [x] Replace MOCK_TOP_RULES with Indexer alertsAggByRule
+
+### Vulnerabilities (Vulnerabilities.tsx)
+- [x] Replace MOCK_VULNERABILITIES with Indexer vulnSearch
+- [x] Replace MOCK_VULN_SEVERITY with Indexer vulnAggBySeverity
+- [x] Replace MOCK_VULN_PACKAGES with Indexer vulnAggByPackage
+
+### MITRE ATT&CK (MitreAttack.tsx)
+- [x] Replace MOCK_MITRE_TACTICS with GET /mitre/tactics
+- [x] Replace MOCK_MITRE_TECHNIQUES with GET /mitre/techniques
+- [x] Replace MOCK_MITRE_GROUPS with GET /mitre/groups
+
+### Compliance (Compliance.tsx)
+- [x] Replace MOCK_SCA_POLICIES with GET /sca/{agent_id}
+- [x] Replace MOCK_SCA_CHECKS with GET /sca/{agent_id}/checks/{policy_id}
+- [x] Replace MOCK_COMPLIANCE_FRAMEWORKS with Indexer alertsComplianceAgg
+
+### FIM (FileIntegrity.tsx)
+- [x] Replace MOCK_SYSCHECK_FILES with GET /syscheck/{agent_id}
+- [x] Replace MOCK_SYSCHECK_LAST_SCAN with GET /syscheck/{agent_id}/last_scan
+
+### IT Hygiene (ITHygiene.tsx)
+- [x] Replace MOCK_PACKAGES with GET /syscollector/{agent_id}/packages
+- [x] Replace MOCK_PORTS with GET /syscollector/{agent_id}/ports
+- [x] Replace MOCK_PROCESSES with GET /syscollector/{agent_id}/processes
+- [x] Replace MOCK_EXTENSIONS with GET /syscollector/{agent_id}/packages (browser filter)
+- [x] Replace MOCK_SERVICES with GET /syscollector/{agent_id}/processes (service filter)
+- [x] Replace MOCK_USERS with GET /syscollector/{agent_id}/users
+
+### Cluster Health (ClusterHealth.tsx)
+- [x] Replace MOCK_DAEMON_STATUS with GET /manager/status
+- [x] Replace MOCK_MANAGER_INFO with GET /manager/info
+- [x] Replace MOCK_CLUSTER_NODES with GET /cluster/nodes
+- [x] Replace MOCK_HOURLY_STATS with GET /manager/stats/hourly
+
+### SIEM Events (SiemEvents.tsx)
+- [x] Replace MOCK_SIEM_EVENTS with Indexer alertsSearch
+- [x] Replace MOCK_LOG_SOURCES with Indexer alertsAggByDecoder
+
+### Threat Hunting (ThreatHunting.tsx)
+- [x] Replace MOCK_HUNT_RESULTS with Indexer alertsSearch + vulnSearch cross-correlation
+
+### Ruleset Explorer (RulesetExplorer.tsx)
+- [x] Replace MOCK_RULES with GET /rules
+- [x] Replace MOCK_DECODERS with GET /decoders
+
+### Threat Intel (ThreatIntel.tsx)
+- [x] Verify OTX API calls are real (no mock fallback)
+
+### Cleanup
+- [x] Remove mockData.ts entirely (DELETED)
+- [x] Remove all mock imports from page files
+- [x] Handle empty states gracefully (no data yet vs API error)
+
+### Validation Contract
+- [x] Produce validation contract document (VALIDATION_CONTRACT.md)
+- [x] Include endpoint, method, params, response shape, and consuming component
+
+### Testing
+- [x] Run vitest suite — 210 pass / 1 timeout (OTX network)
+- [x] TypeScript compiles clean (0 errors)
+- [ ] Save checkpoint
+
+## Phase: Knowledge Graph Rebuild (Nemotron-3 Nano Hybrid RAG Architecture)
+- [x] Finish stripping mock data from RulesetExplorer
+- [x] Finish stripping mock data from remaining pages (DriftComparison was last)
+- [x] Redesign KG schema: API Ontology Graph (178 endpoints, 1110 params, 1102 responses, 2 auth methods, 21 resources)
+- [x] Redesign KG schema: Operational Semantics Graph (16 use cases)
+- [x] Redesign KG schema: Schema & Field Lineage Graph (5 indices, 60 fields)
+- [x] Redesign KG schema: Error & Failure Graph (9 error patterns)
+- [x] Build deterministic graph extraction pipeline from Wazuh OpenAPI spec (extract-wazuh-kg.mjs)
+- [x] Implement safety metadata: risk classification (113 SAFE, 42 MUTATING, 23 DESTRUCTIVE)
+- [x] Implement trust scoring per endpoint (0.0-1.0 rolling score)
+- [x] Implement graph query service with trust-weighted retrieval
+- [x] Rebuild Knowledge Graph UI to visualize 4-layer model
+- [x] Wire graph into Walter with Nano prompt contract
+- [x] Add safety rails: graph-level exclusion, prompt-level prohibition, output validator, confidence gate
+- [x] Delete mockData.ts entirely (zero imports remaining)
+- [x] Produce validation contract document (VALIDATION_CONTRACT.md)
+
+## Phase: Fancy Agent Activity Visualization
+- [x] Build live agent activity feed with console-style output (5 agents: Orchestrator, Graph Retriever, Indexer Retriever, Synthesizer, Safety Validator)
+- [x] Add typing/typewriter effects for step-by-step progress
+- [x] Add animated spinners, progress bars, status indicators
+- [x] Show each agent's work steps with glass-panel Amethyst Nexus styling
+- [x] Real-time step completion animations
+- [x] Trust score badge (green/yellow/red) per response
+- [x] Confidence percentage display
+- [x] Safety status indicator (clean/filtered/blocked)
+- [x] Expandable provenance details panel

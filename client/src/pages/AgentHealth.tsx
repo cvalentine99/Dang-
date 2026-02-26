@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { AddNoteDialog } from "@/components/shared/AddNoteDialog";
-import { MOCK_AGENTS, MOCK_AGENT_SUMMARY } from "@/lib/mockData";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -80,7 +80,7 @@ export default function AgentHealth() {
 
   // ── Agent summary (real or fallback) ──────────────────────────────────
   const agentData = useMemo(() => {
-    const raw = isConnected ? agentSummaryQ.data : MOCK_AGENT_SUMMARY;
+    const raw = agentSummaryQ.data;
     const items = extractItems(raw);
     const first = items[0];
     if (!first) return { total: 0, active: 0, disconnected: 0, never: 0, pending: 0 };
@@ -101,10 +101,7 @@ export default function AgentHealth() {
       items.forEach(item => { const os = String(item.os ?? item.platform ?? "Unknown"); counts[os] = (counts[os] ?? 0) + 1; });
       return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 8);
     }
-    // Fallback: derive from mock agents
-    const counts: Record<string, number> = {};
-    MOCK_AGENTS.data.affected_items.forEach(a => { const os = a.os.platform; counts[os] = (counts[os] ?? 0) + 1; });
-    return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+    return [];
   }, [agentSummaryOsQ.data, isConnected]);
 
   // ── Groups (real or fallback) ─────────────────────────────────────────
@@ -113,21 +110,13 @@ export default function AgentHealth() {
       const items = extractItems(groupsQ.data);
       return items.map(g => ({ name: String(g.name ?? ""), count: Number(g.count ?? 0) }));
     }
-    // Fallback: derive from mock agents
-    const counts: Record<string, number> = {};
-    MOCK_AGENTS.data.affected_items.forEach(a => a.group.forEach(g => { counts[g] = (counts[g] ?? 0) + 1; }));
-    return Object.entries(counts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+    return [];
   }, [groupsQ.data, isConnected]);
 
   // ── Agents list (real or fallback) ────────────────────────────────────
   const agents = useMemo(() => {
     if (isConnected && agentsQ.data) return extractItems(agentsQ.data);
-    // Fallback: apply local filters to mock data
-    let items = MOCK_AGENTS.data.affected_items as unknown as Array<Record<string, unknown>>;
-    if (statusFilter !== "all") items = items.filter(a => a.status === statusFilter);
-    if (groupFilter !== "all") items = items.filter(a => Array.isArray(a.group) && (a.group as string[]).includes(groupFilter));
-    if (search) items = items.filter(a => String(a.name ?? "").toLowerCase().includes(search.toLowerCase()) || String(a.ip ?? "").includes(search));
-    return items.slice(page * pageSize, (page + 1) * pageSize);
+    return [];
   }, [agentsQ.data, isConnected, statusFilter, groupFilter, search, page]);
 
   const totalAgents = useMemo(() => {
@@ -135,7 +124,7 @@ export default function AgentHealth() {
       const d = (agentsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
       return Number(d?.total_affected_items ?? agents.length);
     }
-    return MOCK_AGENTS.data.total_affected_items;
+    return agents.length;
   }, [agentsQ.data, isConnected, agents.length]);
 
   const statusPieData = useMemo(() => [
@@ -152,7 +141,7 @@ export default function AgentHealth() {
       return items[0] ?? null;
     }
     if (selectedAgent) {
-      return MOCK_AGENTS.data.affected_items.find(a => a.id === selectedAgent) as unknown as Record<string, unknown> ?? null;
+      return null;
     }
     return null;
   }, [agentDetailQ.data, isConnected, selectedAgent]);
@@ -160,8 +149,7 @@ export default function AgentHealth() {
   const agentOsDetail = useMemo(() => {
     if (isConnected && agentOsQ.data) return extractItems(agentOsQ.data)[0] ?? null;
     if (selectedAgent) {
-      const agent = MOCK_AGENTS.data.affected_items.find(a => a.id === selectedAgent);
-      return agent?.os as unknown as Record<string, unknown> ?? null;
+      return null;
     }
     return null;
   }, [agentOsQ.data, isConnected, selectedAgent]);

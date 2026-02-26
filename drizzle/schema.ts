@@ -164,196 +164,217 @@ export type AnalystNoteV2 = typeof analystNotesV2.$inferSelect;
 export type InsertAnalystNoteV2 = typeof analystNotesV2.$inferInsert;
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Knowledge Graph Tables — HybridRAG Integration
-// Models the Labelled Property Graph schema from the HybridRAG specification.
-// Nodes: Endpoint, Process, NetworkPort, SoftwarePackage, Identity, Vulnerability, SecurityEvent
-// Edges: stored as foreign key relationships between tables.
+// Knowledge Graph — 4-Layer Nemotron-3 Nano Architecture
+// Layer 1: API Ontology Graph (endpoints, parameters, responses, auth, resources)
+// Layer 2: Operational Semantics Graph (use cases, risk classification)
+// Layer 3: Schema & Field Lineage Graph (indices, fields, data flow)
+// Layer 4: Error & Failure Graph (error patterns, causes, mitigations)
+// Plus: Trust scoring, answer provenance, sync status
 // ══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Graph Node: Endpoint — represents a Wazuh agent / managed host.
+ * Layer 1: API Endpoints — every Wazuh REST endpoint with risk classification.
  */
-export const graphEndpoints = mysqlTable("graph_endpoints", {
+export const kgEndpoints = mysqlTable("kg_endpoints", {
   id: int("id").autoincrement().primaryKey(),
-  agentId: varchar("agentId", { length: 32 }).notNull().unique(),
-  hostname: varchar("hostname", { length: 256 }),
-  ipAddress: varchar("ipAddress", { length: 64 }),
-  osName: varchar("osName", { length: 128 }),
-  osVersion: varchar("osVersion", { length: 128 }),
-  osPlatform: varchar("osPlatform", { length: 64 }),
-  architecture: varchar("architecture", { length: 32 }),
-  agentVersion: varchar("agentVersion", { length: 64 }),
-  agentStatus: varchar("agentStatus", { length: 32 }),
-  lastKeepAlive: timestamp("lastKeepAlive"),
-  syncedAt: timestamp("syncedAt").defaultNow().notNull(),
-}, (table) => ([
-  index("ge_agentId_idx").on(table.agentId),
-  index("ge_hostname_idx").on(table.hostname),
-]));
-
-export type GraphEndpoint = typeof graphEndpoints.$inferSelect;
-
-/**
- * Graph Node: Process — running process on an endpoint.
- * Edge: (:Endpoint)-->(:Process) via endpointId FK
- */
-export const graphProcesses = mysqlTable("graph_processes", {
-  id: int("id").autoincrement().primaryKey(),
-  endpointId: int("endpointId").notNull(),
-  processName: varchar("processName", { length: 256 }).notNull(),
-  pid: int("pid"),
-  ppid: int("ppid"),
-  state: varchar("state", { length: 32 }),
-  userName: varchar("userName", { length: 128 }),
-  cmdLine: text("cmdLine"),
-  syncedAt: timestamp("syncedAt").defaultNow().notNull(),
-}, (table) => ([
-  index("gp_endpointId_idx").on(table.endpointId),
-  index("gp_processName_idx").on(table.processName),
-]));
-
-export type GraphProcess = typeof graphProcesses.$inferSelect;
-
-/**
- * Graph Node: NetworkPort — listening port on an endpoint.
- * Edge: (:Process)-->(:NetworkPort) via processId FK
- * Edge: (:Endpoint)-->(:NetworkPort) via endpointId FK
- */
-export const graphNetworkPorts = mysqlTable("graph_network_ports", {
-  id: int("id").autoincrement().primaryKey(),
-  endpointId: int("endpointId").notNull(),
-  processId: int("processId"),
-  localPort: int("localPort").notNull(),
-  localIp: varchar("localIp", { length: 64 }),
-  remoteIp: varchar("remoteIp", { length: 64 }),
-  remotePort: int("remotePort"),
-  protocol: varchar("protocol", { length: 16 }),
-  state: varchar("state", { length: 32 }),
-  syncedAt: timestamp("syncedAt").defaultNow().notNull(),
-}, (table) => ([
-  index("gnp_endpointId_idx").on(table.endpointId),
-  index("gnp_localPort_idx").on(table.localPort),
-]));
-
-export type GraphNetworkPort = typeof graphNetworkPorts.$inferSelect;
-
-/**
- * Graph Node: SoftwarePackage — installed package on an endpoint.
- * Edge: (:Endpoint)-->(:SoftwarePackage) via endpointId FK
- */
-export const graphSoftwarePackages = mysqlTable("graph_software_packages", {
-  id: int("id").autoincrement().primaryKey(),
-  endpointId: int("endpointId").notNull(),
-  packageName: varchar("packageName", { length: 256 }).notNull(),
-  version: varchar("version", { length: 128 }),
-  architecture: varchar("architecture", { length: 32 }),
-  vendor: varchar("vendor", { length: 256 }),
-  format: varchar("format", { length: 32 }),
+  endpointId: varchar("endpoint_id", { length: 128 }),
+  path: varchar("path", { length: 512 }).notNull(),
+  method: varchar("method", { length: 10 }).notNull(),
+  summary: text("summary"),
   description: text("description"),
-  syncedAt: timestamp("syncedAt").defaultNow().notNull(),
+  tags: json("tags").$type<string[]>(),
+  operationId: varchar("operation_id", { length: 128 }),
+  resource: varchar("resource", { length: 64 }).notNull(),
+  operationType: varchar("operation_type", { length: 16 }).notNull(),
+  riskLevel: varchar("risk_level", { length: 16 }).notNull(),
+  allowedForLlm: int("allowed_for_llm").default(1).notNull(),
+  authMethod: varchar("auth_method", { length: 64 }),
+  trustScore: varchar("trust_score", { length: 8 }).default("1.0").notNull(),
+  deprecated: int("deprecated").default(0).notNull(),
+  lastVerifiedAt: timestamp("last_verified_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 }, (table) => ([
-  index("gsp_endpointId_idx").on(table.endpointId),
-  index("gsp_packageName_idx").on(table.packageName),
+  index("kge_method_idx").on(table.method),
+  index("kge_resource_idx").on(table.resource),
+  index("kge_risk_level_idx").on(table.riskLevel),
+  index("kge_path_idx").on(table.path),
 ]));
 
-export type GraphSoftwarePackage = typeof graphSoftwarePackages.$inferSelect;
+export type KgEndpoint = typeof kgEndpoints.$inferSelect;
+export type InsertKgEndpoint = typeof kgEndpoints.$inferInsert;
 
 /**
- * Graph Node: Identity — local user account on an endpoint.
- * Edge: (:Endpoint)-->(:Identity) via endpointId FK
- * Edge: (:Identity)-->(:Process) via identity running processes
+ * Layer 1: API Parameters — query/path/body parameters for each endpoint.
  */
-export const graphIdentities = mysqlTable("graph_identities", {
+export const kgParameters = mysqlTable("kg_parameters", {
   id: int("id").autoincrement().primaryKey(),
-  endpointId: int("endpointId").notNull(),
-  username: varchar("username", { length: 128 }).notNull(),
-  uid: varchar("uid", { length: 32 }),
-  gid: varchar("gid", { length: 32 }),
-  homeDir: varchar("homeDir", { length: 512 }),
-  shell: varchar("shell", { length: 128 }),
-  isAdmin: int("isAdmin").default(0).notNull(),
-  userType: varchar("userType", { length: 32 }),
-  syncedAt: timestamp("syncedAt").defaultNow().notNull(),
+  endpointId: int("endpoint_id").notNull(),
+  name: varchar("name", { length: 128 }).notNull(),
+  location: varchar("location", { length: 16 }).notNull(),
+  required: int("required").default(0).notNull(),
+  paramType: varchar("param_type", { length: 32 }).notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ([
-  index("gi_endpointId_idx").on(table.endpointId),
-  index("gi_username_idx").on(table.username),
+  index("kgp_endpoint_id_idx").on(table.endpointId),
+  index("kgp_name_idx").on(table.name),
 ]));
 
-export type GraphIdentity = typeof graphIdentities.$inferSelect;
+export type KgParameter = typeof kgParameters.$inferSelect;
 
 /**
- * Graph Node: Vulnerability — CVE affecting a software package.
- * Edge: (:SoftwarePackage)-->(:Vulnerability) via packageId FK
- * Edge: (:Endpoint)-->(:Vulnerability) via endpointId FK
+ * Layer 1: API Responses — response codes and schemas for each endpoint.
  */
-export const graphVulnerabilities = mysqlTable("graph_vulnerabilities", {
+export const kgResponses = mysqlTable("kg_responses", {
   id: int("id").autoincrement().primaryKey(),
-  endpointId: int("endpointId").notNull(),
-  packageId: int("packageId"),
-  cveId: varchar("cveId", { length: 32 }).notNull(),
-  cvssScore: varchar("cvssScore", { length: 8 }),
-  severity: varchar("severity", { length: 16 }),
-  status: varchar("status", { length: 32 }),
-  packageName: varchar("packageName", { length: 256 }),
-  packageVersion: varchar("packageVersion", { length: 128 }),
-  title: text("title"),
-  publishedAt: timestamp("publishedAt"),
-  detectedAt: timestamp("detectedAt"),
-  syncedAt: timestamp("syncedAt").defaultNow().notNull(),
+  endpointId: int("endpoint_id").notNull(),
+  httpStatus: int("http_status").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ([
-  index("gv_endpointId_idx").on(table.endpointId),
-  index("gv_cveId_idx").on(table.cveId),
-  index("gv_severity_idx").on(table.severity),
+  index("kgr_endpoint_id_idx").on(table.endpointId),
 ]));
 
-export type GraphVulnerability = typeof graphVulnerabilities.$inferSelect;
+export type KgResponse = typeof kgResponses.$inferSelect;
 
 /**
- * Graph Node: SecurityEvent — alert/event from Wazuh.
- * Edge: (:SecurityEvent)-->(:Endpoint) via endpointId FK
+ * Layer 1: Auth Methods — authentication mechanisms supported by the API.
  */
-export const graphSecurityEvents = mysqlTable("graph_security_events", {
+export const kgAuthMethods = mysqlTable("kg_auth_methods", {
   id: int("id").autoincrement().primaryKey(),
-  endpointId: int("endpointId"),
-  alertId: varchar("alertId", { length: 64 }),
-  ruleId: varchar("ruleId", { length: 32 }).notNull(),
-  ruleLevel: int("ruleLevel"),
-  ruleDescription: text("ruleDescription"),
-  mitreTactic: varchar("mitreTactic", { length: 128 }),
-  mitreTechnique: varchar("mitreTechnique", { length: 128 }),
-  mitreId: varchar("mitreId", { length: 32 }),
-  agentId: varchar("agentId", { length: 32 }),
-  agentName: varchar("agentName", { length: 256 }),
-  srcIp: varchar("srcIp", { length: 64 }),
-  dstIp: varchar("dstIp", { length: 64 }),
-  eventTimestamp: timestamp("eventTimestamp"),
-  rawData: json("rawData").$type<Record<string, unknown>>(),
-  syncedAt: timestamp("syncedAt").defaultNow().notNull(),
-}, (table) => ([
-  index("gse_endpointId_idx").on(table.endpointId),
-  index("gse_ruleId_idx").on(table.ruleId),
-  index("gse_mitreTactic_idx").on(table.mitreTactic),
-  index("gse_agentId_idx").on(table.agentId),
-  index("gse_eventTimestamp_idx").on(table.eventTimestamp),
-]));
-
-export type GraphSecurityEvent = typeof graphSecurityEvents.$inferSelect;
-
-/**
- * ETL Sync Status — tracks the last sync time and entity counts per category.
- */
-export const graphSyncStatus = mysqlTable("graph_sync_status", {
-  id: int("id").autoincrement().primaryKey(),
-  entityType: varchar("entityType", { length: 64 }).notNull().unique(),
-  lastSyncAt: timestamp("lastSyncAt"),
-  entityCount: int("entityCount").default(0).notNull(),
-  status: mysqlEnum("status", ["idle", "syncing", "completed", "error"]).default("idle").notNull(),
-  errorMessage: text("errorMessage"),
-  durationMs: int("durationMs"),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  authId: varchar("auth_id", { length: 64 }).notNull(),
+  authType: varchar("auth_type", { length: 32 }).notNull(),
+  description: text("description"),
+  ttlSeconds: int("ttl_seconds"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export type GraphSyncStatus = typeof graphSyncStatus.$inferSelect;
+export type KgAuthMethod = typeof kgAuthMethods.$inferSelect;
+
+/**
+ * Layer 1: Resources — API resource categories (agents, manager, cluster, etc.).
+ */
+export const kgResources = mysqlTable("kg_resources", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 64 }).notNull().unique(),
+  endpointCount: int("endpoint_count").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type KgResource = typeof kgResources.$inferSelect;
+
+/**
+ * Layer 2: Use Cases — operational use case patterns that map to endpoint groups.
+ */
+export const kgUseCases = mysqlTable("kg_use_cases", {
+  id: int("id").autoincrement().primaryKey(),
+  intent: varchar("intent", { length: 128 }).notNull(),
+  semanticType: varchar("semantic_type", { length: 64 }).notNull(),
+  domain: varchar("domain", { length: 64 }).notNull(),
+  description: text("description"),
+  endpointIds: json("endpoint_ids").$type<number[]>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type KgUseCase = typeof kgUseCases.$inferSelect;
+
+/**
+ * Layer 3: Index Patterns — Wazuh Indexer index patterns and their schemas.
+ */
+export const kgIndices = mysqlTable("kg_indices", {
+  id: int("id").autoincrement().primaryKey(),
+  pattern: varchar("pattern", { length: 256 }).notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type KgIndex = typeof kgIndices.$inferSelect;
+
+/**
+ * Layer 3: Fields — individual fields within index patterns.
+ */
+export const kgFields = mysqlTable("kg_fields", {
+  id: int("id").autoincrement().primaryKey(),
+  indexId: int("index_id").notNull(),
+  fieldName: varchar("field_name", { length: 256 }).notNull(),
+  fieldType: varchar("field_type", { length: 32 }).notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ([
+  index("kgf_index_id_idx").on(table.indexId),
+  index("kgf_field_name_idx").on(table.fieldName),
+]));
+
+export type KgField = typeof kgFields.$inferSelect;
+
+/**
+ * Layer 4: Error Patterns — known error codes, causes, and mitigations.
+ */
+export const kgErrorPatterns = mysqlTable("kg_error_patterns", {
+  id: int("id").autoincrement().primaryKey(),
+  httpStatus: int("http_status").notNull(),
+  description: text("description"),
+  cause: text("cause"),
+  mitigation: text("mitigation"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type KgErrorPattern = typeof kgErrorPatterns.$inferSelect;
+
+/**
+ * Trust History — tracks trust score changes for endpoints over time.
+ */
+export const kgTrustHistory = mysqlTable("kg_trust_history", {
+  id: int("id").autoincrement().primaryKey(),
+  endpointId: int("endpoint_id").notNull(),
+  oldScore: varchar("old_score", { length: 8 }).notNull(),
+  newScore: varchar("new_score", { length: 8 }).notNull(),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ([
+  index("kgth_endpoint_id_idx").on(table.endpointId),
+]));
+
+export type KgTrustHistory = typeof kgTrustHistory.$inferSelect;
+
+/**
+ * Answer Provenance — tracks which KG nodes were used to generate each LLM answer.
+ */
+export const kgAnswerProvenance = mysqlTable("kg_answer_provenance", {
+  id: int("id").autoincrement().primaryKey(),
+  sessionId: varchar("session_id", { length: 64 }).notNull(),
+  question: text("question").notNull(),
+  answer: text("answer"),
+  confidence: varchar("confidence", { length: 8 }),
+  endpointIds: json("endpoint_ids").$type<number[]>(),
+  parameterIds: json("parameter_ids").$type<number[]>(),
+  docChunkIds: json("doc_chunk_ids").$type<number[]>(),
+  warnings: json("warnings").$type<string[]>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ([
+  index("kgap_session_id_idx").on(table.sessionId),
+]));
+
+export type KgAnswerProvenance = typeof kgAnswerProvenance.$inferSelect;
+
+/**
+ * KG Sync Status — tracks extraction pipeline runs per layer.
+ */
+export const kgSyncStatus = mysqlTable("kg_sync_status", {
+  id: int("id").autoincrement().primaryKey(),
+  layer: varchar("layer", { length: 64 }).notNull().unique(),
+  entityCount: int("entity_count").default(0).notNull(),
+  lastSyncAt: timestamp("last_sync_at"),
+  status: mysqlEnum("status", ["idle", "syncing", "completed", "error"]).default("idle").notNull(),
+  errorMessage: text("error_message"),
+  durationMs: int("duration_ms"),
+  specVersion: varchar("spec_version", { length: 32 }),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type KgSyncStatus = typeof kgSyncStatus.$inferSelect;
 
 /**
  * Investigation Sessions — analyst investigation workspaces.

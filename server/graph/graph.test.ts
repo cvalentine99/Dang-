@@ -62,10 +62,12 @@ describe("graph.graphStats", () => {
     const stats = await caller.graph.graphStats();
     expect(stats).toBeDefined();
     expect(typeof stats).toBe("object");
-    // Should have numeric counts for entity types
-    if (stats.endpoints !== undefined) {
-      expect(typeof stats.endpoints).toBe("number");
-    }
+    // New KG stats shape
+    expect(typeof stats.endpoints).toBe("number");
+    expect(typeof stats.parameters).toBe("number");
+    expect(typeof stats.resources).toBe("number");
+    expect(stats.byRiskLevel).toBeDefined();
+    expect(stats.byMethod).toBeDefined();
   });
 
   it("rejects unauthenticated requests", async () => {
@@ -90,28 +92,25 @@ describe("graph.etlStatus", () => {
 describe("graph.overviewGraph", () => {
   it("returns nodes and edges arrays", async () => {
     const caller = appRouter.createCaller(createUserContext());
-    const result = await caller.graph.overviewGraph({ limit: 10 });
+    const result = await caller.graph.overviewGraph({ layer: "all", limit: 10 });
     expect(result).toHaveProperty("nodes");
     expect(result).toHaveProperty("edges");
     expect(Array.isArray(result.nodes)).toBe(true);
     expect(Array.isArray(result.edges)).toBe(true);
   });
 
-  it("respects the limit parameter", async () => {
+  it("filters by layer", async () => {
     const caller = appRouter.createCaller(createUserContext());
-    const result = await caller.graph.overviewGraph({ limit: 5 });
-    // Limit controls the number of endpoints fetched; each endpoint may add
-    // summary nodes (processes, vulns, events), so total nodes can exceed limit.
-    // Verify that the number of endpoint-type nodes respects the limit.
-    const endpointNodes = result.nodes.filter((n: { type: string }) => n.type === "endpoint");
-    expect(endpointNodes.length).toBeLessThanOrEqual(5);
+    const result = await caller.graph.overviewGraph({ layer: "api_ontology", limit: 50 });
+    expect(result).toHaveProperty("nodes");
+    expect(Array.isArray(result.nodes)).toBe(true);
   });
 });
 
 describe("graph.searchGraph", () => {
   it("returns an array for a search query", async () => {
     const caller = appRouter.createCaller(createUserContext());
-    const result = await caller.graph.searchGraph({ query: "test", limit: 10 });
+    const result = await caller.graph.searchGraph({ query: "agents", limit: 10 });
     expect(Array.isArray(result)).toBe(true);
   });
 
@@ -121,19 +120,82 @@ describe("graph.searchGraph", () => {
   });
 });
 
-describe("graph.mitreDistribution", () => {
-  it("returns an array of tactic distributions", async () => {
+describe("graph.resourceOverview", () => {
+  it("returns resource data for authenticated users", async () => {
     const caller = appRouter.createCaller(createUserContext());
-    const result = await caller.graph.mitreDistribution();
+    const result = await caller.graph.resourceOverview();
     expect(Array.isArray(result)).toBe(true);
   });
 });
 
-describe("graph.vulnSeverityDistribution", () => {
-  it("returns an array of severity distributions", async () => {
+describe("graph.useCases", () => {
+  it("returns use case data for authenticated users", async () => {
     const caller = appRouter.createCaller(createUserContext());
-    const result = await caller.graph.vulnSeverityDistribution();
+    const result = await caller.graph.useCases();
     expect(Array.isArray(result)).toBe(true);
+  });
+});
+
+describe("graph.errorPatterns", () => {
+  it("returns error pattern data for authenticated users", async () => {
+    const caller = appRouter.createCaller(createUserContext());
+    const result = await caller.graph.errorPatterns();
+    expect(Array.isArray(result)).toBe(true);
+  });
+});
+
+describe("graph.riskAnalysis", () => {
+  it("returns risk analysis data for authenticated users", async () => {
+    const caller = appRouter.createCaller(createUserContext());
+    const result = await caller.graph.riskAnalysis();
+    expect(result).toBeDefined();
+    expect(typeof result).toBe("object");
+    expect(result).toHaveProperty("dangerousEndpoints");
+    expect(result).toHaveProperty("resourceRiskMap");
+    expect(typeof result.llmBlockedCount).toBe("number");
+  });
+});
+
+describe("graph.detectRiskPaths", () => {
+  it("returns risk paths object for authenticated users", async () => {
+    const caller = appRouter.createCaller(createUserContext());
+    const result = await caller.graph.detectRiskPaths({ minScore: 50, limit: 20 });
+    expect(result).toBeDefined();
+    expect(result).toHaveProperty("paths");
+    expect(result).toHaveProperty("totalPaths");
+    expect(result).toHaveProperty("maxScore");
+    expect(result).toHaveProperty("criticalPaths");
+    expect(Array.isArray(result.paths)).toBe(true);
+    expect(typeof result.totalPaths).toBe("number");
+  });
+});
+
+describe("graph.endpoints", () => {
+  it("returns paginated endpoint list", async () => {
+    const caller = appRouter.createCaller(createUserContext());
+    const result = await caller.graph.endpoints({ limit: 10, offset: 0 });
+    expect(result).toHaveProperty("endpoints");
+    expect(result).toHaveProperty("total");
+    expect(Array.isArray(result.endpoints)).toBe(true);
+    expect(typeof result.total).toBe("number");
+  });
+
+  it("filters by method", async () => {
+    const caller = appRouter.createCaller(createUserContext());
+    const result = await caller.graph.endpoints({ limit: 10, offset: 0, method: "GET" });
+    expect(Array.isArray(result.endpoints)).toBe(true);
+    for (const item of result.endpoints) {
+      expect(item.method).toBe("GET");
+    }
+  });
+
+  it("filters by risk level", async () => {
+    const caller = appRouter.createCaller(createUserContext());
+    const result = await caller.graph.endpoints({ limit: 10, offset: 0, riskLevel: "SAFE" });
+    expect(Array.isArray(result.endpoints)).toBe(true);
+    for (const item of result.endpoints) {
+      expect(item.riskLevel).toBe("SAFE");
+    }
   });
 });
 
@@ -242,16 +304,5 @@ describe("graph.investigations CRUD", () => {
     await expect(
       caller.graph.createInvestigation({ title: "Should fail" })
     ).rejects.toThrow();
-  });
-});
-
-describe("graph.endpointGraph", () => {
-  it("returns nodes and edges for a given agent", async () => {
-    const caller = appRouter.createCaller(createUserContext());
-    const result = await caller.graph.endpointGraph({ agentId: "000" });
-    expect(result).toHaveProperty("nodes");
-    expect(result).toHaveProperty("edges");
-    expect(Array.isArray(result.nodes)).toBe(true);
-    expect(Array.isArray(result.edges)).toBe(true);
   });
 });

@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
-import { MOCK_SYSCHECK_FILES, MOCK_SYSCHECK_LAST_SCAN, MOCK_AGENTS } from "@/lib/mockData";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -65,7 +65,7 @@ export default function FileIntegrity() {
   const agentsQ = trpc.wazuh.agents.useQuery({ limit: 100, offset: 0, status: "active" }, { retry: 1, staleTime: 30_000, enabled: isConnected });
   const agentList = useMemo(() => {
     if (isConnected && agentsQ.data) return extractItems(agentsQ.data);
-    return MOCK_AGENTS.data.affected_items.filter(a => a.status === "active") as unknown as Array<Record<string, unknown>>;
+    return [];
   }, [agentsQ.data, isConnected]);
 
   const syscheckQ = trpc.wazuh.syscheckFiles.useQuery({
@@ -79,12 +79,7 @@ export default function FileIntegrity() {
   // ── Files (real or fallback) ──────────────────────────────────────────
   const files = useMemo(() => {
     if (isConnected && syscheckQ.data) return extractItems(syscheckQ.data);
-    let items = MOCK_SYSCHECK_FILES.data.affected_items as unknown as Array<Record<string, unknown>>;
-    if (search) {
-      const q = search.toLowerCase();
-      items = items.filter(f => String(f.file ?? "").toLowerCase().includes(q));
-    }
-    return items;
+    return [];
   }, [syscheckQ.data, isConnected, search]);
 
   const totalFiles = useMemo(() => {
@@ -101,7 +96,7 @@ export default function FileIntegrity() {
       const items = extractItems(lastScanQ.data);
       return items[0] ?? null;
     }
-    return MOCK_SYSCHECK_LAST_SCAN.data.affected_items[0] as unknown as Record<string, unknown>;
+    return null;
   }, [lastScanQ.data, isConnected]);
 
   const eventDist = useMemo(() => {
