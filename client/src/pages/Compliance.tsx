@@ -125,8 +125,12 @@ export default function Compliance() {
 
   // Indexer compliance aggregation query
   const trMs = TIME_RANGES.find(t => t.value === timeRange)?.ms ?? 86400000;
+  const complianceTimeWindow = useMemo(() => ({
+    from: new Date(Date.now() - trMs).toISOString(),
+    to: new Date().toISOString(),
+  }), [timeRange]); // eslint-disable-line react-hooks/exhaustive-deps
   const complianceQ = trpc.indexer.alertsComplianceAgg.useQuery(
-    { framework: selectedFramework, from: new Date(Date.now() - trMs).toISOString(), to: new Date().toISOString() },
+    { framework: selectedFramework, from: complianceTimeWindow.from, to: complianceTimeWindow.to },
     { retry: 1, staleTime: 60_000, enabled: indexerHealthy }
   );
 

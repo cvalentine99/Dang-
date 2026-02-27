@@ -117,8 +117,12 @@ export default function MitreAttack() {
   const rulesQ = trpc.wazuh.rules.useQuery({ limit: 500, offset: 0, sort: "-level" }, { retry: 1, staleTime: 60_000, enabled: isConnected });
 
   // Indexer MITRE aggregation
+  const mitreTimeWindow = useMemo(() => ({
+    from: new Date(Date.now() - trMs).toISOString(),
+    to: new Date().toISOString(),
+  }), [timeRange]); // eslint-disable-line react-hooks/exhaustive-deps
   const mitreAggQ = trpc.indexer.alertsAggByMitre.useQuery(
-    { from: new Date(Date.now() - trMs).toISOString(), to: new Date().toISOString() },
+    { from: mitreTimeWindow.from, to: mitreTimeWindow.to },
     { retry: 1, staleTime: 60_000, enabled: indexerHealthy }
   );
 

@@ -155,8 +155,12 @@ export default function SiemEvents() {
     const map: Record<string, number> = { "1h": 3600000, "6h": 21600000, "24h": 86400000, "7d": 604800000 };
     return map[timeRange] ?? 86400000;
   }, [timeRange]);
+  const timeWindow = useMemo(() => ({
+    from: new Date(Date.now() - timeRangeMs).toISOString(),
+    to: new Date().toISOString(),
+  }), [timeRange]); // eslint-disable-line react-hooks/exhaustive-deps
   const alertsSearchQ = trpc.indexer.alertsSearch.useQuery(
-    { from: new Date(Date.now() - timeRangeMs).toISOString(), to: new Date().toISOString(), size: 500, offset: 0, query: searchQuery || undefined, sortField: "timestamp", sortOrder: "desc" },
+    { from: timeWindow.from, to: timeWindow.to, size: 500, offset: 0, query: searchQuery || undefined, sortField: "timestamp", sortOrder: "desc" },
     { retry: 1, staleTime: 15_000, enabled: indexerHealthy }
   );
 
