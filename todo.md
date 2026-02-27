@@ -1362,3 +1362,6 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Fix SIEMEvents.tsx infinite re-render: Date.now() in alertsSearchQ creates new query key every render, burning rate limit
 - [x] Audit other pages for same Date.now() bug — also fixed in Compliance.tsx and MitreAttack.tsx
 - [x] Add loading spinner to SIEM Events page during initial data fetch
+- [x] Add loading spinner to Alerts Timeline page
+- [x] Add loading spinner to Vulnerabilities page
+- [x] Add loading spinner to MITRE ATT&CK page
