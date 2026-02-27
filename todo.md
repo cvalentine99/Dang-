@@ -1431,3 +1431,15 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] KG: Endpoint table view — tabular alternative with sortable columns (method, path, risk, trust, LLM)
 - [x] KG: Table/graph view toggle in header
 - [x] Write vitest tests for KG enhancements
+
+## Phase: Knowledge Graph — Context Menu, Add to Investigation, Export
+
+- [x] KG: Right-click context menu — "Show connected nodes", "Hide this node", "Pin position", "Copy node ID"
+- [x] KG: Context menu neighbor expansion — expand connected nodes inline
+- [x] KG: Hidden nodes tracking and "Show All" reset button
+- [x] KG: Pinned nodes tracking with visual indicator
+- [x] KG: "Add to Investigation" button in node detail panel
+- [x] KG: Wire investigation attachment to backend (create/append evidence)
+- [x] KG: Graph export as PNG (canvas snapshot)
+- [x] KG: Graph export as SVG (DOM serialization)
+- [x] Write vitest tests for new KG features

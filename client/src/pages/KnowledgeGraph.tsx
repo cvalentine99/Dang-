@@ -7,7 +7,9 @@ import {
   X, ChevronRight, Loader2, Info, Route, EyeOff, Shield,
   Lock, Unlock, Activity, Zap, Filter, List, GitBranch,
   ArrowUpDown, ChevronDown, ChevronUp, MousePointerClick,
+  Copy, Pin, PinOff, Eye, Image as ImageIcon, FileCode2, FolderPlus, Check, Download,
 } from "lucide-react";
+import { toast } from "sonner";
 import { ChartSkeleton, TableSkeleton } from "@/components/shared";
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -79,12 +81,14 @@ function NodeDetailPanel({
   onExpand,
   isExpanded,
   expandLoading,
+  onAddToInvestigation,
 }: {
   node: GraphNode;
   onClose: () => void;
   onExpand: (node: GraphNode) => void;
   isExpanded: boolean;
   expandLoading: boolean;
+  onAddToInvestigation: (node: GraphNode) => void;
 }): React.JSX.Element {
   const config = NODE_CONFIG[node.type] || NODE_CONFIG.endpoint;
   const Icon = config.icon;
@@ -173,6 +177,17 @@ function NodeDetailPanel({
           <p className="text-xs text-muted-foreground italic">No properties available</p>
         )}
       </div>
+      {/* Add to Investigation */}
+      <div className="px-4 py-2 border-t border-white/5">
+        <button
+          onClick={() => onAddToInvestigation(node)}
+          className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/25"
+        >
+          <FolderPlus className="w-3.5 h-3.5" />
+          Add to Investigation
+        </button>
+      </div>
+
       <details className="border-t border-white/5">
         <summary className="px-4 py-2 text-[11px] text-muted-foreground cursor-pointer hover:text-foreground transition-colors flex items-center gap-1.5">
           <ChevronRight className="w-3 h-3" />
@@ -585,6 +600,131 @@ function EndpointTableView(): React.JSX.Element {
   );
 }
 
+// ── Add to Investigation Dialog ────────────────────────────────────────────
+
+function AddToInvestigationDialog({ node, onClose }: { node: GraphNode; onClose: () => void }): React.JSX.Element {
+  const [selectedInvId, setSelectedInvId] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [added, setAdded] = useState(false);
+
+  const investigationsQ = trpc.graph.listInvestigations.useQuery({ status: "active" });
+  const updateMutation = trpc.graph.updateInvestigation.useMutation();
+  const utils = trpc.useUtils();
+
+  const investigations = (investigationsQ.data as any)?.sessions ?? (Array.isArray(investigationsQ.data) ? investigationsQ.data : []);
+
+  const handleAdd = async () => {
+    if (!selectedInvId) return;
+    setAdding(true);
+    try {
+      const inv = investigations.find((i: any) => i.id === selectedInvId);
+      if (!inv) return;
+      const existingEvidence = Array.isArray((inv as any).evidence) ? (inv as any).evidence : [];
+      const newEvidence = {
+        type: node.type,
+        label: node.label,
+        data: { ...node.properties, nodeId: node.id },
+        addedAt: new Date().toISOString(),
+      };
+      await updateMutation.mutateAsync({
+        id: selectedInvId,
+        evidence: [...existingEvidence, newEvidence],
+      });
+      utils.graph.listInvestigations.invalidate();
+      setAdded(true);
+      toast.success("Evidence added", { description: `"${node.label}" added to investigation` });
+      setTimeout(onClose, 1200);
+    } catch (err) {
+      toast.error("Failed to add evidence");
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="glass-panel rounded-2xl border border-white/10 w-full max-w-md mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
+          <div className="flex items-center gap-2">
+            <FolderPlus className="w-5 h-5 text-indigo-400" />
+            <h2 className="text-lg font-display font-bold text-foreground">Add to Investigation</h2>
+          </div>
+          <button onClick={onClose} className="p-1 rounded hover:bg-white/10 text-muted-foreground"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="px-6 py-4 space-y-4">
+          {/* Node preview */}
+          <div className="glass-panel rounded-lg border border-white/5 px-3 py-2">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: NODE_CONFIG[node.type]?.color ?? "#888" }} />
+              <span className="text-sm text-foreground font-medium truncate">{node.label}</span>
+              <span className="text-[10px] text-muted-foreground font-mono ml-auto">{node.type}</span>
+            </div>
+          </div>
+
+          {/* Investigation selector */}
+          <div>
+            <label className="block text-xs text-muted-foreground mb-1.5">Select Active Investigation</label>
+            {investigationsQ.isLoading ? (
+              <div className="flex items-center gap-2 py-3">
+                <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
+                <span className="text-xs text-muted-foreground">Loading investigations...</span>
+              </div>
+            ) : investigations.length === 0 ? (
+              <div className="text-xs text-muted-foreground py-3">
+                No active investigations. Create one from the Investigations page first.
+              </div>
+            ) : (
+              <div className="space-y-1 max-h-48 overflow-y-auto">
+                {investigations.map((inv: any) => (
+                  <button
+                    key={inv.id}
+                    onClick={() => setSelectedInvId(inv.id)}
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors ${
+                      selectedInvId === inv.id
+                        ? "bg-purple-500/15 border border-purple-500/30"
+                        : "bg-white/5 border border-white/5 hover:bg-white/10"
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-foreground truncate">{inv.title}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {new Date(inv.createdAt).toLocaleDateString()}
+                        {inv.tags?.length > 0 && ` \u2022 ${(inv.tags as string[]).join(", ")}`}
+                      </p>
+                    </div>
+                    {selectedInvId === inv.id && <Check className="w-4 h-4 text-purple-400 flex-shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-white/5 flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={handleAdd}
+            disabled={!selectedInvId || adding || added}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-all ${
+              added
+                ? "bg-green-500/15 text-green-300 border border-green-500/30"
+                : !selectedInvId || adding
+                  ? "bg-white/5 text-muted-foreground border border-white/10 cursor-not-allowed"
+                  : "bg-purple-500/15 text-purple-300 border border-purple-500/30 hover:bg-purple-500/25"
+            }`}
+          >
+            {adding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : added ? <Check className="w-3.5 h-3.5" /> : <FolderPlus className="w-3.5 h-3.5" />}
+            {added ? "Added" : adding ? "Adding..." : "Add Evidence"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Knowledge Graph Page ───────────────────────────────────────────────
 
 export default function KnowledgeGraph(): React.JSX.Element {
@@ -611,6 +751,16 @@ export default function KnowledgeGraph(): React.JSX.Element {
 
   // Pulse-highlight state for search-to-focus
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; node: GraphNode } | null>(null);
+
+  // Hidden and pinned nodes
+  const [hiddenNodes, setHiddenNodes] = useState<Set<string>>(new Set());
+  const [pinnedNodes, setPinnedNodes] = useState<Set<string>>(new Set());
+
+  // Add to Investigation dialog
+  const [investigationDialog, setInvestigationDialog] = useState<{ node: GraphNode } | null>(null);
 
   // Fetch graph data
   const overviewQuery = trpc.graph.overviewGraph.useQuery(
@@ -652,7 +802,7 @@ export default function KnowledgeGraph(): React.JSX.Element {
     if (!graphData) return { nodes: [], edges: [] };
     const allNodes = [...graphData.nodes, ...extraNodes];
     const allEdges = [...graphData.edges, ...extraEdges];
-    const filteredNodes = allNodes.filter((n: any) => activeFilters.has(n.type));
+    const filteredNodes = allNodes.filter((n: any) => activeFilters.has(n.type) && !hiddenNodes.has(n.id));
     const nodeIds = new Set(filteredNodes.map((n: any) => n.id));
     const filteredEdges = allEdges.filter((e: any) => {
       const sourceId = typeof e.source === "string" ? e.source : e.source.id;
@@ -667,7 +817,7 @@ export default function KnowledgeGraph(): React.JSX.Element {
       return true;
     });
     return { nodes: uniqueNodes, edges: filteredEdges };
-  }, [graphData, extraNodes, extraEdges, activeFilters]);
+  }, [graphData, extraNodes, extraEdges, activeFilters, hiddenNodes]);
 
   // Reset expansion when base graph changes
   useEffect(() => {
@@ -884,7 +1034,10 @@ export default function KnowledgeGraph(): React.JSX.Element {
         .on("drag", (event: any, d: GraphNode) => { d.fx = event.x; d.fy = event.y; })
         .on("end", (event: any, d: GraphNode) => {
           if (!event.active) simulation.alphaTarget(0);
-          d.fx = null; d.fy = null;
+          // Keep pinned nodes fixed
+          if (!pinnedNodes.has(d.id)) {
+            d.fx = null; d.fy = null;
+          }
         })
       );
 
@@ -986,6 +1139,28 @@ export default function KnowledgeGraph(): React.JSX.Element {
           clickTimer = null;
           setSelectedNode(d);
         }, 250);
+      }
+    });
+
+    // Right-click context menu
+    node.on("contextmenu", (event: any, d: any) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const containerRect = container.getBoundingClientRect();
+      setContextMenu({
+        x: event.clientX - containerRect.left,
+        y: event.clientY - containerRect.top,
+        node: d,
+      });
+    });
+
+    // Close context menu on background click
+    svg.on("click.contextmenu", () => setContextMenu(null));
+    svg.on("contextmenu", (event: any) => {
+      // Only close if clicking on background (not on a node)
+      if (!(event.target as Element).closest(".kg-node")) {
+        event.preventDefault();
+        setContextMenu(null);
       }
     });
 
@@ -1138,6 +1313,99 @@ export default function KnowledgeGraph(): React.JSX.Element {
     d3.select(svgRef.current).transition().duration(300).call(zoomRef.current.scaleBy, 0.7);
   };
 
+  // ── Context Menu Handlers ────────────────────────────────────────────
+
+  const handleShowConnected = useCallback((node: GraphNode) => {
+    setContextMenu(null);
+    if (node.type === "resource" || node.type === "endpoint") {
+      handleExpand(node);
+    }
+  }, [handleExpand]);
+
+  const handleHideNode = useCallback((nodeId: string) => {
+    setContextMenu(null);
+    setHiddenNodes(prev => { const next = new Set(Array.from(prev)); next.add(nodeId); return next; });
+    if (selectedNode?.id === nodeId) setSelectedNode(null);
+    toast.success("Node hidden", { description: "Click \"Show All\" to restore hidden nodes." });
+  }, [selectedNode]);
+
+  const handleTogglePin = useCallback((node: GraphNode) => {
+    setContextMenu(null);
+    const isPinned = pinnedNodes.has(node.id);
+    setPinnedNodes(prev => {
+      const next = new Set(Array.from(prev));
+      if (isPinned) { next.delete(node.id); } else { next.add(node.id); }
+      return next;
+    });
+    // Update the D3 node's fixed position
+    const simNode = nodesRef.current.find(n => n.id === node.id);
+    if (simNode) {
+      if (isPinned) { simNode.fx = null; simNode.fy = null; }
+      else { simNode.fx = simNode.x; simNode.fy = simNode.y; }
+    }
+    toast.success(isPinned ? "Node unpinned" : "Node pinned");
+  }, [pinnedNodes]);
+
+  const handleCopyNodeId = useCallback((nodeId: string) => {
+    setContextMenu(null);
+    navigator.clipboard.writeText(nodeId).then(() => {
+      toast.success("Copied to clipboard", { description: nodeId });
+    });
+  }, []);
+
+  const handleShowAll = useCallback(() => {
+    setHiddenNodes(new Set());
+    toast.success("All hidden nodes restored");
+  }, []);
+
+  // ── Graph Export Handlers ─────────────────────────────────────────────
+
+  const handleExportPNG = useCallback(() => {
+    if (!svgRef.current) return;
+    const svgEl = svgRef.current;
+    const serializer = new XMLSerializer();
+    const svgStr = serializer.serializeToString(svgEl);
+    const canvas = document.createElement("canvas");
+    const rect = svgEl.getBoundingClientRect();
+    const scale = 2; // retina
+    canvas.width = rect.width * scale;
+    canvas.height = rect.height * scale;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.scale(scale, scale);
+    const img = new window.Image();
+    img.onload = () => {
+      ctx.fillStyle = "#0a0a0f";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, rect.width, rect.height);
+      const link = document.createElement("a");
+      link.download = `knowledge-graph-${Date.now()}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+      toast.success("Graph exported as PNG");
+    };
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgStr);
+  }, []);
+
+  const handleExportSVG = useCallback(() => {
+    if (!svgRef.current) return;
+    const serializer = new XMLSerializer();
+    const svgStr = serializer.serializeToString(svgRef.current);
+    const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
+    const link = document.createElement("a");
+    link.download = `knowledge-graph-${Date.now()}.svg`;
+    link.href = URL.createObjectURL(blob);
+    link.click();
+    URL.revokeObjectURL(link.href);
+    toast.success("Graph exported as SVG");
+  }, []);
+
+  // ── Add to Investigation Handler ──────────────────────────────────────
+
+  const handleAddToInvestigation = useCallback((node: GraphNode) => {
+    setInvestigationDialog({ node });
+  }, []);
+
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
       {/* Header */}
@@ -1260,6 +1528,28 @@ export default function KnowledgeGraph(): React.JSX.Element {
               </>
             )}
 
+            {/* Export */}
+            {viewMode === "graph" && (
+              <div className="flex items-center rounded-lg border border-white/10 overflow-hidden">
+                <button
+                  onClick={handleExportPNG}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors border-r border-white/10"
+                  title="Export as PNG"
+                >
+                  <ImageIcon className="w-3.5 h-3.5" />
+                  PNG
+                </button>
+                <button
+                  onClick={handleExportSVG}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
+                  title="Export as SVG"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  SVG
+                </button>
+              </div>
+            )}
+
             {/* Refresh */}
             <button
               onClick={() => overviewQuery.refetch()}
@@ -1380,9 +1670,90 @@ export default function KnowledgeGraph(): React.JSX.Element {
               onExpand={handleExpand}
               isExpanded={expandedNodes.has(selectedNode.id)}
               expandLoading={expandLoading}
+              onAddToInvestigation={handleAddToInvestigation}
             />
           )}
+
+          {/* Context Menu */}
+          {contextMenu && (
+            <div
+              className="absolute z-50 glass-panel rounded-xl border border-white/10 shadow-2xl py-1 min-w-[200px]"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="px-3 py-1.5 border-b border-white/5">
+                <p className="text-[10px] text-muted-foreground font-mono truncate max-w-[180px]">{contextMenu.node.label}</p>
+                <p className="text-[9px] text-muted-foreground">{contextMenu.node.type}</p>
+              </div>
+              {(contextMenu.node.type === "resource" || contextMenu.node.type === "endpoint") && (
+                <button
+                  onClick={() => handleShowConnected(contextMenu.node)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-foreground hover:bg-white/5 transition-colors"
+                >
+                  <Eye className="w-3.5 h-3.5 text-purple-400" />
+                  Show Connected Nodes
+                </button>
+              )}
+              <button
+                onClick={() => handleHideNode(contextMenu.node.id)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-foreground hover:bg-white/5 transition-colors"
+              >
+                <EyeOff className="w-3.5 h-3.5 text-orange-400" />
+                Hide This Node
+              </button>
+              <button
+                onClick={() => handleTogglePin(contextMenu.node)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-foreground hover:bg-white/5 transition-colors"
+              >
+                {pinnedNodes.has(contextMenu.node.id) ? (
+                  <><PinOff className="w-3.5 h-3.5 text-blue-400" /> Unpin Position</>
+                ) : (
+                  <><Pin className="w-3.5 h-3.5 text-blue-400" /> Pin Position</>
+                )}
+              </button>
+              <button
+                onClick={() => handleCopyNodeId(contextMenu.node.id)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-foreground hover:bg-white/5 transition-colors"
+              >
+                <Copy className="w-3.5 h-3.5 text-green-400" />
+                Copy Node ID
+              </button>
+              <div className="border-t border-white/5 mt-1 pt-1">
+                <button
+                  onClick={() => { setContextMenu(null); handleAddToInvestigation(contextMenu.node); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-foreground hover:bg-white/5 transition-colors"
+                >
+                  <FolderPlus className="w-3.5 h-3.5 text-indigo-400" />
+                  Add to Investigation
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Hidden nodes indicator */}
+          {hiddenNodes.size > 0 && (
+            <div className="absolute bottom-4 right-4 glass-panel rounded-xl border border-orange-500/20 px-4 py-2.5 z-10 flex items-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <EyeOff className="w-3.5 h-3.5 text-orange-400" />
+                <span className="text-xs text-orange-300 font-mono">{hiddenNodes.size} hidden</span>
+              </div>
+              <button
+                onClick={handleShowAll}
+                className="text-xs text-purple-300 hover:text-purple-200 transition-colors font-medium"
+              >
+                Show All
+              </button>
+            </div>
+          )}
         </div>
+      )}
+
+      {/* Add to Investigation Dialog */}
+      {investigationDialog && (
+        <AddToInvestigationDialog
+          node={investigationDialog.node}
+          onClose={() => setInvestigationDialog(null)}
+        />
       )}
     </div>
   );
