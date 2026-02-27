@@ -1291,3 +1291,11 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Run all tests and verify passing (338/338)
 - [x] Push to GitHub (commit 6b253dd)
 - [x] Save checkpoint
+
+## Phase 43: Fix OAuth on Deployed Site
+
+- [x] Investigate why Manus OAuth appears on deployed site (Manus hosting platform injects its own OAuth gate)
+- [x] Trace the _core auth middleware — confirmed app code is 100% clean, issue is hosting platform
+- [x] Cleaned Manus OAuth/Forge env vars from docker-compose.yml, env.docker.template, Dockerfile
+- [x] Self-hosted Docker deployment shows local login only (no Manus hosting gate)
+- [x] Tests passing (338/338), push and checkpoint done
