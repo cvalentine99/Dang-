@@ -160,22 +160,21 @@ function AgentActivityConsole({
             <span className="text-[10px] text-muted-foreground font-mono">
               {steps.length} step{steps.length !== 1 ? "s" : ""}
             </span>
-            {canReplay && onReplayRequest && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onReplayRequest();
-                }}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-purple-500/20 bg-purple-500/5 text-purple-300 hover:bg-purple-500/15 hover:border-purple-500/30 transition-all text-[10px]"
-                title="Replay agent activity"
-              >
-                <RotateCcw className="w-2.5 h-2.5" />
-                <span>Replay</span>
-              </button>
-            )}
           </span>
         )}
       </button>
+      {!isLive && !isReplay && canReplay && onReplayRequest && steps.length > 0 && (
+        <div className="flex justify-end px-3 py-1 border-b border-white/5">
+          <button
+            onClick={() => onReplayRequest()}
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-purple-500/20 bg-purple-500/5 text-purple-300 hover:bg-purple-500/15 hover:border-purple-500/30 transition-all text-[10px]"
+            title="Replay agent activity"
+          >
+            <RotateCcw className="w-2.5 h-2.5" />
+            <span>Replay</span>
+          </button>
+        </div>
+      )}
       {expanded && (
         <div
           ref={consoleRef}
