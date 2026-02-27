@@ -3,7 +3,7 @@
  *
  * Architecture:
  * - Primary: NVIDIA Nemotron 3 Nano (local Ollama/OpenAI-compatible endpoint)
- * - Fallback: Manus built-in LLM (invokeLLM) if local model unavailable
+ * - Fallback: Built-in LLM API (invokeLLM) if local model unavailable
  * - RAG context: injects live Wazuh telemetry snapshot into system prompt
  * - Analyst notes: full CRUD for local forensic annotations
  *
@@ -128,7 +128,7 @@ export const hybridragRouter = router({
     return {
       nemotron: llmStatus,
       fallbackAvailable: true,
-      activeModel: llmStatus.available && llmStatus.enabled ? llmStatus.model : "manus-builtin",
+      activeModel: llmStatus.available && llmStatus.enabled ? llmStatus.model : "builtin-fallback",
     };
   }),
 
@@ -201,7 +201,7 @@ export const hybridragRouter = router({
       return {
         sessionId: input.sessionId,
         response,
-        model: (await checkLLMAvailability()).available ? (await getEffectiveLLMConfig()).model : "manus-builtin",
+        model: (await checkLLMAvailability()).available ? (await getEffectiveLLMConfig()).model : "builtin-fallback",
       };
     }),
 

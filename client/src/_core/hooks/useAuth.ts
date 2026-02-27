@@ -8,7 +8,7 @@ type UseAuthOptions = {
 };
 
 /**
- * Local auth hook — no Manus OAuth, no external providers.
+ * Local auth hook — JWT + bcrypt.
  * Redirects to /login when unauthenticated.
  */
 export function useAuth(options?: UseAuthOptions) {
@@ -46,7 +46,7 @@ export function useAuth(options?: UseAuthOptions) {
 
   const state = useMemo(() => {
     localStorage.setItem(
-      "manus-runtime-user-info",
+      "dang-runtime-user-info",
       JSON.stringify(meQuery.data)
     );
     return {

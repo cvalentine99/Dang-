@@ -15,7 +15,7 @@ export const localAuthRouter = router({
     const isLocal = isLocalAuthMode();
     const userCount = isLocal ? await getUserCount() : 0;
     return {
-      mode: isLocal ? ("local" as const) : ("oauth" as const),
+      mode: "local" as const,
       registrationOpen: isLocal,
       isFirstUser: isLocal && userCount === 0,
       userCount,
@@ -46,7 +46,7 @@ export const localAuthRouter = router({
     .mutation(async ({ input, ctx }) => {
       if (!isLocalAuthMode()) {
         throw new Error(
-          "Local registration is disabled. Use OAuth to sign in."
+          "Registration is currently disabled."
         );
       }
 
@@ -85,7 +85,7 @@ export const localAuthRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       if (!isLocalAuthMode()) {
-        throw new Error("Local login is disabled. Use OAuth to sign in.");
+        throw new Error("Login is currently disabled.");
       }
 
       const result = await loginLocalUser(input);

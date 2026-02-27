@@ -3,17 +3,15 @@ import { eq } from "drizzle-orm";
 import { users } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { sdk } from "../_core/sdk";
-import { ENV } from "../_core/env";
 import { randomUUID } from "crypto";
 
 const SALT_ROUNDS = 12;
 
 /**
- * Detect whether the app is running in local auth mode (Docker self-hosted)
- * or Manus OAuth mode. Local auth is used when OAUTH_SERVER_URL is not set.
+ * Auth mode is always local (JWT + bcrypt). No OAuth.
  */
 export function isLocalAuthMode(): boolean {
-  return !ENV.oAuthServerUrl || ENV.oAuthServerUrl.trim() === "";
+  return true;
 }
 
 /**
@@ -49,7 +47,7 @@ export async function registerLocalUser(input: {
   const existingUsers = await db.select({ id: users.id }).from(users).limit(1);
   const isFirstUser = existingUsers.length === 0;
 
-  // Generate a unique openId for local users (prefixed to distinguish from OAuth)
+  // Generate a unique openId for local users
   const openId = `local_${randomUUID().replace(/-/g, "")}`;
   const passwordHash = await hashPassword(input.password);
 
@@ -137,7 +135,7 @@ export async function loginLocalUser(input: {
 
   if (!user.passwordHash) {
     throw new Error(
-      "This account uses OAuth login. Please sign in via the OAuth provider."
+      "This account does not have a password set. Contact an administrator."
     );
   }
 
@@ -155,7 +153,7 @@ export async function loginLocalUser(input: {
   // Create JWT session token using the existing SDK signing
   const token = await sdk.signSession({
     openId: user.openId,
-    appId: ENV.appId || "dang-local",
+    appId: process.env.VITE_APP_ID || "dang-local",
     name: user.name || "",
   });
 
