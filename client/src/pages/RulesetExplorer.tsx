@@ -162,9 +162,26 @@ export default function RulesetExplorer() {
   const decodersRaw = decodersQ.data ?? { data: { affected_items: [] } };
   const ruleGroupsRaw = ruleGroupsQ.data ?? { data: { affected_items: [] } };
 
-  const rules: WazuhRule[] = (
+  const rules: WazuhRule[] = ((
     (rulesRaw as Record<string, unknown>)?.data as Record<string, unknown> | undefined
-  )?.affected_items as WazuhRule[] ?? [];
+  )?.affected_items as Array<Record<string, unknown>> ?? []).map((r): WazuhRule => ({
+    id: Number(r.id ?? 0),
+    level: Number(r.level ?? 0),
+    description: String(r.description ?? ""),
+    groups: Array.isArray(r.groups) ? r.groups as string[] : [],
+    mitre: {
+      id: Array.isArray((r.mitre as Record<string, unknown>)?.id) ? (r.mitre as Record<string, unknown>).id as string[] : [],
+      tactic: Array.isArray((r.mitre as Record<string, unknown>)?.tactic) ? (r.mitre as Record<string, unknown>).tactic as string[] : [],
+      technique: Array.isArray((r.mitre as Record<string, unknown>)?.technique) ? (r.mitre as Record<string, unknown>).technique as string[] : [],
+    },
+    pci_dss: Array.isArray(r.pci_dss) ? r.pci_dss as string[] : [],
+    gdpr: Array.isArray(r.gdpr) ? r.gdpr as string[] : [],
+    hipaa: Array.isArray(r.hipaa) ? r.hipaa as string[] : [],
+    filename: String(r.filename ?? ""),
+    relative_dirname: String(r.relative_dirname ?? ""),
+    status: String(r.status ?? ""),
+    details: (r.details as Record<string, string>) ?? {},
+  }));
 
   const decoders: WazuhDecoder[] = (
     (decodersRaw as Record<string, unknown>)?.data as Record<string, unknown> | undefined
