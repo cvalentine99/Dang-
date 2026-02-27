@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/tabs";
 import {
   Crosshair, Shield, Layers, Grid3X3, Target, ExternalLink,
-  Database, Activity, TrendingUp, Flame, Clock,
+  Database, Activity, TrendingUp, Flame, Clock, Loader2,
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import {
@@ -304,6 +304,14 @@ export default function MitreAttack() {
     <WazuhGuard>
       <div className="space-y-6">
         <PageHeader title="MITRE ATT&CK" subtitle="Adversary technique mapping — detection coverage, tactic progression, and alert correlation" onRefresh={handleRefresh} isLoading={isLoading} />
+
+        {/* ── Loading State ── */}
+        {mitreAggQ.isLoading && (
+          <GlassPanel className="flex flex-col items-center justify-center py-16 gap-4">
+            <Loader2 className="h-8 w-8 text-primary animate-spin" />
+            <p className="text-sm text-muted-foreground">Fetching MITRE ATT&CK data…</p>
+          </GlassPanel>
+        )}
 
         {/* KPIs */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4">

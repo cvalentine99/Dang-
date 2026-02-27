@@ -20,7 +20,7 @@ import {
 import {
   Bug, Shield, Search, ChevronLeft, ChevronRight,
   ExternalLink, AlertTriangle, TrendingDown, Layers,
-  Database, Globe, Package, Server,
+  Database, Globe, Package, Server, Loader2,
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import {
@@ -333,6 +333,14 @@ export default function Vulnerabilities() {
             </div>
           )}
         </GlassPanel>
+
+        {/* ── Loading State ── */}
+        {vulnSearchQ.isLoading && (
+          <GlassPanel className="flex flex-col items-center justify-center py-16 gap-4">
+            <Loader2 className="h-8 w-8 text-primary animate-spin" />
+            <p className="text-sm text-muted-foreground">Fetching vulnerability data from indexer…</p>
+          </GlassPanel>
+        )}
 
         {/* KPI Row */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">

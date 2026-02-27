@@ -21,7 +21,7 @@ import {
   AlertTriangle, Shield, Search, ChevronLeft, ChevronRight,
   BarChart3, Clock, Layers, TrendingUp, FileWarning,
   Zap, Target, Eye, ExternalLink, Filter, RefreshCw,
-  Database, Radio, Brain,
+  Database, Radio, Brain, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useState, useMemo, useCallback, useEffect } from "react";
@@ -340,6 +340,14 @@ export default function AlertsTimeline() {
             </Button>
           </div>
         </GlassPanel>
+
+        {/* ── Loading State ── */}
+        {alertsSearchQ.isLoading && (
+          <GlassPanel className="flex flex-col items-center justify-center py-16 gap-4">
+            <Loader2 className="h-8 w-8 text-primary animate-spin" />
+            <p className="text-sm text-muted-foreground">Fetching alerts from indexer…</p>
+          </GlassPanel>
+        )}
 
         {/* KPI Row */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
