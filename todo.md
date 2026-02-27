@@ -1422,3 +1422,12 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Hunt Persistence: Frontend save hunt dialog and hunt history from DB
 - [x] Hunt Persistence: Export correlation reports (JSON/CSV)
 - [x] Write vitest tests for all new features
+
+## Phase: Knowledge Graph Enhancements
+
+- [x] KG: Node expansion/drill-down — double-click resource to expand endpoints, double-click endpoint to expand params/responses
+- [x] KG: Manage expanded state so new nodes merge into the live D3 simulation
+- [x] KG: Search-to-focus — animate-zoom to selected search result node and pulse-highlight it
+- [x] KG: Endpoint table view — tabular alternative with sortable columns (method, path, risk, trust, LLM)
+- [x] KG: Table/graph view toggle in header
+- [x] Write vitest tests for KG enhancements

@@ -177,6 +177,29 @@ export default function ThreatHunting() {
     },
   });
 
+  // ── Server-side hunt query ─────────────────────────────────────────────────
+  const [huntInput, setHuntInput] = useState<{
+    query: string;
+    iocType: typeof iocType;
+    timeFrom: string;
+    timeTo: string;
+  } | null>(null);
+
+  const huntQ = trpc.hunt.execute.useQuery(
+    {
+      query: huntInput?.query ?? "",
+      iocType: huntInput?.iocType ?? "freetext",
+      timeFrom: huntInput?.timeFrom ?? "now-24h",
+      timeTo: huntInput?.timeTo ?? "now",
+      maxResults: 50,
+    },
+    {
+      enabled: !!huntInput?.query,
+      retry: 1,
+      staleTime: 30_000,
+    }
+  );
+
   // ── Export helpers ───────────────────────────────────────────────────────
   const exportAsJson = useCallback(() => {
     if (!huntQ.data) return;
@@ -220,29 +243,6 @@ export default function ThreatHunting() {
     URL.revokeObjectURL(url);
     toast.success("Hunt results exported as CSV");
   }, [huntQ.data, activeQuery]);
-
-  // ── Server-side hunt query ─────────────────────────────────────────────────
-  const [huntInput, setHuntInput] = useState<{
-    query: string;
-    iocType: typeof iocType;
-    timeFrom: string;
-    timeTo: string;
-  } | null>(null);
-
-  const huntQ = trpc.hunt.execute.useQuery(
-    {
-      query: huntInput?.query ?? "",
-      iocType: huntInput?.iocType ?? "freetext",
-      timeFrom: huntInput?.timeFrom ?? "now-24h",
-      timeTo: huntInput?.timeTo ?? "now",
-      maxResults: 50,
-    },
-    {
-      enabled: !!huntInput?.query,
-      retry: 1,
-      staleTime: 30_000,
-    }
-  );
 
   // ── Lightweight status queries for KPI row ────────────────────────────────
   const agentsQ = trpc.wazuh.agentSummaryStatus.useQuery(undefined, { retry: 1, staleTime: 60_000 });
