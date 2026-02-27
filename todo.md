@@ -1265,3 +1265,10 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Write wazuhSpecCoverage.test.ts — 11 tests verifying all endpoints exist + read-only enforcement
 - [x] Verify TypeScript clean (0 errors), 339/339 tests ALL passing
 - [x] Save checkpoint
+
+## Phase 40: Deployment Preparation — Fix OAuth & TypeScript Errors
+- [x] Remove Manus OAuth from login page — use local auth only (bcrypt + JWT)
+- [x] Fix TypeScript errors in graphRouter.ts, llmRouter.ts, llmService.ts (LSP cache stale — tsc passes clean, 0 errors)
+- [x] Run all tests and verify passing (339/339)
+- [x] Audit for local static assets needing S3 upload (none found)
+- [x] Save deployment checkpoint
