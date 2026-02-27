@@ -75,6 +75,19 @@ services:
       WAZUH_INDEXER_PASS: ${WAZUH_INDEXER_PASS:-}
       WAZUH_INDEXER_PROTOCOL: ${WAZUH_INDEXER_PROTOCOL:-https}
 
+      # Splunk Enterprise Security (optional)
+      SPLUNK_HOST: ${SPLUNK_HOST:-}
+      SPLUNK_PORT: ${SPLUNK_PORT:-8089}
+      SPLUNK_HEC_PORT: ${SPLUNK_HEC_PORT:-8088}
+      SPLUNK_HEC_TOKEN: ${SPLUNK_HEC_TOKEN:-}
+
+      # LLM — Self-hosted OpenAI-compatible endpoint (optional)
+      # Use docker-compose.gpu.yml overlay for local Nemotron, or point at external
+      LLM_HOST: ${LLM_HOST:-}
+      LLM_PORT: ${LLM_PORT:-8080}
+      LLM_MODEL: ${LLM_MODEL:-unsloth/Nemotron-3-Nano-30B-A3B-GGUF}
+      LLM_ENABLED: ${LLM_ENABLED:-false}
+
       # AlienVault OTX (optional)
       OTX_API_KEY: ${OTX_API_KEY:-}
 

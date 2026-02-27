@@ -1320,3 +1320,18 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Notification history panel: Bell icon dropdown with unread count badge, mark all read, clear, settings, and View Queue link
 - [x] Write tests for auto-queue rules and Splunk deep link generation (19 new tests)
 - [x] Push to GitHub and save checkpoint (357/357 tests passing)
+
+## Phase 47: IT Hygiene Page Rebuild + GPU Docker Overlay
+
+- [x] IT Hygiene: Three-column layout (Software & Network | Extensions & Services | Identity & Access) — already built
+- [x] IT Hygiene: Packages table with version, architecture, vendor — already built
+- [x] IT Hygiene: Open ports table with protocol, PID, process — already built
+- [x] IT Hygiene: Running processes table with PID, state, user, PPID, priority, threads, CMD — already built
+- [x] IT Hygiene: Browser extensions table with browser distribution — already built
+- [x] IT Hygiene: System services table with state badges and startup type distribution — already built
+- [x] IT Hygiene: Local users (with privilege summary) and groups (with privileged groups highlight) — already built
+- [x] IT Hygiene: Agent selector dropdown + search + pagination + KPI row + drift comparison — already built
+- [x] docker-compose.gpu.yml: Nemotron Nano GGUF on CUDA with llama.cpp server
+- [x] docker-compose.gpu.yml: GPU resource reservation, health check, VRAM preflight, model caching volume
+- [x] All 357/357 tests passing
+- [x] Push to GitHub and save checkpoint
