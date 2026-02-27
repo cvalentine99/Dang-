@@ -3,6 +3,7 @@ import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
 import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared/IndexerStates";
 import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
+import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
@@ -395,6 +396,9 @@ export default function Compliance() {
               <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
                 <Layers className="h-4 w-4 text-primary" /> Top {currentFw.label} Controls by Alert Count
               </h3>
+              {isLoading ? (
+                <TableSkeleton columns={4} rows={8} columnWidths={[1, 3, 1, 4]} />
+              ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
@@ -427,6 +431,7 @@ export default function Compliance() {
                   </tbody>
                 </table>
               </div>
+              )}
             </GlassPanel>
           </TabsContent>
 
@@ -512,6 +517,9 @@ export default function Compliance() {
                 <div className="text-center text-sm text-muted-foreground py-12">Select a policy from the Policies tab to view checks</div>
               ) : (
                 <>
+                  {checksQ.isLoading ? (
+                    <TableSkeleton columns={6} rows={10} columnWidths={[1, 1, 3, 2, 2, 2]} />
+                  ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead><tr className="border-b border-border/30">
@@ -539,6 +547,7 @@ export default function Compliance() {
                       </tbody>
                     </table>
                   </div>
+                  )}
                   {totalPages > 1 ? (
                     <div className="flex items-center justify-between mt-4 pt-4 border-t border-border/30">
                       <p className="text-xs text-muted-foreground">Page {page + 1} of {totalPages} ({totalChecks} checks)</p>

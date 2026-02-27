@@ -8,6 +8,7 @@ import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { ExportButton } from "@/components/shared/ExportButton";
 import { ThreatMap } from "@/components/shared/ThreatMap";
 import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
+import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { EXPORT_COLUMNS } from "@/lib/exportUtils";
 
 import {
@@ -693,6 +694,9 @@ export default function Home() {
                 {(isConnected && agentsQ.data) ? <RawJsonViewer data={agentsQ.data as Record<string, unknown>} title="Agents Data" /> : null}
               </div>
             </div>
+            {isLoading ? (
+              <TableSkeleton columns={5} rows={6} columnWidths={[1, 2, 2, 2, 1]} />
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead><tr className="border-b border-border/30">
@@ -723,6 +727,7 @@ export default function Home() {
                 </tbody>
               </table>
             </div>
+            )}
           </GlassPanel>
         </div>
         )}

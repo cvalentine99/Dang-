@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { GlassPanel, StatCard, ThreatBadge, RawJsonViewer, RefreshControl, IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared";
 import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
+import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { trpc } from "@/lib/trpc";
@@ -843,6 +844,9 @@ export default function SiemEvents() {
 
       {/* ── Event Table ───────────────────────────────────────────────────── */}
       <GlassPanel className="!p-0 overflow-hidden">
+        {alertsSearchQ.isLoading ? (
+          <TableSkeleton columns={7} rows={12} columnWidths={[1, 2, 4, 2, 1, 1, 1]} />
+        ) : (<>
         {/* Table Header */}
         <div className="grid grid-cols-[60px_160px_1fr_180px_120px_100px_80px] gap-2 px-4 py-3 bg-white/5 border-b border-white/10 text-xs font-semibold text-slate-400 uppercase tracking-wider">
           <span>Level</span>
@@ -1413,6 +1417,7 @@ export default function SiemEvents() {
             </div>
           </div>
         )}
+        </>)}
       </GlassPanel>
 
       {/* ── OTX IOC Lookup Dialog ──────────────────────────────────────── */}

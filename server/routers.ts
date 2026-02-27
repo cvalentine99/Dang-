@@ -17,6 +17,7 @@ import { llmRouter } from "./llm/llmRouter";
 import { alertQueueRouter } from "./alertQueue/alertQueueRouter";
 import { splunkRouter } from "./splunk/splunkRouter";
 import { autoQueueRouter } from "./alertQueue/autoQueueRouter";
+import { huntRouter } from "./hunt/huntRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -77,6 +78,9 @@ export const appRouter = router({
 
   // Auto-queue rules — automatic alert-to-Walter routing
   autoQueue: autoQueueRouter,
+
+  // Threat Hunting — server-side multi-source IOC correlation
+  hunt: huntRouter,
 });
 
 export type AppRouter = typeof appRouter;

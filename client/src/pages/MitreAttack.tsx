@@ -3,6 +3,7 @@ import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
 import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared/IndexerStates";
 import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
+import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
@@ -525,6 +526,9 @@ export default function MitreAttack() {
               {/* Top Techniques by Alert Count */}
               <GlassPanel className="lg:col-span-7">
                 <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Crosshair className="h-4 w-4 text-primary" /> Top Techniques by Alert Volume</h3>
+                {mitreAggQ.isLoading ? (
+                  <TableSkeleton columns={5} rows={10} columnWidths={[1, 3, 2, 1, 3]} />
+                ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
@@ -563,6 +567,7 @@ export default function MitreAttack() {
                     </tbody>
                   </table>
                 </div>
+                )}
               </GlassPanel>
             </div>
           </TabsContent>

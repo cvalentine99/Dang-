@@ -1387,3 +1387,17 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Wire GlassErrorBoundary into App.tsx route layout
 - [x] Seed KG tables on Docker database using seed-kg.mjs --drop
 - [x] Write tests for ChartSkeleton and GlassErrorBoundary components
+
+## Phase: RulesetExplorer Fix, Table Skeletons, Threat Hunting Wiring
+- [x] Fix RulesetExplorer .length crash — defensive field handling for real API data
+- [x] Create TableSkeleton component with shimmer rows matching glass-panel theme
+- [x] Apply TableSkeleton to Agent Fleet table (AgentHealth)
+- [x] Apply TableSkeleton to CVE table (Vulnerabilities)
+- [x] Apply TableSkeleton to Alerts table (AlertsTimeline)
+- [x] Apply TableSkeleton to SIEM Events table (SiemEvents)
+- [x] Apply TableSkeleton to Compliance checks table (Compliance)
+- [x] Apply TableSkeleton to FIM files table (FileIntegrity)
+- [x] Apply TableSkeleton to RulesetExplorer tables
+- [x] Wire up Threat Hunting query builder — backend tRPC procedures for hunt execution
+- [x] Connect Threat Hunting frontend to backend hunt procedures
+- [x] Write vitest tests for new components and fixes

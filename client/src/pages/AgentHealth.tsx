@@ -3,6 +3,7 @@ import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
 import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared/IndexerStates";
 import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
+import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
@@ -284,6 +285,9 @@ export default function AgentHealth() {
             </div>
           </div>
 
+          {isLoading ? (
+            <TableSkeleton columns={9} rows={10} columnWidths={[1, 2, 2, 2, 1, 2, 1, 2, 1]} />
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead><tr className="border-b border-border/30">
@@ -319,6 +323,7 @@ export default function AgentHealth() {
               </tbody>
             </table>
           </div>
+          )}
 
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-4 pt-4 border-t border-border/30">
