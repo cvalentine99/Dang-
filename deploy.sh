@@ -8,6 +8,8 @@
 #   ./deploy.sh                     # HTTP only on port 3000
 #   ./deploy.sh --proxy caddy       # HTTPS via Caddy (auto Let's Encrypt)
 #   ./deploy.sh --proxy nginx       # HTTPS via Nginx (bring your own certs)
+#   ./deploy.sh --gpu               # Include local Nemotron Nano on CUDA
+#   ./deploy.sh --proxy caddy --gpu  # HTTPS + local LLM
 #   ./deploy.sh --rebuild           # Force rebuild without cache
 #   ./deploy.sh --stop              # Stop all services
 #   ./deploy.sh --logs              # Follow logs
@@ -34,6 +36,7 @@ err()   { echo -e "${RED}[✗]${NC} $1"; }
 info()  { echo -e "${CYAN}[i]${NC} $1"; }
 
 PROXY_MODE=""
+GPU_MODE=""
 COMPOSE_FILES="-f docker-compose.yml"
 
 # ── Parse arguments ─────────────────────────────────────────────────────────
@@ -48,6 +51,10 @@ parse_args() {
         fi
         shift 2
         ;;
+      --gpu)
+        GPU_MODE="true"
+        shift
+        ;;
       --rebuild|--stop|--logs|--status|--generate-certs)
         # These are handled by the case statement in main
         break
@@ -61,8 +68,12 @@ parse_args() {
 
 # ── Build compose file list based on proxy mode ────────────────────────────
 setup_compose_files() {
+  if [ -n "$GPU_MODE" ]; then
+    COMPOSE_FILES="${COMPOSE_FILES} -f docker-compose.gpu.yml"
+    log "GPU mode: ${CYAN}Nemotron Nano (CUDA)${NC}"
+  fi
   if [ -n "$PROXY_MODE" ]; then
-    COMPOSE_FILES="-f docker-compose.yml -f docker-compose.${PROXY_MODE}.yml"
+    COMPOSE_FILES="${COMPOSE_FILES} -f docker-compose.${PROXY_MODE}.yml"
     log "Proxy mode: ${CYAN}${PROXY_MODE}${NC}"
   fi
 }
@@ -132,6 +143,32 @@ preflight() {
   local admin_pass=$(grep "^LOCAL_ADMIN_PASS=" .env 2>/dev/null | cut -d'=' -f2-)
   if [ -n "$admin_pass" ] && [[ "$admin_pass" == *"CHANGE_ME"* ]]; then
     warn "LOCAL_ADMIN_PASS still has placeholder value — change it or remove it"
+  fi
+
+  # GPU-specific checks
+  if [ -n "$GPU_MODE" ]; then
+    if ! command -v nvidia-smi &> /dev/null; then
+      err "nvidia-smi not found. NVIDIA drivers are required for GPU mode."
+      err "Install with: sudo apt install nvidia-driver-535"
+      exit 1
+    fi
+    ok "NVIDIA GPU detected: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)"
+
+    if ! docker run --rm --gpus all nvidia/cuda:12.2.0-base-ubuntu22.04 nvidia-smi &> /dev/null; then
+      warn "NVIDIA Container Toolkit may not be configured."
+      info "Install with: sudo apt install nvidia-container-toolkit"
+      info "Then: sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker"
+    else
+      ok "NVIDIA Container Toolkit is working"
+    fi
+
+    local vram=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1)
+    if [ -n "$vram" ] && [ "$vram" -lt 20000 ]; then
+      warn "GPU has ${vram}MB VRAM. Nemotron Nano Q4_K_M needs ~18GB."
+      warn "Consider using a smaller quantization or reducing context size."
+    else
+      ok "GPU VRAM: ${vram:-unknown}MB"
+    fi
   fi
 
   # Proxy-specific checks
@@ -293,8 +330,8 @@ parse_args "$@"
 # Find the command arg (skip --proxy and its value)
 CMD=""
 for arg in "${ALL_ARGS[@]}"; do
-  case "$arg" in
-    --proxy|caddy|nginx) continue ;;
+    case "$arg" in
+    --proxy|caddy|nginx|--gpu) continue ;;
     --*) CMD="$arg"; break ;;
   esac
 done
