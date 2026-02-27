@@ -1335,3 +1335,10 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] docker-compose.gpu.yml: GPU resource reservation, health check, VRAM preflight, model caching volume
 - [x] All 357/357 tests passing
 - [x] Push to GitHub and save checkpoint
+
+## Phase 48: Fix Dependabot Vulnerabilities
+
+- [x] Identified: minimatch ReDoS (2 high), fast-xml-parser stack overflow (1 low)
+- [x] Updated: minimatch 10.2.2→10.2.3, @aws-sdk/client-s3 3.995.0→3.999.0, fast-xml-parser 5.3.6→5.4.1, deduped
+- [x] 357/357 tests passing, pnpm audit: 0 vulnerabilities
+- [x] Push to GitHub and save checkpoint
