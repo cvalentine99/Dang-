@@ -20,7 +20,6 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
 import { trpc } from "@/lib/trpc";
 import {
@@ -158,23 +157,14 @@ const MIN_WIDTH = 200;
 const MAX_WIDTH = 400;
 
 /**
- * Unauthenticated landing — detects local vs OAuth mode and routes accordingly.
+ * Unauthenticated landing — LOCAL AUTH ONLY.
+ * Always redirects to /login. No Manus OAuth. No external auth.
  */
 function UnauthenticatedView() {
   const [, navigate] = useLocation();
   const authMode = trpc.localAuth.authMode.useQuery(undefined, {
     retry: false,
   });
-
-  const isLocal = authMode.data?.mode === "local";
-
-  const handleSignIn = () => {
-    if (isLocal) {
-      navigate("/login");
-    } else {
-      window.location.href = getLoginUrl();
-    }
-  };
 
   return (
     <div className="flex items-center justify-center min-h-screen">
@@ -189,13 +179,13 @@ function UnauthenticatedView() {
           Sign in to access the Wazuh security monitoring dashboard.
         </p>
         <Button
-          onClick={handleSignIn}
+          onClick={() => navigate("/login")}
           size="lg"
           className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg"
         >
           Sign in
         </Button>
-        {isLocal && authMode.data?.isFirstUser && (
+        {authMode.data?.isFirstUser && (
           <p className="text-xs text-muted-foreground text-center">
             No accounts yet?{" "}
             <button
