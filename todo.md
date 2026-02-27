@@ -1401,3 +1401,24 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Wire up Threat Hunting query builder — backend tRPC procedures for hunt execution
 - [x] Connect Threat Hunting frontend to backend hunt procedures
 - [x] Write vitest tests for new components and fixes
+
+## Phase: IT Hygiene Build-out, Alerts Timeline Rebuild, Hunt Persistence
+- [x] IT Hygiene: Three-column layout (Extensions | Services | Identity) — already built
+- [x] IT Hygiene: Packages table with version, architecture, vendor — already built
+- [x] IT Hygiene: Open ports table with protocol, PID, process — already built
+- [x] IT Hygiene: Running processes table with CPU/memory — already built
+- [x] IT Hygiene: Browser extensions table — already built
+- [x] IT Hygiene: System services table with state/startup type — already built
+- [x] IT Hygiene: Local users and groups tables — already built
+- [x] IT Hygiene: Agent selector for per-agent syscollector data — already built
+- [x] Alerts Timeline: Dense SOC-grade alert table with rule ID, description, agent, level, timestamp — already built
+- [x] Alerts Timeline: Severity heatmap (hour × day-of-week) — already built
+- [x] Alerts Timeline: Rule level distribution bar chart — already built (severity trends area chart)
+- [x] Alerts Timeline: Top firing rules table — already built
+- [x] Alerts Timeline: Alert detail panel with raw JSON — already built
+- [x] Alerts Timeline: Time range selector with presets — already built
+- [x] Hunt Persistence: Database schema for saved hunt results
+- [x] Hunt Persistence: Backend tRPC procedures for save/list/get/delete hunts
+- [x] Hunt Persistence: Frontend save hunt dialog and hunt history from DB
+- [x] Hunt Persistence: Export correlation reports (JSON/CSV)
+- [x] Write vitest tests for all new features

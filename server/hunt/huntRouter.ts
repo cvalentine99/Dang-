@@ -10,7 +10,10 @@
  */
 
 import { z } from "zod";
-import { publicProcedure, router } from "../_core/trpc";
+import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
+import { getDb } from "../db";
+import { savedHunts } from "../../drizzle/schema";
+import { eq, desc, and, like, sql } from "drizzle-orm";
 import {
   getEffectiveIndexerConfig,
   indexerSearch,
@@ -249,6 +252,159 @@ export const huntRouter = router({
    * Searches Indexer (alerts + archives) and Wazuh API (agents, rules, vulns, syscheck, MITRE, logs)
    * in parallel, then returns structured correlation results.
    */
+  // ── Persistence: Save a hunt result ──────────────────────────────────────
+  save: protectedProcedure
+    .input(z.object({
+      title: z.string().min(1).max(512),
+      description: z.string().max(5000).optional(),
+      query: z.string().min(1).max(500),
+      iocType: z.string().min(1).max(32),
+      timeFrom: z.string().max(32),
+      timeTo: z.string().max(32),
+      totalHits: z.number().int().default(0),
+      totalTimeMs: z.number().int().default(0),
+      sourcesWithHits: z.number().int().default(0),
+      agentsSearched: z.array(z.string()).optional(),
+      results: z.array(z.object({
+        source: z.string(),
+        sourceLabel: z.string(),
+        matches: z.array(z.unknown()),
+        count: z.number(),
+        searchTimeMs: z.number(),
+      })),
+      tags: z.array(z.string()).optional(),
+      severity: z.enum(["critical", "high", "medium", "low", "info"]).default("info"),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      const [result] = await db.insert(savedHunts).values({
+        userId: ctx.user.id,
+        title: input.title,
+        description: input.description ?? null,
+        query: input.query,
+        iocType: input.iocType,
+        timeFrom: input.timeFrom,
+        timeTo: input.timeTo,
+        totalHits: input.totalHits,
+        totalTimeMs: input.totalTimeMs,
+        sourcesWithHits: input.sourcesWithHits,
+        agentsSearched: input.agentsSearched ?? [],
+        results: input.results as any,
+        tags: input.tags ?? [],
+        severity: input.severity,
+      });
+      return { id: result.insertId, success: true };
+    }),
+
+  // ── Persistence: List saved hunts ──────────────────────────────────────
+  list: protectedProcedure
+    .input(z.object({
+      limit: z.number().int().min(1).max(100).default(25),
+      offset: z.number().int().min(0).default(0),
+      search: z.string().max(200).optional(),
+      severity: z.enum(["critical", "high", "medium", "low", "info"]).optional(),
+      iocType: z.string().max(32).optional(),
+    }).optional())
+    .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) return { items: [], total: 0 };
+      const limit = input?.limit ?? 25;
+      const offset = input?.offset ?? 0;
+
+      const conditions = [eq(savedHunts.userId, ctx.user.id)];
+      if (input?.search) {
+        conditions.push(like(savedHunts.query, `%${input.search}%`));
+      }
+      if (input?.severity) {
+        conditions.push(eq(savedHunts.severity, input.severity));
+      }
+      if (input?.iocType) {
+        conditions.push(eq(savedHunts.iocType, input.iocType));
+      }
+
+      const where = conditions.length === 1 ? conditions[0] : and(...conditions);
+
+      const [items, countResult] = await Promise.all([
+        db.select({
+          id: savedHunts.id,
+          title: savedHunts.title,
+          description: savedHunts.description,
+          query: savedHunts.query,
+          iocType: savedHunts.iocType,
+          timeFrom: savedHunts.timeFrom,
+          timeTo: savedHunts.timeTo,
+          totalHits: savedHunts.totalHits,
+          totalTimeMs: savedHunts.totalTimeMs,
+          sourcesWithHits: savedHunts.sourcesWithHits,
+          severity: savedHunts.severity,
+          tags: savedHunts.tags,
+          resolved: savedHunts.resolved,
+          createdAt: savedHunts.createdAt,
+        })
+          .from(savedHunts)
+          .where(where)
+          .orderBy(desc(savedHunts.createdAt))
+          .limit(limit)
+          .offset(offset),
+        db.select({ count: sql<number>`count(*)` })
+          .from(savedHunts)
+          .where(where),
+      ]);
+
+      return { items, total: Number(countResult[0]?.count ?? 0) };
+    }),
+
+  // ── Persistence: Get a single saved hunt with full results ─────────────
+  get: protectedProcedure
+    .input(z.object({ id: z.number().int() }))
+    .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) return null;
+      const rows = await db.select()
+        .from(savedHunts)
+        .where(and(eq(savedHunts.id, input.id), eq(savedHunts.userId, ctx.user.id)))
+        .limit(1);
+      return rows[0] ?? null;
+    }),
+
+  // ── Persistence: Delete a saved hunt ───────────────────────────────────
+  delete: protectedProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      await db.delete(savedHunts)
+        .where(and(eq(savedHunts.id, input.id), eq(savedHunts.userId, ctx.user.id)));
+      return { success: true };
+    }),
+
+  // ── Persistence: Update severity / resolved / tags ─────────────────────
+  update: protectedProcedure
+    .input(z.object({
+      id: z.number().int(),
+      severity: z.enum(["critical", "high", "medium", "low", "info"]).optional(),
+      resolved: z.number().int().min(0).max(1).optional(),
+      tags: z.array(z.string()).optional(),
+      title: z.string().min(1).max(512).optional(),
+      description: z.string().max(5000).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      const updates: Record<string, unknown> = {};
+      if (input.severity !== undefined) updates.severity = input.severity;
+      if (input.resolved !== undefined) updates.resolved = input.resolved;
+      if (input.tags !== undefined) updates.tags = input.tags;
+      if (input.title !== undefined) updates.title = input.title;
+      if (input.description !== undefined) updates.description = input.description;
+      if (Object.keys(updates).length === 0) return { success: true };
+      await db.update(savedHunts)
+        .set(updates)
+        .where(and(eq(savedHunts.id, input.id), eq(savedHunts.userId, ctx.user.id)));
+      return { success: true };
+    }),
+
   execute: publicProcedure
     .input(huntInputSchema)
     .query(async ({ input }) => {
