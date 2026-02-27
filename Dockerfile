@@ -4,7 +4,7 @@
 # ============================================================================
 
 # ── Stage 1: Dependencies ────────────────────────────────────────────────────
-FROM node:22-slim AS deps
+FROM node:25-slim AS deps
 
 # Install pnpm via npm (more reliable than corepack in restricted networks)
 RUN npm install -g pnpm@10.4.1
@@ -18,7 +18,7 @@ COPY patches/ ./patches/
 RUN pnpm install --frozen-lockfile
 
 # ── Stage 2: Build ───────────────────────────────────────────────────────────
-FROM node:22-slim AS builder
+FROM node:25-slim AS builder
 
 RUN npm install -g pnpm@10.4.1
 
@@ -34,7 +34,7 @@ ENV DOCKER_BUILD=1
 RUN pnpm run build
 
 # ── Stage 3: Production ─────────────────────────────────────────────────────
-FROM node:22-slim AS production
+FROM node:25-slim AS production
 
 RUN npm install -g pnpm@10.4.1
 
