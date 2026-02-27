@@ -1357,3 +1357,4 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Reuse indexer.vulnSearch with agentId filter for per-agent vulnerability queries
 - [x] Update Vulnerabilities.tsx agent-view to use indexer instead of Wazuh Manager API
 - [x] Update tests for all 3 fixes (356/356 passing, 0 TS errors)
+- [x] Fix TypeError on /rules: Wazuh API returns rules where mitre/pci_dss/gdpr/hipaa are undefined, not empty arrays — add null guards
