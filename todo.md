@@ -1303,3 +1303,7 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 ## Phase 44: Analyst Chat Layout Fix
 
 - [x] Fix Analyst Chat panel width — widened from max-w-4xl to max-w-6xl, removed assistant bubble max-w constraint, expanded welcome grid to 3 columns
+
+## Phase 45: Analyst Chat Full-Width Fix
+
+- [x] Remove all max-width constraints from Analyst Chat — removed max-w-6xl from messages/input, removed max-w-[90%] from bubbles and live console
