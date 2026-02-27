@@ -1289,5 +1289,13 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Fix llmRouter.ts usageHistory SQL — DATE_FORMAT bucketFormat passed as param instead of raw SQL
 - [x] Replace Google Maps ThreatMap with Leaflet/OpenStreetMap for on-prem deployment
 - [x] Run all tests and verify passing (338/338)
-- [ ] Push to GitHub
-- [ ] Save checkpoint
+- [x] Push to GitHub (commit 6b253dd)
+- [x] Save checkpoint
+
+## Phase 43: Fix OAuth on Deployed Site
+
+- [x] Investigate why Manus OAuth appears on deployed site (Manus hosting platform injects its own OAuth gate)
+- [x] Trace the _core auth middleware — confirmed app code is 100% clean, issue is hosting platform
+- [x] Cleaned Manus OAuth/Forge env vars from docker-compose.yml, env.docker.template, Dockerfile
+- [x] Self-hosted Docker deployment shows local login only (no Manus hosting gate)
+- [x] Tests passing (338/338), push and checkpoint done
