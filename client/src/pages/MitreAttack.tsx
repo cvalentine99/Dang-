@@ -1,6 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
+import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared/IndexerStates";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
@@ -306,21 +307,26 @@ export default function MitreAttack() {
         <PageHeader title="MITRE ATT&CK" subtitle="Adversary technique mapping — detection coverage, tactic progression, and alert correlation" onRefresh={handleRefresh} isLoading={isLoading} />
 
         {/* ── Loading State ── */}
-        {mitreAggQ.isLoading && (
-          <GlassPanel className="flex flex-col items-center justify-center py-16 gap-4">
-            <Loader2 className="h-8 w-8 text-primary animate-spin" />
-            <p className="text-sm text-muted-foreground">Fetching MITRE ATT&CK data…</p>
-          </GlassPanel>
+        {mitreAggQ.isLoading && <IndexerLoadingState message="Fetching MITRE ATT&CK data…" />}
+        {/* ── Error State ── */}
+        {mitreAggQ.isError && (
+          <IndexerErrorState
+            message="Failed to fetch MITRE ATT&CK data from indexer"
+            detail={mitreAggQ.error?.message}
+            onRetry={() => mitreAggQ.refetch()}
+          />
         )}
 
         {/* KPIs */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+          {mitreAggQ.isLoading ? <StatCardSkeleton count={6} /> : (<>
           <StatCard label="Techniques Detected" value={mitreTechniques.length || totalTechniques} icon={Crosshair} colorClass="text-primary" />
           <StatCard label="Rules with MITRE" value={totalRulesWithMitre} icon={Shield} colorClass="text-threat-medium" />
           <StatCard label="Tactics Covered" value={activeTactics.length} icon={Grid3X3} colorClass="text-info-cyan" />
           <StatCard label="Threat Groups" value={threatGroups.length} icon={Target} colorClass="text-threat-high" />
           <StatCard label="MITRE Alerts" value={totalMitreAlerts.toLocaleString()} icon={Activity} colorClass="text-threat-critical" />
           <StatCard label="Coverage" value={`${Math.round((activeTactics.length / 14) * 100)}%`} icon={Layers} colorClass="text-primary" />
+          </>)}
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>

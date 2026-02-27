@@ -1,6 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
+import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared/IndexerStates";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
@@ -214,12 +215,25 @@ export default function Compliance() {
       <div className="space-y-6">
         <PageHeader title="Compliance Posture" subtitle="SCA policy assessment and Indexer-powered framework alert analysis" onRefresh={handleRefresh} isLoading={isLoading} />
 
+        {/* ── Loading State ── */}
+        {isLoading && <IndexerLoadingState message="Fetching compliance data from Wazuh…" />}
+        {/* ── Error State ── */}
+        {statusQ.isError && (
+          <IndexerErrorState
+            message="Failed to connect to Wazuh Manager"
+            detail={statusQ.error?.message}
+            onRetry={() => statusQ.refetch()}
+          />
+        )}
+
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {isLoading ? <StatCardSkeleton count={5} /> : (<>
           <StatCard label="Avg Score" value={`${avgScore}%`} icon={ShieldCheck} colorClass={avgScore >= 80 ? "text-threat-low" : avgScore >= 60 ? "text-threat-medium" : "text-threat-critical"} />
           <StatCard label="Policies" value={totalPolicies} icon={Layers} colorClass="text-primary" />
           <StatCard label="Passed" value={totalPass} icon={CheckCircle2} colorClass="text-threat-low" />
           <StatCard label="Failed" value={totalFail} icon={XCircle} colorClass="text-threat-critical" />
           <StatCard label="N/A" value={totalNA} icon={MinusCircle} colorClass="text-muted-foreground" />
+          </>)}
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>

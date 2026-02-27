@@ -1,6 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
+import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared/IndexerStates";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
@@ -183,8 +184,20 @@ export default function AgentHealth() {
       <div className="space-y-6">
         <PageHeader title="Fleet Command" subtitle="Agent lifecycle management — status, OS distribution, groups, and deep inspection" onRefresh={handleRefresh} isLoading={isLoading} />
 
+        {/* ── Loading State ── */}
+        {isLoading && <IndexerLoadingState message="Fetching fleet status from Wazuh…" />}
+        {/* ── Error State ── */}
+        {statusQ.isError && (
+          <IndexerErrorState
+            message="Failed to connect to Wazuh Manager"
+            detail={statusQ.error?.message}
+            onRetry={() => statusQ.refetch()}
+          />
+        )}
+
         {/* KPI Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+          {isLoading ? <StatCardSkeleton count={7} /> : (<>
           <StatCard label="Total Agents" value={agentData.total} icon={Users} colorClass="text-primary" />
           <StatCard label="Active" value={agentData.active} icon={Wifi} colorClass="text-threat-low" />
           <StatCard label="Disconnected" value={agentData.disconnected} icon={WifiOff} colorClass="text-threat-high" />
@@ -192,6 +205,7 @@ export default function AgentHealth() {
           <StatCard label="Pending" value={agentData.pending} icon={Clock} colorClass="text-info-cyan" />
           <StatCard label="Outdated" value={outdatedCount} icon={ArrowDownCircle} colorClass="text-threat-medium" />
           <StatCard label="Ungrouped" value={noGroupCount} icon={FolderX} colorClass="text-threat-high" />
+          </>)}
         </div>
 
         {/* Charts Row */}

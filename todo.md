@@ -1365,3 +1365,17 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Add loading spinner to Alerts Timeline page
 - [x] Add loading spinner to Vulnerabilities page
 - [x] Add loading spinner to MITRE ATT&CK page
+- [x] Create reusable IndexerLoadingState component
+- [x] Create reusable IndexerErrorState component
+- [x] Create StatCardSkeleton component for loading placeholders
+- [x] Add error state panels to SiemEvents page
+- [x] Add error state panels to AlertsTimeline page
+- [x] Add error state panels to Vulnerabilities page
+- [x] Add error state panels to MitreAttack page
+- [x] Add error state panels to Compliance page
+- [x] Add error state panels to ThreatHunting page
+- [x] Add error state panels to FleetCommand page
+- [x] Add loading spinner to Compliance page
+- [x] Add loading spinner to ThreatHunting page
+- [x] Add loading spinner to FleetCommand page
+- [x] Add skeleton stat cards to all dashboard pages during loading

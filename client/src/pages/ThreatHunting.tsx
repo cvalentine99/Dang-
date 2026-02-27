@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
+import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared/IndexerStates";
 import { ThreatBadge, threatLevelFromNumber } from "@/components/shared/ThreatBadge";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
@@ -504,8 +505,20 @@ export default function ThreatHunting() {
         </div>
       )}
 
+      {/* ── Loading State ── */}
+      {isLoading && <IndexerLoadingState message="Loading threat hunting data…" />}
+      {/* ── Error State ── */}
+      {agentsQ.isError && (
+        <IndexerErrorState
+          message="Failed to load threat hunting data from Wazuh"
+          detail={agentsQ.error?.message}
+          onRetry={() => handleRefresh()}
+        />
+      )}
+
       {/* ── KPI Row ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3 mb-6">
+        {isLoading ? <StatCardSkeleton count={6} /> : (<>
         <StatCard label="Searchable Agents" value={agentCount} icon={Activity} colorClass="text-primary" />
         <StatCard label="Detection Rules" value={ruleCount} icon={Shield} colorClass="text-threat-info" />
         <StatCard label="Known CVEs" value={vulnCount} icon={Bug} colorClass="text-threat-high" />
@@ -517,6 +530,7 @@ export default function ThreatHunting() {
           icon={Target}
           colorClass={totalHits > 0 ? "text-threat-critical" : "text-muted-foreground"}
         />
+        </>)}
       </div>
 
       {/* ── Query Builder ────────────────────────────────────────────────── */}

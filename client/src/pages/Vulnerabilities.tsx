@@ -1,6 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
+import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared/IndexerStates";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
@@ -335,20 +336,25 @@ export default function Vulnerabilities() {
         </GlassPanel>
 
         {/* ── Loading State ── */}
-        {vulnSearchQ.isLoading && (
-          <GlassPanel className="flex flex-col items-center justify-center py-16 gap-4">
-            <Loader2 className="h-8 w-8 text-primary animate-spin" />
-            <p className="text-sm text-muted-foreground">Fetching vulnerability data from indexer…</p>
-          </GlassPanel>
+        {vulnSearchQ.isLoading && <IndexerLoadingState message="Fetching vulnerability data from indexer…" />}
+        {/* ── Error State ── */}
+        {vulnSearchQ.isError && (
+          <IndexerErrorState
+            message="Failed to fetch vulnerability data from indexer"
+            detail={vulnSearchQ.error?.message}
+            onRetry={() => vulnSearchQ.refetch()}
+          />
         )}
 
         {/* KPI Row */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {vulnSearchQ.isLoading ? <StatCardSkeleton count={5} /> : (<>
           <StatCard label="Total CVEs" value={viewMode === "fleet" ? fleetTotal : agentTotal} icon={Bug} colorClass="text-primary" />
           <StatCard label="Critical" value={criticalCount} icon={AlertTriangle} colorClass="text-threat-critical" />
           <StatCard label="High" value={highCount} icon={Shield} colorClass="text-threat-high" />
           <StatCard label="Medium" value={mediumCount} icon={TrendingDown} colorClass="text-threat-medium" />
           <StatCard label="Avg CVSS" value={fleetAvgCvss} icon={Bug} colorClass="text-primary" />
+          </>)}
         </div>
 
         {/* Fleet-Wide Dashboard (Indexer-powered) */}

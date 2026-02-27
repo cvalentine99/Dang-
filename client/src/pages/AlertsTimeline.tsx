@@ -1,6 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
+import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared/IndexerStates";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge, threatLevelFromNumber } from "@/components/shared/ThreatBadge";
@@ -342,20 +343,25 @@ export default function AlertsTimeline() {
         </GlassPanel>
 
         {/* ── Loading State ── */}
-        {alertsSearchQ.isLoading && (
-          <GlassPanel className="flex flex-col items-center justify-center py-16 gap-4">
-            <Loader2 className="h-8 w-8 text-primary animate-spin" />
-            <p className="text-sm text-muted-foreground">Fetching alerts from indexer…</p>
-          </GlassPanel>
+        {alertsSearchQ.isLoading && <IndexerLoadingState message="Fetching alerts from indexer…" />}
+        {/* ── Error State ── */}
+        {alertsSearchQ.isError && (
+          <IndexerErrorState
+            message="Failed to fetch alerts from indexer"
+            detail={alertsSearchQ.error?.message}
+            onRetry={() => alertsSearchQ.refetch()}
+          />
         )}
 
         {/* KPI Row */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {alertsSearchQ.isLoading ? <StatCardSkeleton count={5} /> : (<>
           <StatCard label="Total Alerts" value={totalAlerts.toLocaleString()} icon={Zap} colorClass="text-primary" />
           <StatCard label="Critical (12+)" value={criticalCount} icon={AlertTriangle} colorClass="text-threat-critical" />
           <StatCard label="High (8-11)" value={highCount} icon={TrendingUp} colorClass="text-threat-high" />
           <StatCard label="Medium (4-7)" value={mediumCount} icon={BarChart3} colorClass="text-threat-medium" />
           <StatCard label="Low / Info" value={lowCount} icon={Shield} colorClass="text-info-cyan" />
+          </>)}
         </div>
 
         {/* Charts Row: Severity Timeline + Rule Distribution */}

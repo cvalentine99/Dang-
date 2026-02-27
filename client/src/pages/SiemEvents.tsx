@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
-import { GlassPanel, StatCard, ThreatBadge, RawJsonViewer, RefreshControl } from "@/components/shared";
+import { GlassPanel, StatCard, ThreatBadge, RawJsonViewer, RefreshControl, IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { trpc } from "@/lib/trpc";
@@ -528,15 +528,19 @@ export default function SiemEvents() {
       )}
 
       {/* ── Loading State ────────────────────────────────────────────────── */}
-      {alertsSearchQ.isLoading && (
-        <GlassPanel className="flex flex-col items-center justify-center py-16 gap-4">
-          <Loader2 className="h-8 w-8 text-primary animate-spin" />
-          <p className="text-sm text-muted-foreground">Fetching SIEM events from indexer…</p>
-        </GlassPanel>
+      {alertsSearchQ.isLoading && <IndexerLoadingState message="Fetching SIEM events from indexer…" />}
+      {/* ── Error State ──────────────────────────────────────────────────── */}
+      {alertsSearchQ.isError && (
+        <IndexerErrorState
+          message="Failed to fetch SIEM events from indexer"
+          detail={alertsSearchQ.error?.message}
+          onRetry={() => alertsSearchQ.refetch()}
+        />
       )}
 
       {/* ── KPI Row ───────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {alertsSearchQ.isLoading ? <StatCardSkeleton count={6} /> : (<>
         <StatCard label="Total Events" value={events.length.toLocaleString()} icon={Layers} />
         <StatCard
           label="Critical"
@@ -566,6 +570,7 @@ export default function SiemEvents() {
           icon={Database}
           colorClass="text-violet-400"
         />
+        </>)}
       </div>
 
       {/* ── Charts Row ────────────────────────────────────────────────────── */}
