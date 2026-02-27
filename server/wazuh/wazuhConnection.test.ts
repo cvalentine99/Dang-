@@ -6,8 +6,8 @@ import { describe, it, expect } from "vitest";
  * Actual API connectivity depends on network access to the Wazuh host.
  */
 describe("Wazuh Connection Secrets", () => {
-  it("should have WAZUH_HOST set to 192.168.50.158", () => {
-    expect(process.env.WAZUH_HOST).toBe("192.168.50.158");
+  it("should have WAZUH_HOST set to host.docker.internal", () => {
+    expect(process.env.WAZUH_HOST).toBe("host.docker.internal");
   });
 
   it("should have WAZUH_PORT set to 55000", () => {
