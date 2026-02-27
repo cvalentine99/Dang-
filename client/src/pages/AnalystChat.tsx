@@ -430,7 +430,7 @@ function ChatMessageBubble({
       </div>
 
       {/* Content */}
-      <div className={`flex-1 min-w-0 ${isUser ? "max-w-[75%] ml-auto" : "max-w-[85%]"}`}>
+      <div className={`flex-1 min-w-0 ${isUser ? "max-w-[90%] ml-auto" : ""}`}>
         <div className={`rounded-xl px-4 py-3 ${
           isUser
             ? "bg-purple-500/15 border border-purple-500/20"
@@ -679,7 +679,7 @@ function LiveAnalysisConsole({ steps }: { steps: AgentStep[] }): React.JSX.Eleme
         <Bot className="w-4 h-4 text-cyan-300" />
         <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse border border-black/50" />
       </div>
-      <div className="flex-1 min-w-0 max-w-[85%]">
+      <div className="flex-1 min-w-0 max-w-[90%]">
         <div className="glass-panel rounded-xl px-4 py-3 relative overflow-hidden">
           <DataStreamEffect />
 
@@ -765,7 +765,7 @@ function WelcomeScreen(): React.JSX.Element {
         Trust scoring · Safety rails · Provenance tracking · Read-only by design
       </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-2xl w-full">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-w-5xl w-full">
         {exampleQueries.map((q, i) => (
           <button
             key={i}
@@ -1052,7 +1052,7 @@ export default function AnalystChat(): React.JSX.Element {
         {messages.length === 0 ? (
           <WelcomeScreen />
         ) : (
-          <div className="max-w-4xl mx-auto space-y-6">
+          <div className="max-w-6xl mx-auto space-y-6">
             {messages.map(msg => (
               <ChatMessageBubble
                 key={msg.id}
@@ -1070,7 +1070,7 @@ export default function AnalystChat(): React.JSX.Element {
 
       {/* Input area */}
       <div className="flex-shrink-0 px-6 py-4 border-t border-white/5">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           <div className="glass-panel rounded-xl overflow-hidden flex items-end">
             <textarea
               ref={inputRef}

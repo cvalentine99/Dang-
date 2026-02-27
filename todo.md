@@ -1299,3 +1299,7 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Cleaned Manus OAuth/Forge env vars from docker-compose.yml, env.docker.template, Dockerfile
 - [x] Self-hosted Docker deployment shows local login only (no Manus hosting gate)
 - [x] Tests passing (338/338), push and checkpoint done
+
+## Phase 44: Analyst Chat Layout Fix
+
+- [x] Fix Analyst Chat panel width — widened from max-w-4xl to max-w-6xl, removed assistant bubble max-w constraint, expanded welcome grid to 3 columns
