@@ -62,14 +62,14 @@ services:
       LOCAL_ADMIN_USER: ${LOCAL_ADMIN_USER:-}
       LOCAL_ADMIN_PASS: ${LOCAL_ADMIN_PASS:-}
 
-      # Wazuh Manager API — defaults to host.docker.internal (host's package-based Wazuh)
-      WAZUH_HOST: ${WAZUH_HOST:-host.docker.internal}
+      # Wazuh Manager API (optional — leave blank to start without Wazuh)
+      WAZUH_HOST: ${WAZUH_HOST:-}
       WAZUH_PORT: ${WAZUH_PORT:-55000}
       WAZUH_USER: ${WAZUH_USER:-}
       WAZUH_PASS: ${WAZUH_PASS:-}
 
-      # Wazuh Indexer (OpenSearch) — defaults to host.docker.internal (host's indexer)
-      WAZUH_INDEXER_HOST: ${WAZUH_INDEXER_HOST:-host.docker.internal}
+      # Wazuh Indexer (OpenSearch)
+      WAZUH_INDEXER_HOST: ${WAZUH_INDEXER_HOST:-}
       WAZUH_INDEXER_PORT: ${WAZUH_INDEXER_PORT:-9200}
       WAZUH_INDEXER_USER: ${WAZUH_INDEXER_USER:-}
       WAZUH_INDEXER_PASS: ${WAZUH_INDEXER_PASS:-}
@@ -94,8 +94,6 @@ services:
       # App branding
       VITE_APP_TITLE: ${VITE_APP_TITLE:-Dang! SIEM}
       VITE_APP_LOGO: ${VITE_APP_LOGO:-}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     networks:
       - dang-net
 
