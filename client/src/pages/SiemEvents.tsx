@@ -527,6 +527,14 @@ export default function SiemEvents() {
         </div>
       )}
 
+      {/* ── Loading State ────────────────────────────────────────────────── */}
+      {alertsSearchQ.isLoading && (
+        <GlassPanel className="flex flex-col items-center justify-center py-16 gap-4">
+          <Loader2 className="h-8 w-8 text-primary animate-spin" />
+          <p className="text-sm text-muted-foreground">Fetching SIEM events from indexer…</p>
+        </GlassPanel>
+      )}
+
       {/* ── KPI Row ───────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <StatCard label="Total Events" value={events.length.toLocaleString()} icon={Layers} />

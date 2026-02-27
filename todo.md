@@ -1361,3 +1361,4 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Fix Select.Item empty string value crash on /alerts and other pages using dynamic Select options from API data
 - [x] Fix SIEMEvents.tsx infinite re-render: Date.now() in alertsSearchQ creates new query key every render, burning rate limit
 - [x] Audit other pages for same Date.now() bug — also fixed in Compliance.tsx and MitreAttack.tsx
+- [x] Add loading spinner to SIEM Events page during initial data fetch
