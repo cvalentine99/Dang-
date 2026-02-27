@@ -1342,3 +1342,7 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Updated: minimatch 10.2.2→10.2.3, @aws-sdk/client-s3 3.995.0→3.999.0, fast-xml-parser 5.3.6→5.4.1, deduped
 - [x] 357/357 tests passing, pnpm audit: 0 vulnerabilities
 - [x] Push to GitHub and save checkpoint
+
+- [ ] Fix 5 failing graph tests: drop bad kg_* tables and recreate with correct schema columns
+- [x] Build reusable seed-kg.mjs script to repopulate all 12 kg_* tables from Wazuh OpenAPI spec (~2,573 records)
+- [x] Verify seed script produces correct record counts and all 357/357 tests pass
