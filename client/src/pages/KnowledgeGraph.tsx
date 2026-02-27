@@ -8,6 +8,7 @@ import {
   Lock, Unlock, Activity, Zap, Filter, List, GitBranch,
   ArrowUpDown, ChevronDown, ChevronUp, MousePointerClick,
   Copy, Pin, PinOff, Eye, Image as ImageIcon, FileCode2, FolderPlus, Check, Download,
+  SquareMousePointer, Trash2, CheckSquare, Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ChartSkeleton, TableSkeleton } from "@/components/shared";
@@ -762,6 +763,10 @@ export default function KnowledgeGraph(): React.JSX.Element {
   // Add to Investigation dialog
   const [investigationDialog, setInvestigationDialog] = useState<{ node: GraphNode } | null>(null);
 
+  // Multi-select mode
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set());
+
   // Fetch graph data
   const overviewQuery = trpc.graph.overviewGraph.useQuery(
     { layer: layerFilter as any, riskLevel: riskFilter as any, limit: 100 },
@@ -1076,6 +1081,15 @@ export default function KnowledgeGraph(): React.JSX.Element {
       .attr("stroke", "transparent")
       .attr("stroke-width", 0);
 
+    // Multi-select ring (hidden by default, shown via useEffect)
+    node.append("circle")
+      .attr("class", (d: any) => `select-ring select-ring-${d.id.replace(/[^a-zA-Z0-9-]/g, "_")}`)
+      .attr("r", (d: any) => (NODE_CONFIG[d.type]?.size ?? 16) / 2 + 10)
+      .attr("fill", "none")
+      .attr("stroke", "transparent")
+      .attr("stroke-width", 0)
+      .attr("stroke-dasharray", "4 2");
+
     // Method badge for endpoints
     node.filter((d: any) => d.type === "endpoint")
       .append("text")
@@ -1123,21 +1137,33 @@ export default function KnowledgeGraph(): React.JSX.Element {
       .attr("fill", "rgba(255,255,255,0.45)")
       .attr("font-family", (d: any) => d.type === "endpoint" ? "'JetBrains Mono', monospace" : "'Inter', sans-serif");
 
-    // Click handler — single click selects, double-click expands
+    // Click handler — single click selects, double-click expands, multi-select toggles
     let clickTimer: ReturnType<typeof setTimeout> | null = null;
 
-    node.on("click", (_event: any, d: any) => {
+    node.on("click", (event: any, d: any) => {
       if (clickTimer) {
         clearTimeout(clickTimer);
         clickTimer = null;
-        // Double-click → expand
+        // Double-click → expand (even in multi-select mode)
         if (d.type === "resource" || d.type === "endpoint") {
           handleExpand(d);
         }
       } else {
         clickTimer = setTimeout(() => {
           clickTimer = null;
-          setSelectedNode(d);
+          if (multiSelectMode || event.shiftKey) {
+            // Multi-select: toggle this node
+            setSelectedNodes(prev => {
+              const next = new Set(Array.from(prev));
+              if (next.has(d.id)) next.delete(d.id);
+              else next.add(d.id);
+              return next;
+            });
+            // Auto-enable multi-select mode on shift+click
+            if (!multiSelectMode && event.shiftKey) setMultiSelectMode(true);
+          } else {
+            setSelectedNode(d);
+          }
         }, 250);
       }
     });
@@ -1223,7 +1249,7 @@ export default function KnowledgeGraph(): React.JSX.Element {
     }, 1000);
 
     return () => { simulation.stop(); };
-  }, [filteredData, viewMode, expandedNodes, handleExpand]);
+  }, [filteredData, viewMode, expandedNodes, handleExpand, multiSelectMode]);
 
   // ── Focus pulse effect ────────────────────────────────────────────────
 
@@ -1246,6 +1272,39 @@ export default function KnowledgeGraph(): React.JSX.Element {
         .classed("pulse-ring", false);
     };
   }, [focusNodeId]);
+
+  // ── Multi-select visual highlighting ──────────────────────────────────
+
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const svg = d3.select(svgRef.current);
+
+    // Reset all select rings
+    svg.selectAll(".select-ring")
+      .attr("stroke", "transparent")
+      .attr("stroke-width", 0);
+
+    // Highlight selected nodes
+    selectedNodes.forEach(nodeId => {
+      const safeId = nodeId.replace(/[^a-zA-Z0-9-]/g, "_");
+      svg.selectAll(`.select-ring-${safeId}`)
+        .attr("stroke", "#22d3ee")
+        .attr("stroke-width", 2);
+    });
+  }, [selectedNodes]);
+
+  // ── Escape key to clear multi-select ──────────────────────────────────
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && multiSelectMode) {
+        setMultiSelectMode(false);
+        setSelectedNodes(new Set());
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [multiSelectMode]);
 
   // Risk path highlighting
   useEffect(() => {
@@ -1406,6 +1465,79 @@ export default function KnowledgeGraph(): React.JSX.Element {
     setInvestigationDialog({ node });
   }, []);
 
+  // ── Multi-select bulk action handlers ────────────────────────────────
+
+  const handleBulkHide = useCallback(() => {
+    setHiddenNodes(prev => {
+      const next = new Set(Array.from(prev));
+      selectedNodes.forEach(id => next.add(id));
+      return next;
+    });
+    if (selectedNode && selectedNodes.has(selectedNode.id)) setSelectedNode(null);
+    toast.success(`${selectedNodes.size} node(s) hidden`);
+    setSelectedNodes(new Set());
+  }, [selectedNodes, selectedNode]);
+
+  const handleBulkPin = useCallback(() => {
+    const allPinned = Array.from(selectedNodes).every(id => pinnedNodes.has(id));
+    setPinnedNodes(prev => {
+      const next = new Set(Array.from(prev));
+      selectedNodes.forEach(id => {
+        if (allPinned) next.delete(id);
+        else next.add(id);
+      });
+      return next;
+    });
+    // Update D3 node positions
+    nodesRef.current.forEach(n => {
+      if (selectedNodes.has(n.id)) {
+        if (allPinned) { n.fx = null; n.fy = null; }
+        else { n.fx = n.x; n.fy = n.y; }
+      }
+    });
+    toast.success(allPinned ? `${selectedNodes.size} node(s) unpinned` : `${selectedNodes.size} node(s) pinned`);
+  }, [selectedNodes, pinnedNodes]);
+
+  const handleBulkCopyIds = useCallback(() => {
+    const ids = Array.from(selectedNodes).join("\n");
+    navigator.clipboard.writeText(ids).then(() => {
+      toast.success(`${selectedNodes.size} node ID(s) copied`);
+    });
+  }, [selectedNodes]);
+
+  const handleBulkAddToInvestigation = useCallback(() => {
+    // Create a synthetic "multi" node to pass to the investigation dialog
+    const multiNode: GraphNode = {
+      id: `multi-select-${Date.now()}`,
+      type: "multi_select",
+      label: `${selectedNodes.size} selected nodes`,
+      properties: {
+        nodeIds: Array.from(selectedNodes),
+        nodeLabels: Array.from(selectedNodes).map(id => {
+          const n = nodesRef.current.find(nd => nd.id === id) ?? filteredData.nodes.find((nd: any) => nd.id === id);
+          return n ? n.label : id;
+        }),
+      },
+    };
+    setInvestigationDialog({ node: multiNode });
+  }, [selectedNodes, filteredData]);
+
+  const handleSelectAll = useCallback(() => {
+    const allIds = new Set(filteredData.nodes.map((n: any) => n.id));
+    setSelectedNodes(allIds);
+  }, [filteredData]);
+
+  const handleDeselectAll = useCallback(() => {
+    setSelectedNodes(new Set());
+  }, []);
+
+  const toggleMultiSelect = useCallback(() => {
+    setMultiSelectMode(prev => {
+      if (prev) setSelectedNodes(new Set()); // Clear selection when exiting
+      return !prev;
+    });
+  }, []);
+
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
       {/* Header */}
@@ -1525,6 +1657,25 @@ export default function KnowledgeGraph(): React.JSX.Element {
                     </span>
                   )}
                 </button>
+
+                {/* Multi-select toggle */}
+                <button
+                  onClick={toggleMultiSelect}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                    multiSelectMode
+                      ? "border-cyan-500/30 bg-cyan-500/15 text-cyan-300"
+                      : "border-white/10 text-muted-foreground hover:bg-white/5 hover:text-foreground"
+                  }`}
+                  title="Toggle multi-select mode (or hold Shift+click)"
+                >
+                  <SquareMousePointer className="w-3.5 h-3.5" />
+                  Select
+                  {selectedNodes.size > 0 && (
+                    <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-mono bg-cyan-500/20 text-cyan-300">
+                      {selectedNodes.size}
+                    </span>
+                  )}
+                </button>
               </>
             )}
 
@@ -1616,10 +1767,108 @@ export default function KnowledgeGraph(): React.JSX.Element {
           </div>
 
           {/* Expansion hint */}
-          {!selectedNode && !showRiskPaths && filteredData.nodes.length > 0 && expandedNodes.size === 0 && (
+          {!selectedNode && !showRiskPaths && !multiSelectMode && filteredData.nodes.length > 0 && expandedNodes.size === 0 && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 glass-panel rounded-lg border border-white/10 px-3 py-1.5 z-10 flex items-center gap-2">
               <MousePointerClick className="w-3.5 h-3.5 text-purple-400" />
               <span className="text-[10px] text-muted-foreground">Double-click a resource or endpoint to expand its neighbors</span>
+            </div>
+          )}
+
+          {/* Multi-select floating toolbar */}
+          {multiSelectMode && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 glass-panel rounded-xl border border-cyan-500/20 px-2 py-1.5 z-20 flex items-center gap-1">
+              <div className="flex items-center gap-1.5 px-2 border-r border-white/10">
+                <SquareMousePointer className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="text-xs text-cyan-300 font-mono">
+                  {selectedNodes.size > 0 ? `${selectedNodes.size} selected` : "Click nodes to select"}
+                </span>
+              </div>
+
+              {/* Select All / Deselect All */}
+              <button
+                onClick={handleSelectAll}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:bg-white/5 hover:text-foreground rounded transition-colors"
+                title="Select all visible nodes"
+              >
+                <CheckSquare className="w-3 h-3" />
+                All
+              </button>
+              <button
+                onClick={handleDeselectAll}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:bg-white/5 hover:text-foreground rounded transition-colors"
+                title="Deselect all"
+              >
+                <Square className="w-3 h-3" />
+                None
+              </button>
+
+              <div className="w-px h-5 bg-white/10" />
+
+              {/* Bulk actions — only enabled when nodes are selected */}
+              <button
+                onClick={handleBulkHide}
+                disabled={selectedNodes.size === 0}
+                className={`flex items-center gap-1 px-2 py-1 text-[10px] rounded transition-colors ${
+                  selectedNodes.size > 0
+                    ? "text-orange-300 hover:bg-orange-500/10"
+                    : "text-muted-foreground/40 cursor-not-allowed"
+                }`}
+                title="Hide selected nodes"
+              >
+                <EyeOff className="w-3 h-3" />
+                Hide
+              </button>
+              <button
+                onClick={handleBulkPin}
+                disabled={selectedNodes.size === 0}
+                className={`flex items-center gap-1 px-2 py-1 text-[10px] rounded transition-colors ${
+                  selectedNodes.size > 0
+                    ? "text-blue-300 hover:bg-blue-500/10"
+                    : "text-muted-foreground/40 cursor-not-allowed"
+                }`}
+                title="Pin/Unpin selected nodes"
+              >
+                <Pin className="w-3 h-3" />
+                Pin
+              </button>
+              <button
+                onClick={handleBulkCopyIds}
+                disabled={selectedNodes.size === 0}
+                className={`flex items-center gap-1 px-2 py-1 text-[10px] rounded transition-colors ${
+                  selectedNodes.size > 0
+                    ? "text-green-300 hover:bg-green-500/10"
+                    : "text-muted-foreground/40 cursor-not-allowed"
+                }`}
+                title="Copy node IDs"
+              >
+                <Copy className="w-3 h-3" />
+                IDs
+              </button>
+              <button
+                onClick={handleBulkAddToInvestigation}
+                disabled={selectedNodes.size === 0}
+                className={`flex items-center gap-1 px-2 py-1 text-[10px] rounded transition-colors ${
+                  selectedNodes.size > 0
+                    ? "text-indigo-300 hover:bg-indigo-500/10"
+                    : "text-muted-foreground/40 cursor-not-allowed"
+                }`}
+                title="Add selected to investigation"
+              >
+                <FolderPlus className="w-3 h-3" />
+                Investigate
+              </button>
+
+              <div className="w-px h-5 bg-white/10" />
+
+              {/* Exit multi-select */}
+              <button
+                onClick={toggleMultiSelect}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:bg-white/5 hover:text-foreground rounded transition-colors"
+                title="Exit multi-select (Esc)"
+              >
+                <X className="w-3 h-3" />
+                Exit
+              </button>
             </div>
           )}
 
@@ -1725,6 +1974,27 @@ export default function KnowledgeGraph(): React.JSX.Element {
                 >
                   <FolderPlus className="w-3.5 h-3.5 text-indigo-400" />
                   Add to Investigation
+                </button>
+              </div>
+              <div className="border-t border-white/5 mt-1 pt-1">
+                <button
+                  onClick={() => {
+                    setContextMenu(null);
+                    if (!multiSelectMode) setMultiSelectMode(true);
+                    setSelectedNodes(prev => {
+                      const next = new Set(Array.from(prev));
+                      if (next.has(contextMenu.node.id)) next.delete(contextMenu.node.id);
+                      else next.add(contextMenu.node.id);
+                      return next;
+                    });
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-foreground hover:bg-white/5 transition-colors"
+                >
+                  {selectedNodes.has(contextMenu.node.id) ? (
+                    <><Square className="w-3.5 h-3.5 text-cyan-400" /> Deselect Node</>
+                  ) : (
+                    <><CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> Select Node</>
+                  )}
                 </button>
               </div>
             </div>

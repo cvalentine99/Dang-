@@ -1443,3 +1443,19 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] KG: Graph export as PNG (canvas snapshot)
 - [x] KG: Graph export as SVG (DOM serialization)
 - [x] Write vitest tests for new KG features
+
+## Phase: Knowledge Graph — Multi-Select Mode
+
+- [x] KG: Multi-select toggle button in header toolbar
+- [x] KG: Shift+click and click-to-toggle node selection in multi-select mode
+- [ ] KG: Lasso/rubber-band drag selection for area-select (deferred — complex D3 interaction)
+- [x] KG: Visual selection ring on selected nodes (distinct from focus/pulse)
+- [x] KG: Floating bulk action toolbar showing selected count
+- [x] KG: Bulk "Hide Selected" action
+- [x] KG: Bulk "Pin/Unpin Selected" action
+- [x] KG: Bulk "Add to Investigation" action
+- [x] KG: Bulk "Copy Node IDs" action
+- [x] KG: Select All / Deselect All buttons
+- [x] KG: Escape key to clear selection
+- [x] KG: Select/Deselect Node in right-click context menu
+- [x] Write vitest tests for multi-select features
