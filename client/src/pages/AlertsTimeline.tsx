@@ -276,7 +276,7 @@ export default function AlertsTimeline() {
       const aggs = resp.aggregations as Record<string, unknown> ?? {};
       const topAgents = aggs.top_agents as Record<string, unknown> ?? {};
       const buckets = (topAgents.buckets as Array<Record<string, unknown>>) ?? [];
-      return buckets.map(b => ({ id: String(b.key ?? ""), count: Number(b.doc_count ?? 0) }));
+      return buckets.map(b => ({ id: String(b.key ?? ""), count: Number(b.doc_count ?? 0) })).filter(a => a.id !== "");
     }
     return [];
   }, [alertsAggByAgentQ.data, isIndexerConnected]);

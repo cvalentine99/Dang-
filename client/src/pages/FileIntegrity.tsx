@@ -64,7 +64,7 @@ export default function FileIntegrity() {
 
   const agentsQ = trpc.wazuh.agents.useQuery({ limit: 100, offset: 0, status: "active" }, { retry: 1, staleTime: 30_000, enabled: isConnected });
   const agentList = useMemo(() => {
-    if (isConnected && agentsQ.data) return extractItems(agentsQ.data);
+    if (isConnected && agentsQ.data) return extractItems(agentsQ.data).filter(a => String(a.id ?? "") !== "");
     return [];
   }, [agentsQ.data, isConnected]);
 

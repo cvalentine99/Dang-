@@ -105,7 +105,7 @@ export default function Vulnerabilities() {
   // ── Agent list ────────────────────────────────────────────────────────────
   const agentsQ = trpc.wazuh.agents.useQuery({ limit: 100, offset: 0, status: "active" }, { retry: 1, staleTime: 30_000, enabled: isWazuhConnected });
   const agentList = useMemo(() => {
-    if (isWazuhConnected && agentsQ.data) return extractItems(agentsQ.data);
+    if (isWazuhConnected && agentsQ.data) return extractItems(agentsQ.data).filter(a => String(a.id ?? "") !== "");
     return [];
   }, [agentsQ.data, isWazuhConnected]);
 
