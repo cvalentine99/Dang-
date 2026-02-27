@@ -176,6 +176,30 @@
     animation: shimmer 3s ease-in-out infinite;
   }
 
+  /* Chart Skeleton Loaders */
+  .chart-skeleton-shape {
+    animation: chart-skeleton-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes chart-skeleton-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .chart-skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      oklch(0.541 0.281 293 / 6%) 25%,
+      oklch(0.541 0.281 293 / 10%) 50%,
+      oklch(0.541 0.281 293 / 6%) 75%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2.5s ease-in-out infinite;
+    pointer-events: none;
+  }
+
   @keyframes pulse-purple {
     0%, 100% { opacity: 1; box-shadow: 0 0 0 0 oklch(0.541 0.281 293 / 40%); }
     50% { opacity: 0.8; box-shadow: 0 0 0 6px oklch(0.541 0.281 293 / 0%); }

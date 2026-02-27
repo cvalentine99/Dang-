@@ -2,6 +2,7 @@ import { trpc } from "@/lib/trpc";
 import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
 import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared/IndexerStates";
+import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge, threatLevelFromNumber } from "@/components/shared/ThreatBadge";
@@ -366,6 +367,12 @@ export default function AlertsTimeline() {
 
         {/* Charts Row: Severity Timeline + Rule Distribution */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          {alertsSearchQ.isLoading ? (
+            <>
+              <ChartSkeleton variant="area" height={240} title="Severity Trends" className="lg:col-span-8" />
+              <ChartSkeleton variant="bar" height={240} title="Top Firing Rules" className="lg:col-span-4" />
+            </>
+          ) : (<>
           <GlassPanel className="lg:col-span-8">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><TrendingUp className="h-4 w-4 text-primary" /> Severity Trends</h3>
@@ -421,9 +428,13 @@ export default function AlertsTimeline() {
               })}
             </div>
           </GlassPanel>
+          </>)}
         </div>
 
         {/* Weekly Heatmap */}
+        {alertsSearchQ.isLoading ? (
+          <ChartSkeleton variant="heatmap" height={200} title="Weekly Alert Heatmap" />
+        ) : (
         <GlassPanel>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /> Weekly Alert Heatmap</h3>
@@ -461,6 +472,7 @@ export default function AlertsTimeline() {
             </div>
           </div>
         </GlassPanel>
+        )}
 
         {/* Dense Alert Table */}
         <GlassPanel>

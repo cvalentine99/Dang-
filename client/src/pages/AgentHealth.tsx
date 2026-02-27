@@ -2,6 +2,7 @@ import { trpc } from "@/lib/trpc";
 import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
 import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared/IndexerStates";
+import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
@@ -209,6 +210,13 @@ export default function AgentHealth() {
         </div>
 
         {/* Charts Row */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <ChartSkeleton variant="pie" height={200} title="Connection Status" className="lg:col-span-3" />
+            <ChartSkeleton variant="bar" height={200} title="OS Distribution" className="lg:col-span-5" />
+            <ChartSkeleton variant="bar" height={200} title="Agent Groups" className="lg:col-span-4" />
+          </div>
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <GlassPanel className="lg:col-span-3">
             <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Activity className="h-4 w-4 text-primary" /> Connection Status</h3>
@@ -249,6 +257,7 @@ export default function AgentHealth() {
             </div>
           </GlassPanel>
         </div>
+        )}
 
         {/* Agent Table */}
         <GlassPanel>

@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { GlassPanel, StatCard, ThreatBadge, RawJsonViewer, RefreshControl, IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared";
+import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { trpc } from "@/lib/trpc";
@@ -574,6 +575,13 @@ export default function SiemEvents() {
       </div>
 
       {/* ── Charts Row ────────────────────────────────────────────────────── */}
+      {alertsSearchQ.isLoading ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <ChartSkeleton variant="area" height={180} title="Event Volume (24h)" />
+          <ChartSkeleton variant="pie" height={180} title="Severity Distribution" />
+          <ChartSkeleton variant="bar" height={180} title="MITRE Tactic Hits" />
+        </div>
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Event Timeline */}
         <GlassPanel className="lg:col-span-1">
@@ -652,8 +660,15 @@ export default function SiemEvents() {
           </ResponsiveContainer>
         </GlassPanel>
       </div>
+      )}
 
       {/* ── Log Source + Decoder Breakdown ─────────────────────────────────── */}
+      {alertsSearchQ.isLoading ? (
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          <ChartSkeleton variant="bar" height={200} title="Log Sources" />
+          <ChartSkeleton variant="bar" height={200} title="Events by Decoder" className="lg:col-span-3" />
+        </div>
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <GlassPanel className="lg:col-span-1">
           <h3 className="text-sm font-semibold text-violet-300 mb-3 flex items-center gap-2">
@@ -703,6 +718,7 @@ export default function SiemEvents() {
           </ResponsiveContainer>
         </GlassPanel>
       </div>
+      )}
 
       {/* ── Search + Filters ──────────────────────────────────────────────── */}
       <GlassPanel>

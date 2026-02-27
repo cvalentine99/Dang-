@@ -940,7 +940,7 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 
 - [ ] Fix frontend rendering crash on /rules page — backend APIs confirmed returning data
 - [ ] Debug exact field shape mismatch causing the crash with real Wazuh responses
-- [ ] Add error boundary to catch and display render errors gracefully
+- [x] Add error boundary to catch and display render errors gracefully
 
 - [x] Rename "SecondSight Analyst" to "Walter" on the Security Analyst page
 
@@ -1379,3 +1379,11 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Add loading spinner to ThreatHunting page
 - [x] Add loading spinner to FleetCommand page
 - [x] Add skeleton stat cards to all dashboard pages during loading
+
+## Phase: Chart Skeleton Loaders, Global Error Boundary, KG Seed
+- [x] Create ChartSkeleton component with shimmer animation for Recharts panels
+- [x] Apply ChartSkeleton to all 7 dashboard pages during loading state
+- [x] Create global GlassErrorBoundary component to catch page-level crashes
+- [x] Wire GlassErrorBoundary into App.tsx route layout
+- [x] Seed KG tables on Docker database using seed-kg.mjs --drop
+- [x] Write tests for ChartSkeleton and GlassErrorBoundary components

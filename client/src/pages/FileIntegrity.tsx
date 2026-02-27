@@ -1,6 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
+import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
@@ -151,6 +152,12 @@ export default function FileIntegrity() {
           <StatCard label="Scan Status" value={lastScan ? "Complete" : "Unknown"} icon={Shield} colorClass="text-primary" />
         </div>
 
+        {isLoading ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <ChartSkeleton variant="pie" height={200} title="Event Types" className="lg:col-span-4" />
+            <ChartSkeleton variant="bar" height={200} title="File Extensions" className="lg:col-span-8" />
+          </div>
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <GlassPanel className="lg:col-span-4">
             <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Eye className="h-4 w-4 text-primary" /> Event Types</h3>
@@ -178,6 +185,7 @@ export default function FileIntegrity() {
             </ResponsiveContainer>
           </GlassPanel>
         </div>
+        )}
 
         <GlassPanel>
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">

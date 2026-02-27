@@ -43,35 +43,37 @@ function Router() {
       {/* Dashboard routes — inside DashboardLayout */}
       <Route>
         <DashboardLayout>
-          <Switch>
-            <Route path="/" component={Home} />
-            <Route path="/agents" component={AgentHealth} />
-            <Route path="/alerts" component={AlertsTimeline} />
-            <Route path="/vulnerabilities" component={Vulnerabilities} />
-            <Route path="/mitre" component={MitreAttack} />
-            <Route path="/compliance" component={Compliance} />
-            <Route path="/fim" component={FileIntegrity} />
-            <Route path="/hygiene" component={ITHygiene} />
-            <Route path="/cluster" component={ClusterHealth} />
-            <Route path="/siem" component={SiemEvents} />
-            <Route path="/hunting" component={ThreatHunting} />
-            <Route path="/rules" component={RulesetExplorer} />
-            <Route path="/threat-intel" component={ThreatIntel} />
-            <Route path="/notes" component={AnalystNotes} />
-            <Route path="/assistant" component={Assistant} />
-            <Route path="/status" component={Status} />
-            <Route path="/admin/users" component={AdminUsers} />
-            <Route path="/admin/settings" component={AdminSettings} />
-            <Route path="/admin/token-usage" component={TokenUsage} />
-            <Route path="/analyst" component={AnalystChat} />
-            <Route path="/graph" component={KnowledgeGraph} />
-            <Route path="/investigations" component={Investigations} />
-            <Route path="/pipeline" component={DataPipeline} />
-            <Route path="/alert-queue" component={AlertQueue} />
-            <Route path="/auto-queue-rules" component={AutoQueueRules} />
-            <Route path="/404" component={NotFound} />
-            <Route component={NotFound} />
-          </Switch>
+          <ErrorBoundary inline label="Page">
+            <Switch>
+              <Route path="/" component={Home} />
+              <Route path="/agents" component={AgentHealth} />
+              <Route path="/alerts" component={AlertsTimeline} />
+              <Route path="/vulnerabilities" component={Vulnerabilities} />
+              <Route path="/mitre" component={MitreAttack} />
+              <Route path="/compliance" component={Compliance} />
+              <Route path="/fim" component={FileIntegrity} />
+              <Route path="/hygiene" component={ITHygiene} />
+              <Route path="/cluster" component={ClusterHealth} />
+              <Route path="/siem" component={SiemEvents} />
+              <Route path="/hunting" component={ThreatHunting} />
+              <Route path="/rules" component={RulesetExplorer} />
+              <Route path="/threat-intel" component={ThreatIntel} />
+              <Route path="/notes" component={AnalystNotes} />
+              <Route path="/assistant" component={Assistant} />
+              <Route path="/status" component={Status} />
+              <Route path="/admin/users" component={AdminUsers} />
+              <Route path="/admin/settings" component={AdminSettings} />
+              <Route path="/admin/token-usage" component={TokenUsage} />
+              <Route path="/analyst" component={AnalystChat} />
+              <Route path="/graph" component={KnowledgeGraph} />
+              <Route path="/investigations" component={Investigations} />
+              <Route path="/pipeline" component={DataPipeline} />
+              <Route path="/alert-queue" component={AlertQueue} />
+              <Route path="/auto-queue-rules" component={AutoQueueRules} />
+              <Route path="/404" component={NotFound} />
+              <Route component={NotFound} />
+            </Switch>
+          </ErrorBoundary>
         </DashboardLayout>
       </Route>
     </Switch>

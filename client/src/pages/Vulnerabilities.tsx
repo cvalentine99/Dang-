@@ -2,6 +2,7 @@ import { trpc } from "@/lib/trpc";
 import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
 import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared/IndexerStates";
+import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
@@ -361,6 +362,12 @@ export default function Vulnerabilities() {
         {viewMode === "fleet" && (
           <div className="space-y-4">
             {/* Row 1: Severity Pie + Top CVEs */}
+            {vulnSearchQ.isLoading ? (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                <ChartSkeleton variant="pie" height={220} title="Severity Distribution" className="lg:col-span-4" />
+                <ChartSkeleton variant="bar" height={220} title="Top CVEs Across Fleet" className="lg:col-span-8" />
+              </div>
+            ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
               <GlassPanel className="lg:col-span-4">
                 <div className="flex items-center justify-between mb-4">
@@ -411,8 +418,15 @@ export default function Vulnerabilities() {
                 </div>
               </GlassPanel>
             </div>
+            )}
 
             {/* Row 2: Top Vulnerable Agents + Top Packages Treemap */}
+            {vulnSearchQ.isLoading ? (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                <ChartSkeleton variant="bar" height={240} title="Top Vulnerable Agents" className="lg:col-span-6" />
+                <ChartSkeleton variant="bar" height={240} title="Most Affected Packages" className="lg:col-span-6" />
+              </div>
+            ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
               <GlassPanel className="lg:col-span-6">
                 <div className="flex items-center justify-between mb-4">
@@ -494,6 +508,7 @@ export default function Vulnerabilities() {
                 )}
               </GlassPanel>
             </div>
+            )}
           </div>
         )}
 

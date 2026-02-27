@@ -2,6 +2,7 @@ import { trpc } from "@/lib/trpc";
 import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
 import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared/IndexerStates";
+import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
@@ -339,6 +340,9 @@ export default function MitreAttack() {
 
           {/* ── ATT&CK Matrix Tab ──────────────────────────────────────── */}
           <TabsContent value="matrix" className="space-y-4 mt-4">
+            {isLoading ? (
+              <ChartSkeleton variant="bar" height={240} title="Tactic Distribution" />
+            ) : (
             <GlassPanel>
               <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Target className="h-4 w-4 text-primary" /> Tactic Distribution <SourceBadge source={"server"} /></h3>
               <ResponsiveContainer width="100%" height={240}>
@@ -351,6 +355,7 @@ export default function MitreAttack() {
                 </BarChart>
               </ResponsiveContainer>
             </GlassPanel>
+            )}
 
             <GlassPanel>
               <div className="flex items-center justify-between mb-4">
