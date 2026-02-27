@@ -42,7 +42,7 @@ function createTestContext(): TrpcContext {
       openId: "test-user",
       email: "test@example.com",
       name: "Test User",
-      loginMethod: "manus",
+      loginMethod: "local",
       role: "admin",
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -132,10 +132,8 @@ describe("wazuh router", () => {
     expect(result).toBeDefined();
   });
 
-  it("agentVulnerabilities endpoint requires agentId", async () => {
-    const result = await caller.wazuh.agentVulnerabilities({ agentId: "001", limit: 10, offset: 0 });
-    expect(result).toBeDefined();
-  });
+  // agentVulnerabilities removed — GET /vulnerability/{agent_id} does not exist in Wazuh v4.14.
+  // Per-agent vuln data now comes from indexer.vulnSearch with agentId filter.
 
   it("daemonStats endpoint requires daemons array", async () => {
     const result = await caller.wazuh.daemonStats({ daemons: ["wazuh-analysisd"] });

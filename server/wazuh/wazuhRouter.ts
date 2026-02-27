@@ -446,29 +446,9 @@ export const wazuhRouter = router({
   // ══════════════════════════════════════════════════════════════════════════════
   // VULNERABILITIES
   // ══════════════════════════════════════════════════════════════════════════════
-  agentVulnerabilities: publicProcedure
-    .input(
-      z.object({
-        agentId: agentIdSchema,
-        severity: z.enum(["critical", "high", "medium", "low"]).optional(),
-        status: z.string().optional(),
-        search: z.string().optional(),
-        ...paginationSchema.shape,
-      })
-    )
-    .query(({ input }) =>
-      proxyGet(
-        `/vulnerability/${input.agentId}`,
-        {
-          limit: input.limit,
-          offset: input.offset,
-          severity: input.severity,
-          status: input.status,
-          search: input.search,
-        },
-        "vulnerabilities"
-      )
-    ),
+  // NOTE: GET /vulnerability/{agent_id} was removed in Wazuh 4.8.
+  // Per-agent vulnerability data is now in the Wazuh Indexer under
+  // wazuh-states-vulnerabilities-* — use indexer.vulnSearchByAgent instead.
 
   // ══════════════════════════════════════════════════════════════════════════════
   // SCA / COMPLIANCE
@@ -516,7 +496,6 @@ export const wazuhRouter = router({
         agentId: agentIdSchema,
         type: z.enum(["file", "registry"]).optional(),
         search: z.string().optional(),
-        event: z.enum(["added", "modified", "deleted"]).optional(),
         hash: z.string().optional(),
         file: z.string().optional(),
         ...paginationSchema.shape,
@@ -530,7 +509,6 @@ export const wazuhRouter = router({
           offset: input.offset,
           type: input.type,
           search: input.search,
-          event: input.event,
           hash: input.hash,
           file: input.file,
         },
@@ -602,12 +580,9 @@ export const wazuhRouter = router({
       })
     ),
 
-  // ══════════════════════════════════════════════════════════════════════════════
-  // ACTIVE RESPONSE (read-only audit view)
-  // ══════════════════════════════════════════════════════════════════════════════
-  activeResponseList: publicProcedure.query(() =>
-    proxyGet("/active-response")
-  ),
+  // NOTE: GET /active-response does not exist in Wazuh v4.14.3.
+  // The spec only defines PUT /active-response (trigger action — write operation).
+  // Removed activeResponseList per audit.
 
   // ══════════════════════════════════════════════════════════════════════════════
   // SECURITY (RBAC info — read-only)

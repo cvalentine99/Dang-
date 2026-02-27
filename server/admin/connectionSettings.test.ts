@@ -20,7 +20,7 @@ vi.mock("../db", () => ({
 // Mock connectionSettingsService
 vi.mock("./connectionSettingsService", () => ({
   getEffectiveSettings: vi.fn(async () => ({
-    values: { host: "192.168.1.1", port: "55000", user: "wazuh-wui", pass: "secret" },
+    values: { host: "localhost", port: "55000", user: "wazuh-wui", pass: "secret" },
     sources: { host: "env", port: "env", user: "env", pass: "env" },
   })),
   saveSettings: vi.fn(async () => undefined),
@@ -152,7 +152,7 @@ describe("connectionSettings router", () => {
     await expect(
       userCaller.connectionSettings.updateSettings({
         category: "wazuh_manager",
-        settings: { host: "192.168.1.1" },
+        settings: { host: "localhost" },
       })
     ).rejects.toThrow();
   });
@@ -160,7 +160,7 @@ describe("connectionSettings router", () => {
   it("admin can update wazuh_manager settings", async () => {
     const result = await adminCaller.connectionSettings.updateSettings({
       category: "wazuh_manager",
-      settings: { host: "192.168.1.1", port: "55000" },
+      settings: { host: "localhost", port: "55000" },
     });
     expect(result).toHaveProperty("success", true);
   });
@@ -168,7 +168,7 @@ describe("connectionSettings router", () => {
   it("admin can update wazuh_indexer settings", async () => {
     const result = await adminCaller.connectionSettings.updateSettings({
       category: "wazuh_indexer",
-      settings: { host: "192.168.1.2", port: "9200" },
+      settings: { host: "localhost", port: "9200" },
     });
     expect(result).toHaveProperty("success", true);
   });
@@ -188,7 +188,7 @@ describe("connectionSettings router", () => {
     await expect(
       userCaller.connectionSettings.testConnection({
         category: "wazuh_manager",
-        settings: { host: "192.168.1.1", user: "admin", pass: "secret" },
+        settings: { host: "localhost" },
       })
     ).rejects.toThrow();
   });
@@ -202,7 +202,7 @@ describe("connectionSettings router", () => {
     });
     const result = await adminCaller.connectionSettings.testConnection({
       category: "wazuh_manager",
-      settings: { host: "192.168.1.1" },
+      settings: { host: "localhost" },
     });
     expect(result).toHaveProperty("success", false);
     expect(result.message).toContain("required");
@@ -217,7 +217,7 @@ describe("connectionSettings router", () => {
     });
     const result = await adminCaller.connectionSettings.testConnection({
       category: "wazuh_manager",
-      settings: { host: "192.168.99.99", port: "55000" },
+      settings: { host: "test.invalid", port: "55000" },
     });
     expect(result).toHaveProperty("success", false);
     expect(result.message).toContain("required");
@@ -233,7 +233,7 @@ describe("connectionSettings router", () => {
     });
     const result = await adminCaller.connectionSettings.testConnection({
       category: "wazuh_indexer",
-      settings: { host: "192.168.99.99", port: "9200" },
+      settings: { host: "test.invalid", port: "9200" },
     });
     expect(result).toHaveProperty("success", false);
     expect(result.message).toContain("required");

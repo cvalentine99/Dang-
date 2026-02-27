@@ -119,13 +119,39 @@ export default function Vulnerabilities() {
     { retry: 1, staleTime: 15_000, enabled: isIndexerConnected && viewMode === "fleet" }
   );
 
-  // ── Server API: Per-agent vulnerabilities ─────────────────────────────────
-  const vulnsQ = trpc.wazuh.agentVulnerabilities.useQuery({
-    agentId, limit: pageSize, offset: page * pageSize,
-    severity: sevFilter !== "all" ? sevFilter as "critical" | "high" | "medium" | "low" : undefined,
-  }, { retry: 1, staleTime: 15_000, enabled: isWazuhConnected && viewMode === "agent" });
+  // ── Indexer: Per-agent vulnerabilities (replaces removed GET /vulnerability/{id}) ──
+  const vulnsQ = trpc.indexer.vulnSearch.useQuery({
+    agentId, size: pageSize, offset: page * pageSize,
+    severity: sevFilter !== "all" ? (sevFilter.charAt(0).toUpperCase() + sevFilter.slice(1)) as "Critical" | "High" | "Medium" | "Low" : undefined,
+  }, { retry: 1, staleTime: 15_000, enabled: isIndexerConnected && viewMode === "agent" });
 
   const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); utils.indexer.invalidate(); }, [utils]);
+
+  // ── Per-agent vulns from indexer (same shape as fleet search) ──────────────
+  const agentVulnsParsed = useMemo(() => {
+    if (viewMode !== "agent" || !isIndexerConnected || !vulnsQ.data?.data) return { items: [] as Array<Record<string, unknown>>, total: 0 };
+    const resp = vulnsQ.data.data as unknown as Record<string, unknown>;
+    const hits = (resp.hits as Record<string, unknown>) ?? {};
+    const hitArr = ((hits.hits as Array<Record<string, unknown>>) ?? []);
+    const total = typeof hits.total === "object" ? Number((hits.total as Record<string, unknown>).value ?? 0) : Number(hits.total ?? 0);
+    const mapped = hitArr.map(h => {
+      const src = (h._source as Record<string, unknown>) ?? {};
+      const vuln = (src.vulnerability as Record<string, unknown>) ?? {};
+      const pkg = (src.package as Record<string, unknown>) ?? {};
+      const agent = (src.agent as Record<string, unknown>) ?? {};
+      return {
+        _id: String(h._id ?? ""),
+        cve: vuln.id, severity: vuln.severity, title: vuln.title,
+        cvss3_score: (vuln.score as Record<string, unknown>)?.base,
+        name: pkg.name, version: pkg.version, architecture: pkg.architecture,
+        status: vuln.status ?? vuln.condition,
+        published: vuln.published, updated: vuln.updated,
+        agent_id: agent.id, agent_name: agent.name,
+        _raw: src,
+      } as Record<string, unknown>;
+    });
+    return { items: mapped, total };
+  }, [viewMode, isIndexerConnected, vulnsQ.data]);
 
   // ── Fleet severity distribution (Indexer or mock) ─────────────────────────
   const { fleetSevDist, fleetTotal, fleetAvgCvss, fleetSource } = useMemo(() => {
@@ -221,15 +247,13 @@ export default function Vulnerabilities() {
     };
   }, [isIndexerConnected, vulnCveQ.data]);
 
-  // ── Per-agent vulns (Server API or mock) ──────────────────────────────────
+  // ── Per-agent vulns (Indexer-powered) ──────────────────────────────────────
   const { agentVulns, agentTotal, agentVulnSource } = useMemo(() => {
-    if (isWazuhConnected && vulnsQ.data) {
-      const items = extractItems(vulnsQ.data);
-      const d = (vulnsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-      return { agentVulns: items, agentTotal: Number(d?.total_affected_items ?? items.length), agentVulnSource: "server" as const };
+    if (agentVulnsParsed.items.length > 0) {
+      return { agentVulns: agentVulnsParsed.items, agentTotal: agentVulnsParsed.total, agentVulnSource: "indexer" as const };
     }
-    return { agentVulns: [] as Array<Record<string, unknown>>, agentTotal: 0, agentVulnSource: "server" as const };
-  }, [vulnsQ.data, isWazuhConnected, sevFilter]);
+    return { agentVulns: [] as Array<Record<string, unknown>>, agentTotal: 0, agentVulnSource: "indexer" as const };
+  }, [agentVulnsParsed]);
 
   // ── Indexer fleet-wide search results ─────────────────────────────────────
   const { fleetVulns, fleetSearchTotal, fleetSearchSource } = useMemo(() => {

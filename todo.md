@@ -1342,3 +1342,18 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Updated: minimatch 10.2.2→10.2.3, @aws-sdk/client-s3 3.995.0→3.999.0, fast-xml-parser 5.3.6→5.4.1, deduped
 - [x] 357/357 tests passing, pnpm audit: 0 vulnerabilities
 - [x] Push to GitHub and save checkpoint
+
+- [ ] Fix 5 failing graph tests: drop bad kg_* tables and recreate with correct schema columns
+- [x] Build reusable seed-kg.mjs script to repopulate all 12 kg_* tables from Wazuh OpenAPI spec (~2,573 records)
+- [x] Verify seed script produces correct record counts and all 357/357 tests pass
+- [x] Full API call audit: inventory all backend routers and external API calls
+- [x] Map every dashboard page to its tRPC calls
+- [x] Validate all Wazuh API calls against v4.14.3 OpenAPI spec
+- [x] Validate Indexer, Splunk, OTX, and LLM service calls
+- [x] Fix all hardcoded IP addresses to localhost (app is co-located on Wazuh server)
+- [x] Fix #1: Remove broken agentVulnerabilities procedure (GET /vulnerability/{id} doesn't exist in v4.14)
+- [x] Fix #2: Remove broken activeResponseList procedure (GET /active-response doesn't exist)
+- [x] Fix #3: Remove invalid `event` param from syscheckFiles procedure
+- [x] Reuse indexer.vulnSearch with agentId filter for per-agent vulnerability queries
+- [x] Update Vulnerabilities.tsx agent-view to use indexer instead of Wazuh Manager API
+- [x] Update tests for all 3 fixes (356/356 passing, 0 TS errors)

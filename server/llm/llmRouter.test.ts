@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("./llmService", () => ({
   getEffectiveLLMConfig: vi.fn().mockResolvedValue({
-    host: "192.168.50.110",
+    host: "localhost",
     port: 30000,
     model: "unsloth/Nemotron-3-Nano-30B-A3B-GGUF",
     apiKey: "",
@@ -70,7 +70,7 @@ describe("LLM Router", () => {
 
       // Verify the mock returns the expected config
       const config = await getEffectiveLLMConfig();
-      expect(config.host).toBe("192.168.50.110");
+      expect(config.host).toBe("localhost");
       expect(config.enabled).toBe(true);
 
       global.fetch = originalFetch;
