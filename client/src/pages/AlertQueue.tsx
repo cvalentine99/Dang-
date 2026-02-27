@@ -70,6 +70,42 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+/**
+ * Splunk deep link — clickable ticket ID that opens the notable event
+ * in Splunk ES Mission Control's Incident Review dashboard.
+ */
+function SplunkTicketLink({ ticketId }: { ticketId: string }) {
+  const splunkBaseUrl = trpc.splunk.getSplunkBaseUrl.useQuery(undefined, { staleTime: 60_000 });
+
+  const url = splunkBaseUrl.data?.incidentReviewUrl
+    ? `${splunkBaseUrl.data.incidentReviewUrl}?search=${encodeURIComponent(`ticket_id="${ticketId}"`)}`
+    : null;
+
+  if (url) {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[10px] font-mono hover:bg-emerald-500/20 hover:text-emerald-200 transition-all group"
+        title="Open in Splunk ES Mission Control"
+      >
+        <Ticket className="h-3 w-3" />
+        {ticketId}
+        <ExternalLink className="h-2.5 w-2.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </a>
+    );
+  }
+
+  // Fallback: no Splunk host configured, show plain text
+  return (
+    <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[10px] font-mono">
+      <Ticket className="h-3 w-3" />
+      {ticketId}
+    </span>
+  );
+}
+
 // Queue item card
 function QueueItemCard({
   item,
@@ -204,12 +240,9 @@ function QueueItemCard({
                   Create Ticket
                 </button>
               )}
-              {/* Show ticket ID if already created */}
+              {/* Show ticket ID if already created — clickable deep link to Splunk ES */}
               {triage?.splunkTicketId && (
-                <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[10px] font-mono">
-                  <Ticket className="h-3 w-3" />
-                  {triage.splunkTicketId}
-                </span>
+                <SplunkTicketLink ticketId={triage.splunkTicketId} />
               )}
               <button
                 onClick={handleAnalyzeInWalter}

@@ -31,6 +31,7 @@ import DataPipeline from "./pages/DataPipeline";
 import AdminSettings from "./pages/AdminSettings";
 import TokenUsage from "./pages/TokenUsage";
 import AlertQueue from "./pages/AlertQueue";
+import AutoQueueRules from "./pages/AutoQueueRules";
 
 function Router() {
   return (
@@ -67,6 +68,7 @@ function Router() {
             <Route path="/investigations" component={Investigations} />
             <Route path="/pipeline" component={DataPipeline} />
             <Route path="/alert-queue" component={AlertQueue} />
+            <Route path="/auto-queue-rules" component={AutoQueueRules} />
             <Route path="/404" component={NotFound} />
             <Route component={NotFound} />
           </Switch>
