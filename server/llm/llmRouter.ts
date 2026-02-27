@@ -168,9 +168,10 @@ export const llmRouter = router({
         bucketFormat = "%Y-%m-%d";
       }
 
+      const fmt = sql.raw(`'${bucketFormat}'`);
       const rows = await db
         .select({
-          bucket: sql<string>`DATE_FORMAT(${llmUsage.createdAt}, ${bucketFormat})`,
+          bucket: sql<string>`DATE_FORMAT(${llmUsage.createdAt}, ${fmt})`,
           requests: sql<number>`COUNT(*)`,
           promptTokens: sql<number>`COALESCE(SUM(${llmUsage.promptTokens}), 0)`,
           completionTokens: sql<number>`COALESCE(SUM(${llmUsage.completionTokens}), 0)`,
@@ -179,8 +180,8 @@ export const llmRouter = router({
         })
         .from(llmUsage)
         .where(gte(llmUsage.createdAt, cutoff))
-        .groupBy(sql`DATE_FORMAT(${llmUsage.createdAt}, ${bucketFormat})`)
-        .orderBy(sql`DATE_FORMAT(${llmUsage.createdAt}, ${bucketFormat})`);
+        .groupBy(sql`DATE_FORMAT(${llmUsage.createdAt}, ${fmt})`)
+        .orderBy(sql`DATE_FORMAT(${llmUsage.createdAt}, ${fmt})`);
 
       return rows;
     }),

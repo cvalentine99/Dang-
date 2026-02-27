@@ -1282,3 +1282,12 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Run all tests and verify passing (338/338)
 - [x] Push to GitHub
 - [x] Save checkpoint
+
+## Phase 42: Code Audit Bug Fixes
+
+- [x] Fix AnalystChat.tsx nested button (line 139/164) — Replay button inside expand button
+- [x] Fix llmRouter.ts usageHistory SQL — DATE_FORMAT bucketFormat passed as param instead of raw SQL
+- [x] Replace Google Maps ThreatMap with Leaflet/OpenStreetMap for on-prem deployment
+- [x] Run all tests and verify passing (338/338)
+- [x] Push to GitHub (commit 6b253dd)
+- [x] Save checkpoint
