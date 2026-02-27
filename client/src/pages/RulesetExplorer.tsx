@@ -183,9 +183,24 @@ export default function RulesetExplorer() {
     details: (r.details as Record<string, string>) ?? {},
   }));
 
-  const decoders: WazuhDecoder[] = (
+  const decoders: WazuhDecoder[] = ((
     (decodersRaw as Record<string, unknown>)?.data as Record<string, unknown> | undefined
-  )?.affected_items as WazuhDecoder[] ?? [];
+  )?.affected_items as Array<Record<string, unknown>> ?? []).map((d): WazuhDecoder => {
+    const rawDetails = (d.details as Record<string, unknown>) ?? {};
+    const safeDetails: Record<string, string> = {};
+    for (const [k, v] of Object.entries(rawDetails)) {
+      safeDetails[k] = typeof v === "string" ? v : JSON.stringify(v);
+    }
+    return {
+      name: String(d.name ?? ""),
+      position: Number(d.position ?? 0),
+      status: String(d.status ?? ""),
+      file: String(d.file ?? ""),
+      path: String(d.path ?? ""),
+      details: safeDetails,
+      relative_dirname: String(d.relative_dirname ?? ""),
+    };
+  });
 
   const ruleGroups: string[] = (
     (ruleGroupsRaw as Record<string, unknown>)?.data as Record<string, unknown> | undefined
