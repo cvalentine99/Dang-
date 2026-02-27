@@ -1307,3 +1307,16 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 ## Phase 45: Analyst Chat Full-Width Fix
 
 - [x] Remove all max-width constraints from Analyst Chat — removed max-w-6xl from messages/input, removed max-w-[90%] from bubbles and live console
+
+## Phase 46: Complete Queue Pipeline — Auto-Queue, Splunk Deep Links, Notification History
+
+- [x] Auto-queue rules: DB table for rules (severity threshold, rule IDs, agent patterns, enabled flag)
+- [x] Auto-queue rules: Backend procedure to CRUD rules
+- [x] Auto-queue rules: Backend polling service that checks Wazuh Indexer for new alerts matching rules and auto-enqueues
+- [x] Auto-queue rules: Frontend settings UI — dedicated /auto-queue-rules page with create/edit/delete/toggle
+- [x] Splunk deep links: Make ticket IDs clickable in AlertQueue triage results
+- [x] Splunk deep links: Build URL from Splunk host + ticket ID to open in Splunk ES incident review (port 8089→8000 mapping)
+- [x] Notification history panel: Store last 20 notifications in state/localStorage
+- [x] Notification history panel: Bell icon dropdown with unread count badge, mark all read, clear, settings, and View Queue link
+- [x] Write tests for auto-queue rules and Splunk deep link generation (19 new tests)
+- [x] Push to GitHub and save checkpoint (357/357 tests passing)

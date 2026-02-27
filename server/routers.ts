@@ -16,6 +16,7 @@ import { connectionSettingsRouter } from "./admin/connectionSettingsRouter";
 import { llmRouter } from "./llm/llmRouter";
 import { alertQueueRouter } from "./alertQueue/alertQueueRouter";
 import { splunkRouter } from "./splunk/splunkRouter";
+import { autoQueueRouter } from "./alertQueue/autoQueueRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -73,6 +74,9 @@ export const appRouter = router({
 
   // Splunk ES Mission Control — HEC ticket creation
   splunk: splunkRouter,
+
+  // Auto-queue rules — automatic alert-to-Walter routing
+  autoQueue: autoQueueRouter,
 });
 
 export type AppRouter = typeof appRouter;

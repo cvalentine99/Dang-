@@ -248,6 +248,26 @@ export const splunkRouter = router({
   }),
 
   /**
+   * Get the Splunk ES base URL for constructing deep links.
+   * Returns the URL pattern for Incident Review page.
+   */
+  getSplunkBaseUrl: protectedProcedure.query(async () => {
+    const config = await getEffectiveSplunkConfig();
+    if (!config.enabled || !config.host) {
+      return { url: null, enabled: false };
+    }
+    // Splunk Web runs on port 8000 by default (not the management port 8089)
+    const webPort = config.port === "8089" ? "8000" : config.port;
+    const baseUrl = `${config.protocol}://${config.host}:${webPort}`;
+    return {
+      url: baseUrl,
+      enabled: true,
+      // Full deep link pattern: {baseUrl}/en-US/app/SplunkEnterpriseSecuritySuite/incident_review?search=ticket_id%3D{ticketId}
+      incidentReviewUrl: `${baseUrl}/en-US/app/SplunkEnterpriseSecuritySuite/incident_review`,
+    };
+  }),
+
+  /**
    * Batch create Splunk ES tickets for all completed triage reports
    * that don't already have a ticket. Requires admin role.
    * Updates in-memory progress tracker for real-time polling.

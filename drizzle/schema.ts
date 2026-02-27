@@ -541,3 +541,47 @@ export const alertQueue = mysqlTable("alert_queue", {
 
 export type AlertQueueItem = typeof alertQueue.$inferSelect;
 export type InsertAlertQueueItem = typeof alertQueue.$inferInsert;
+
+/**
+ * Auto-queue rules — configurable rules that automatically send matching
+ * Wazuh alerts to Walter's queue without manual analyst intervention.
+ *
+ * Rules are evaluated against incoming alerts from the Wazuh Indexer.
+ * When an alert matches a rule, it is automatically enqueued for Walter analysis.
+ *
+ * Rule types:
+ * - severity_threshold: Queue any alert at or above a severity level
+ * - rule_id: Queue alerts matching specific Wazuh rule IDs
+ * - agent_pattern: Queue alerts from agents matching a name/ID pattern
+ * - combined: All conditions must match (AND logic)
+ */
+export const autoQueueRules = mysqlTable("auto_queue_rules", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Human-readable name for the rule */
+  name: varchar("name", { length: 256 }).notNull(),
+  /** Whether this rule is active */
+  enabled: int("enabled").default(1).notNull(),
+  /** Minimum severity level (0-15) to trigger auto-queue. Null = no severity filter */
+  minSeverity: int("minSeverity"),
+  /** Comma-separated Wazuh rule IDs to match. Null = no rule ID filter */
+  ruleIds: text("ruleIds"),
+  /** Agent name/ID pattern (supports * wildcard). Null = no agent filter */
+  agentPattern: varchar("agentPattern", { length: 256 }),
+  /** MITRE technique IDs to match (comma-separated). Null = no MITRE filter */
+  mitreTechniqueIds: text("mitreTechniqueIds"),
+  /** Maximum alerts this rule can auto-queue per hour (rate limit) */
+  maxPerHour: int("maxPerHour").default(10).notNull(),
+  /** Count of alerts auto-queued by this rule in the current hour window */
+  currentHourCount: int("currentHourCount").default(0).notNull(),
+  /** Timestamp of the current hour window start */
+  currentHourStart: timestamp("currentHourStart"),
+  /** User who created this rule */
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ([
+  index("aqr_enabled_idx").on(table.enabled),
+]));
+
+export type AutoQueueRule = typeof autoQueueRules.$inferSelect;
+export type InsertAutoQueueRule = typeof autoQueueRules.$inferInsert;
