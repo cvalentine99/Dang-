@@ -131,7 +131,7 @@ export default function ITHygiene() {
     { retry: 1, staleTime: 30_000, enabled: isConnected }
   );
   const agentList = useMemo(() => {
-    if (isConnected && agentsQ.data) return extractItems(agentsQ.data).items;
+    if (isConnected && agentsQ.data) return extractItems(agentsQ.data).items.filter(a => String(a.id ?? "") !== "");
     return [];
   }, [agentsQ.data, isConnected]);
 
