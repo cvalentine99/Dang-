@@ -47,7 +47,7 @@ interface StatusResponse {
   status: "healthy" | "degraded" | "unhealthy";
   timestamp: string;
   totalLatencyMs: number;
-  authMode: "local" | "oauth";
+  authMode: string;
   version: string;
   nodeEnv: string;
   checks: {
@@ -402,7 +402,7 @@ export default function Status() {
               Environment
             </h3>
             <div className="space-y-3">
-              <ConfigRow label="Auth Mode" value={data.authMode === "local" ? "Local (JWT + bcrypt)" : "Manus OAuth"} icon={Lock} />
+              <ConfigRow label="Auth Mode" value="Local (JWT + bcrypt)" icon={Lock} />
               <ConfigRow label="Environment" value={data.nodeEnv} icon={Settings2} />
               <ConfigRow label="Version" value={data.version} icon={Activity} />
               <ConfigRow

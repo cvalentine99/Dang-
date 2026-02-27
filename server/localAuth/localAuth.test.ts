@@ -15,19 +15,9 @@ describe("localAuth", () => {
       process.env = originalEnv;
     });
 
-    it("returns true when OAUTH_SERVER_URL is not set", async () => {
-      delete process.env.OAUTH_SERVER_URL;
-      // Re-import to get fresh ENV
+    it("always returns true (local auth only, no OAuth)", async () => {
       const { isLocalAuthMode } = await import("./localAuthService");
-      // Since ENV is loaded at module level, we need to test the function logic
-      // The function checks ENV.oAuthServerUrl which is set at import time
-      expect(typeof isLocalAuthMode).toBe("function");
-    });
-
-    it("isLocalAuthMode function exists and returns boolean", async () => {
-      const { isLocalAuthMode } = await import("./localAuthService");
-      const result = isLocalAuthMode();
-      expect(typeof result).toBe("boolean");
+      expect(isLocalAuthMode()).toBe(true);
     });
   });
 

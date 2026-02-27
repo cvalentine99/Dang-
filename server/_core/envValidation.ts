@@ -77,25 +77,6 @@ const ENV_CHECKS: EnvCheck[] = [
     category: "indexer",
   },
 
-  // Auth — only needed for Manus OAuth mode
-  {
-    key: "OAUTH_SERVER_URL",
-    required: false,
-    description: "Manus OAuth server URL (omit for local auth mode)",
-    category: "auth",
-  },
-  {
-    key: "VITE_OAUTH_PORTAL_URL",
-    required: false,
-    description: "Manus OAuth portal URL (omit for local auth mode)",
-    category: "auth",
-  },
-  {
-    key: "VITE_APP_ID",
-    required: false,
-    description: "Manus OAuth application ID (omit for local auth mode)",
-    category: "auth",
-  },
 
   // Optional Docker local auth
   {
@@ -116,7 +97,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   core: "Core (Required)",
   wazuh: "Wazuh Manager API",
   indexer: "Wazuh Indexer (OpenSearch)",
-  auth: "Authentication (Manus OAuth)",
+  auth: "Authentication",
   optional: "Optional",
 };
 
@@ -179,20 +160,15 @@ export function validateEnvironment(): {
     console.log("  └─");
   }
 
-  // Detect auth mode
-  const isLocalAuth =
-    !process.env.OAUTH_SERVER_URL ||
-    process.env.OAUTH_SERVER_URL.trim() === "";
+  // Auth mode — always local (JWT + bcrypt)
   console.log(
-    `\n  🔐 Auth mode: ${isLocalAuth ? "LOCAL (JWT + bcrypt)" : "MANUS OAUTH"}`
+    `\n  🔐 Auth mode: LOCAL (JWT + bcrypt)`
   );
-  if (isLocalAuth) {
-    info.push("Running in local auth mode — users register/login with username + password");
-    if (!process.env.LOCAL_ADMIN_USER || !process.env.LOCAL_ADMIN_PASS) {
-      info.push(
-        "No LOCAL_ADMIN_USER/LOCAL_ADMIN_PASS set — first registered user becomes admin"
-      );
-    }
+  info.push("Running in local auth mode — users register/login with username + password");
+  if (!process.env.LOCAL_ADMIN_USER || !process.env.LOCAL_ADMIN_PASS) {
+    info.push(
+      "No LOCAL_ADMIN_USER/LOCAL_ADMIN_PASS set — first registered user becomes admin"
+    );
   }
 
   // Check Wazuh connectivity config

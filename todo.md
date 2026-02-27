@@ -1272,3 +1272,13 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Run all tests and verify passing (339/339)
 - [x] Audit for local static assets needing S3 upload (none found)
 - [x] Save deployment checkpoint
+
+## Phase 41: Full Manus Platform Dependency Purge
+- [x] Audit all server/_core files for Manus OAuth middleware
+- [x] Audit all Forge API / BUILT_IN_FORGE references
+- [x] Audit all VITE_OAUTH / VITE_APP_ID / OAUTH_SERVER_URL references
+- [x] Remove or replace all Manus-specific backend code
+- [x] Ensure app is fully self-contained for on-prem deployment
+- [x] Run all tests and verify passing (338/338)
+- [x] Push to GitHub
+- [x] Save checkpoint

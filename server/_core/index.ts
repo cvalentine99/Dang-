@@ -3,7 +3,6 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -36,7 +35,7 @@ async function startServer() {
     process.exit(1);
   }
 
-  // Seed admin user in local auth mode (Docker self-hosted)
+  // Seed admin user in local auth mode
   try {
     const { seedAdminUser } = await import("../localAuth/localAuthService");
     await seedAdminUser();
@@ -70,10 +69,9 @@ async function startServer() {
   });
 
   // Comprehensive status endpoint for the /status dashboard
-  // Runs all checks in parallel with a short timeout to avoid blocking
   app.get("/api/status", async (_req, res) => {
     const startTime = Date.now();
-    const HEALTH_CHECK_TIMEOUT = 5_000; // 5s max per check
+    const HEALTH_CHECK_TIMEOUT = 5_000;
 
     type CheckResult = {
       status: "connected" | "disconnected" | "not_configured" | "error";
@@ -82,7 +80,6 @@ async function startServer() {
       error?: string;
     };
 
-    // Helper: race a promise against a timeout
     function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
       return Promise.race([
         promise,
@@ -121,7 +118,6 @@ async function startServer() {
         if (!config) return { status: "not_configured" };
 
         const wStart = Date.now();
-        // Use a lightweight TCP connect test instead of full API call for health check
         const net = await import("net");
         await new Promise<void>((resolve, reject) => {
           const socket = net.createConnection({ host: config.host, port: config.port, timeout: HEALTH_CHECK_TIMEOUT });
@@ -148,7 +144,6 @@ async function startServer() {
         if (!config) return { status: "not_configured" };
 
         const iStart = Date.now();
-        // Use a lightweight TCP connect test
         const net = await import("net");
         await new Promise<void>((resolve, reject) => {
           const socket = net.createConnection({ host: config.host, port: config.port, timeout: HEALTH_CHECK_TIMEOUT });
@@ -180,9 +175,8 @@ async function startServer() {
 
     const checks = { database, wazuhManager, wazuhIndexer };
 
-    // Auth mode
-    const { isLocalAuthMode } = await import("../localAuth/localAuthService");
-    const authMode = isLocalAuthMode() ? "local" : "oauth";
+    // Auth mode — always local
+    const authMode = "local";
 
     // Determine overall status
     const statuses = Object.values(checks).map(c => c.status);
@@ -210,8 +204,6 @@ async function startServer() {
     res.json(getStreamStats());
   });
 
-  // OAuth callback under /api/oauth/callback
-  registerOAuthRoutes(app);
   // tRPC API
   app.use(
     "/api/trpc",

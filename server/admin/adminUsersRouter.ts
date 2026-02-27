@@ -130,7 +130,7 @@ export const adminUsersRouter = router({
       if (target[0].loginMethod !== "local") {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Cannot reset password for OAuth users. They must authenticate via their OAuth provider.",
+          message: "Cannot reset password for this user. No password hash on file.",
         });
       }
 
