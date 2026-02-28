@@ -9,6 +9,7 @@ import { ExportButton } from "@/components/shared/ExportButton";
 import { ThreatMap } from "@/components/shared/ThreatMap";
 import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
+import { IndexerErrorState } from "@/components/shared/IndexerStates";
 import { EXPORT_COLUMNS } from "@/lib/exportUtils";
 
 import {
@@ -422,6 +423,14 @@ export default function Home() {
     <WazuhGuard>
       <div className="space-y-5">
         <PageHeader title="SOC Console" subtitle="Security Operations Center — Real-time threat intelligence and fleet telemetry" onRefresh={handleRefresh} isLoading={isLoading} />
+
+        {statusQ.isError && (
+          <IndexerErrorState
+            message="Failed to connect to Wazuh Manager"
+            detail={statusQ.error?.message}
+            onRetry={() => statusQ.refetch()}
+          />
+        )}
 
         {/* ── KPI Row ───────────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">

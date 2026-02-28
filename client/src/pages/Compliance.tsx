@@ -122,7 +122,7 @@ export default function Compliance() {
 
   const scaQ = trpc.wazuh.scaPolicies.useQuery({ agentId }, { retry: 1, staleTime: 30_000, enabled: isConnected });
   const checksQ = trpc.wazuh.scaChecks.useQuery(
-    { agentId, policyId: selectedPolicy ?? "" },
+    { agentId, policyId: selectedPolicy! },
     { retry: 1, staleTime: 30_000, enabled: isConnected && !!selectedPolicy }
   );
 

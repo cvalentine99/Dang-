@@ -58,9 +58,11 @@ const RATE_LIMITS: Record<string, number> = {
   alerts: 30,
   vulnerabilities: 20,
   syscheck: 20,
+  syscollector: 20,
+  connection_test: 5,
 };
 
-function checkRateLimit(group: string): void {
+export function checkRateLimit(group: string): void {
   const limit = RATE_LIMITS[group] ?? RATE_LIMITS.default;
   const now = Date.now();
   if (!rateLimitState[group] || now > rateLimitState[group].resetAt) {

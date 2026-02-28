@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { GlassPanel, StatCard, ThreatBadge, RawJsonViewer, RefreshControl } from "@/components/shared";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
+import { IndexerErrorState } from "@/components/shared/IndexerStates";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { trpc } from "@/lib/trpc";
@@ -328,6 +329,14 @@ export default function RulesetExplorer() {
           }}
         />
       </PageHeader>
+
+      {statusQ.isError && (
+        <IndexerErrorState
+          message="Failed to connect to Wazuh Manager"
+          detail={statusQ.error?.message}
+          onRetry={() => statusQ.refetch()}
+        />
+      )}
 
       {/* ── KPI Row ───────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">

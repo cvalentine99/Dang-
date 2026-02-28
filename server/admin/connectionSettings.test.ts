@@ -39,6 +39,7 @@ vi.mock("../wazuh/wazuhClient", () => ({
   wazuhGet: vi.fn(async () => ({})),
   getEffectiveWazuhConfig: vi.fn(async () => null),
   isWazuhEffectivelyConfigured: vi.fn(async () => false),
+  checkRateLimit: vi.fn(),
 }));
 
 // Mock indexerClient

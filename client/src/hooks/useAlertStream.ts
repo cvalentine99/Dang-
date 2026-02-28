@@ -62,6 +62,21 @@ interface UseAlertStreamOptions {
   reconnectDelay?: number;
 }
 
+// ── Validation ────────────────────────────────────────────────────────────────
+
+function isValidAlert(data: unknown): data is StreamedAlert {
+  if (typeof data !== "object" || !data) return false;
+  const a = data as Record<string, unknown>;
+  return (
+    typeof a.id === "string" &&
+    typeof a.timestamp === "string" &&
+    typeof a.rule === "object" &&
+    a.rule !== null &&
+    typeof a.agent === "object" &&
+    a.agent !== null
+  );
+}
+
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useAlertStream(options: UseAlertStreamOptions = {}) {
@@ -141,7 +156,7 @@ export function useAlertStream(options: UseAlertStreamOptions = {}) {
       es.addEventListener("alerts", (e) => {
         try {
           const data = JSON.parse((e as MessageEvent).data);
-          const newAlerts: StreamedAlert[] = data.alerts ?? [];
+          const newAlerts: StreamedAlert[] = (data.alerts ?? []).filter(isValidAlert);
           if (newAlerts.length > 0) {
             setState((prev) => {
               // Deduplicate by ID

@@ -152,8 +152,8 @@ export const wazuhRouter = router({
         os_platform: z.string().optional(),
         search: z.string().optional(),
         group: z.string().optional(),
-        sort: z.string().optional(),
-        q: z.string().optional(),
+        sort: z.string().regex(/^[\w,+\-\.]+$/, "Invalid sort format").optional(),
+        q: z.string().regex(/^[\w\s,\-\.~=<>:()!;]+$/, "Invalid query format").optional(),
       })
     )
     .query(({ input }) =>
@@ -251,13 +251,13 @@ export const wazuhRouter = router({
   agentOs: publicProcedure
     .input(z.object({ agentId: agentIdSchema }))
     .query(({ input }) =>
-      proxyGet(`/syscollector/${input.agentId}/os`)
+      proxyGet(`/syscollector/${input.agentId}/os`, {}, "syscollector")
     ),
 
   agentHardware: publicProcedure
     .input(z.object({ agentId: agentIdSchema }))
     .query(({ input }) =>
-      proxyGet(`/syscollector/${input.agentId}/hardware`)
+      proxyGet(`/syscollector/${input.agentId}/hardware`, {}, "syscollector")
     ),
 
   agentPackages: publicProcedure
@@ -271,7 +271,7 @@ export const wazuhRouter = router({
         limit: input.limit,
         offset: input.offset,
         search: input.search,
-      })
+      }, "syscollector")
     ),
 
   agentPorts: publicProcedure
@@ -283,7 +283,7 @@ export const wazuhRouter = router({
       proxyGet(`/syscollector/${input.agentId}/ports`, {
         limit: input.limit,
         offset: input.offset,
-      })
+      }, "syscollector")
     ),
 
   agentProcesses: publicProcedure
@@ -297,19 +297,19 @@ export const wazuhRouter = router({
         limit: input.limit,
         offset: input.offset,
         search: input.search,
-      })
+      }, "syscollector")
     ),
 
   agentNetaddr: publicProcedure
     .input(z.object({ agentId: agentIdSchema }))
     .query(({ input }) =>
-      proxyGet(`/syscollector/${input.agentId}/netaddr`)
+      proxyGet(`/syscollector/${input.agentId}/netaddr`, {}, "syscollector")
     ),
 
   agentNetiface: publicProcedure
     .input(z.object({ agentId: agentIdSchema }))
     .query(({ input }) =>
-      proxyGet(`/syscollector/${input.agentId}/netiface`)
+      proxyGet(`/syscollector/${input.agentId}/netiface`, {}, "syscollector")
     ),
 
   agentHotfixes: publicProcedure
@@ -318,7 +318,7 @@ export const wazuhRouter = router({
       proxyGet(`/syscollector/${input.agentId}/hotfixes`, {
         limit: input.limit,
         offset: input.offset,
-      })
+      }, "syscollector")
     ),
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -332,7 +332,7 @@ export const wazuhRouter = router({
       proxyGet(`/syscollector/${input.agentId}/browser_extensions`, {
         limit: input.limit,
         offset: input.offset,
-      })
+      }, "syscollector")
     ),
 
   /** System services / daemons (may not be supported on all OS) */
@@ -342,7 +342,7 @@ export const wazuhRouter = router({
       proxyGet(`/syscollector/${input.agentId}/services`, {
         limit: input.limit,
         offset: input.offset,
-      })
+      }, "syscollector")
     ),
 
   /** Local users on the agent (may not be supported on all OS) */
@@ -352,7 +352,7 @@ export const wazuhRouter = router({
       proxyGet(`/syscollector/${input.agentId}/users`, {
         limit: input.limit,
         offset: input.offset,
-      })
+      }, "syscollector")
     ),
 
   /** Local groups on the agent (may not be supported on all OS) */
@@ -362,7 +362,7 @@ export const wazuhRouter = router({
       proxyGet(`/syscollector/${input.agentId}/groups`, {
         limit: input.limit,
         offset: input.offset,
-      })
+      }, "syscollector")
     ),
 
   /** Network protocol inventory per agent */
@@ -372,7 +372,7 @@ export const wazuhRouter = router({
       proxyGet(`/syscollector/${input.agentId}/netproto`, {
         limit: input.limit,
         offset: input.offset,
-      })
+      }, "syscollector")
     ),
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -385,7 +385,7 @@ export const wazuhRouter = router({
         search: z.string().optional(),
         group: z.string().optional(),
         requirement: z.string().optional(),
-        sort: z.string().optional(),
+        sort: z.string().regex(/^[\w,+\-\.]+$/, "Invalid sort format").optional(),
       })
     )
     .query(({ input }) =>

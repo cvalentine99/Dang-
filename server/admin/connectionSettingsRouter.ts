@@ -19,6 +19,7 @@ import {
 } from "./connectionSettingsService";
 import axios from "axios";
 import https from "https";
+import { checkRateLimit } from "../wazuh/wazuhClient";
 import { testLLMConnection } from "../llm/llmService";
 import { testSplunkConnection } from "../splunk/splunkService";
 
@@ -95,6 +96,8 @@ export const connectionSettingsRouter = router({
       })
     )
     .mutation(async ({ input }) => {
+      checkRateLimit("connection_test");
+
       const { category, settings } = input;
 
       // Merge form values with effective settings (DB → env → defaults)
@@ -125,6 +128,16 @@ export const connectionSettingsRouter = router({
       const port = merged.port;
       const user = merged.user;
       const pass = merged.pass;
+
+      if (host && !/^[a-zA-Z0-9.\-]+$/.test(host)) {
+        return { success: false, message: "Invalid host format", latencyMs: 0 };
+      }
+      if (port) {
+        const portNum = parseInt(port, 10);
+        if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+          return { success: false, message: "Invalid port (must be 1-65535)", latencyMs: 0 };
+        }
+      }
 
       if (!host || !user || !pass) {
         return {
