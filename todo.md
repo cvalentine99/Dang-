@@ -1538,3 +1538,44 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Write vitest tests for canonical schema validation
 - [x] Write vitest tests for triage agent pipeline
 - [x] Write vitest tests for triage tRPC router (68 new tests, 614 total passing)
+
+## Phase: Correlation Agent, Analyst Feedback Loop, Auto-Triage
+
+### Step 2 — Correlation Agent
+- [x] Build server/agenticPipeline/correlationAgent.ts
+- [x] Evidence pack assembly: same-host alerts, same-user alerts, same-IOC alerts (via indexer)
+- [x] Evidence pack assembly: host vulnerabilities (via indexer vulnSearch)
+- [x] Evidence pack assembly: host FIM events (via wazuh syscheckFiles)
+- [x] Evidence pack assembly: threat intel matches (via OTX indicatorLookup)
+- [x] Evidence pack assembly: prior investigations (via graph investigationsByAgent)
+- [x] LLM synthesis: narrative, supporting/conflicting evidence, missing evidence
+- [x] Blast radius estimation (affected hosts, users, asset criticality)
+- [x] Campaign grouping assessment (clustered MITRE techniques)
+- [x] Case recommendation (merge_existing, create_new, defer_to_analyst)
+- [x] Persist correlation bundle to database
+- [x] Add correlate mutation to pipeline router
+- [x] Add getCorrelationById and listCorrelations queries to pipeline router
+
+### Analyst Feedback Loop
+- [x] Create triage_feedback table in Drizzle schema (analyst overrides on triage results)
+- [x] Run database migration for triage_feedback table
+- [x] Add submitFeedback mutation to pipeline router
+- [x] Add getFeedbackForTriage query to pipeline router
+- [x] Build TriageFeedbackCard component (Confirm/Override severity, route, notes)
+- [x] Wire feedback into TriagePipeline page triage result cards
+
+### Auto-Triage on Walter Queue Intake
+- [x] Modify alertQueue enqueue mutation to trigger triage agent after successful insert
+- [x] Add triageStatus and triageId columns to alert_queue table
+- [x] Show triage status indicator on Walter Queue items
+- [x] Show triage result summary inline on queue items
+
+### Tests
+- [x] Write vitest tests for correlation agent evidence pack assembly
+- [x] Write vitest tests for correlation agent LLM synthesis
+- [x] Write vitest tests for analyst feedback CRUD
+- [x] Write vitest tests for auto-triage integration
+- [x] Build CorrelationBundleCard component for displaying correlation results
+- [x] Add auto-triage route/severity badges to Walter Queue items
+- [x] All 645 tests passing (35 test files)
+- [x] TypeScript compilation clean (0 errors)

@@ -541,6 +541,10 @@ export const alertQueue = mysqlTable("alert_queue", {
   processedAt: timestamp("processedAt"),
   /** When Walter completed analysis */
   completedAt: timestamp("completedAt"),
+  /** Pipeline triage ID (links to triage_objects.triageId for auto-triage) */
+  pipelineTriageId: varchar("pipelineTriageId", { length: 64 }),
+  /** Auto-triage pipeline status */
+  autoTriageStatus: varchar("autoTriageStatus", { length: 20 }).default("pending"),
 }, (table) => ([
   index("aq_status_idx").on(table.status),
   index("aq_alertId_idx").on(table.alertId),
@@ -723,6 +727,21 @@ export const triageObjects = mysqlTable("triage_objects", {
   latencyMs: int("latencyMs"),
   /** Tokens used for this triage */
   tokensUsed: int("tokensUsed"),
+  // ── Analyst Feedback ──────────────────────────────────────────────────────
+  /** Analyst override of AI severity */
+  analystSeverityOverride: mysqlEnum("analystSeverityOverride", ["critical", "high", "medium", "low", "info"]),
+  /** Analyst override of AI route */
+  analystRouteOverride: mysqlEnum("analystRouteOverride", [
+    "A_DUPLICATE_NOISY", "B_LOW_CONFIDENCE", "C_HIGH_CONFIDENCE", "D_LIKELY_BENIGN",
+  ]),
+  /** Analyst notes on the triage */
+  analystNotes: text("analystNotes"),
+  /** Whether the analyst confirmed the triage */
+  analystConfirmed: int("analystConfirmed").default(0).notNull(),
+  /** User ID of the analyst who provided feedback */
+  analystUserId: int("analystUserId"),
+  /** When feedback was provided */
+  feedbackAt: timestamp("feedbackAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ([

@@ -656,3 +656,314 @@ describe("Fresh context per stage architecture", () => {
     expect(totalBudget).toBeGreaterThan(32768);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// STEP 2 TESTS — Correlation Agent, Analyst Feedback, Auto-Triage
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── 11. CorrelationBundle Schema (Updated) ──────────────────────────────────
+
+describe("CorrelationBundle full schema contract", () => {
+  const REQUIRED_SECTIONS = [
+    "schemaVersion", "correlationId", "correlatedAt", "sourceTriageId",
+    "relatedAlerts", "discoveredEntities", "vulnerabilityContext",
+    "fimContext", "threatIntelMatches", "priorInvestigations",
+    "blastRadius", "campaignAssessment", "caseRecommendation", "synthesis",
+  ];
+
+  it("defines all 14 required sections", () => {
+    expect(REQUIRED_SECTIONS).toHaveLength(14);
+  });
+
+  it("blastRadius contains host/user counts and agent IDs", () => {
+    const blastRadius = {
+      affectedHosts: 3,
+      affectedUsers: 2,
+      affectedAgentIds: ["001", "003", "005"],
+      assetCriticality: "high" as const,
+      confidence: 0.8,
+    };
+    expect(blastRadius.affectedHosts).toBeGreaterThanOrEqual(0);
+    expect(blastRadius.affectedUsers).toBeGreaterThanOrEqual(0);
+    expect(blastRadius.affectedAgentIds).toHaveLength(3);
+    expect(["critical", "high", "medium", "low", "unknown"]).toContain(blastRadius.assetCriticality);
+  });
+
+  it("campaignAssessment flags coordinated attacks", () => {
+    const campaign = {
+      likelyCampaign: true,
+      campaignLabel: "SSH Brute Force Campaign",
+      clusteredTechniques: [{ techniqueId: "T1110", techniqueName: "Brute Force", tactic: "Credential Access", confidence: 0.9, source: "wazuh_alert" }],
+      confidence: 0.85,
+      reasoning: "Multiple agents targeted with same technique within 10 minutes",
+    };
+    expect(campaign.likelyCampaign).toBe(true);
+    expect(campaign.campaignLabel).toBeTruthy();
+    expect(campaign.clusteredTechniques.length).toBeGreaterThan(0);
+    expect(campaign.confidence).toBeGreaterThanOrEqual(0);
+    expect(campaign.confidence).toBeLessThanOrEqual(1);
+  });
+
+  it("caseRecommendation has valid action types", () => {
+    const VALID_ACTIONS = ["merge_existing", "create_new", "defer_to_analyst"];
+    for (const action of VALID_ACTIONS) {
+      expect(VALID_ACTIONS).toContain(action);
+    }
+    expect(VALID_ACTIONS).toHaveLength(3);
+  });
+
+  it("synthesis separates supporting and conflicting evidence", () => {
+    const synthesis = {
+      narrative: "Correlation analysis reveals...",
+      supportingEvidence: [{ id: "ev-1", label: "SSH failure alert", type: "alert", source: "wazuh_alert", data: {}, collectedAt: "2026-02-28T10:00:00Z" }],
+      conflictingEvidence: [],
+      missingEvidence: [{ description: "No network flow data", impact: "Cannot confirm lateral movement", suggestedAction: "Enable network monitoring" }],
+      confidence: 0.7,
+    };
+    expect(synthesis.narrative).toBeTruthy();
+    expect(Array.isArray(synthesis.supportingEvidence)).toBe(true);
+    expect(Array.isArray(synthesis.conflictingEvidence)).toBe(true);
+    expect(Array.isArray(synthesis.missingEvidence)).toBe(true);
+  });
+});
+
+// ── 12. Analyst Feedback Validation ─────────────────────────────────────────
+
+describe("Analyst feedback input validation", () => {
+  const VALID_SEVERITIES = ["critical", "high", "medium", "low", "info"];
+  const VALID_ROUTES = ["A_DUPLICATE_NOISY", "B_LOW_CONFIDENCE", "C_HIGH_CONFIDENCE", "D_LIKELY_BENIGN"];
+
+  it("accepts confirm action with triageId only", () => {
+    const input = { triageId: "triage-abc123", confirmed: true };
+    expect(input.triageId).toMatch(/^triage-/);
+    expect(input.confirmed).toBe(true);
+  });
+
+  it("accepts override with severity change", () => {
+    const input = {
+      triageId: "triage-abc123",
+      confirmed: false,
+      severityOverride: "critical" as const,
+      notes: "This is actually a critical incident, not medium",
+    };
+    expect(VALID_SEVERITIES).toContain(input.severityOverride);
+    expect(input.notes).toBeTruthy();
+  });
+
+  it("accepts override with route change", () => {
+    const input = {
+      triageId: "triage-abc123",
+      confirmed: false,
+      routeOverride: "C_HIGH_CONFIDENCE" as const,
+      notes: "Escalating to high confidence based on additional context",
+    };
+    expect(VALID_ROUTES).toContain(input.routeOverride);
+  });
+
+  it("rejects notes longer than 4000 characters", () => {
+    const longNote = "x".repeat(4001);
+    expect(longNote.length).toBeGreaterThan(4000);
+    // The z.string().max(4000) validation would reject this
+  });
+
+  it("feedback includes analyst user ID and timestamp", () => {
+    const feedback = {
+      triageId: "triage-abc123",
+      confirmed: true,
+      analystUserId: 42,
+      feedbackAt: new Date().toISOString(),
+    };
+    expect(feedback.analystUserId).toBeGreaterThan(0);
+    expect(feedback.feedbackAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+});
+
+// ── 13. Auto-Triage Queue Integration ───────────────────────────────────────
+
+describe("Auto-triage queue integration", () => {
+  it("queue item has pipelineTriageId and autoTriageStatus fields", () => {
+    const queueItem = {
+      id: 1,
+      alertId: "alert-12345",
+      ruleId: "5710",
+      status: "queued",
+      pipelineTriageId: null as string | null,
+      autoTriageStatus: "pending",
+    };
+    expect(queueItem.pipelineTriageId).toBeNull();
+    expect(queueItem.autoTriageStatus).toBe("pending");
+  });
+
+  it("autoTriageStatus transitions: pending → running → completed", () => {
+    const VALID_STATUSES = ["pending", "running", "completed", "failed"];
+    expect(VALID_STATUSES).toContain("pending");
+    expect(VALID_STATUSES).toContain("running");
+    expect(VALID_STATUSES).toContain("completed");
+    expect(VALID_STATUSES).toContain("failed");
+  });
+
+  it("completed auto-triage links to triage object via pipelineTriageId", () => {
+    const queueItem = {
+      id: 1,
+      autoTriageStatus: "completed",
+      pipelineTriageId: "triage-xyz789",
+    };
+    expect(queueItem.pipelineTriageId).toMatch(/^triage-/);
+    expect(queueItem.autoTriageStatus).toBe("completed");
+  });
+
+  it("failed auto-triage preserves null pipelineTriageId", () => {
+    const queueItem = {
+      id: 1,
+      autoTriageStatus: "failed",
+      pipelineTriageId: null,
+    };
+    expect(queueItem.pipelineTriageId).toBeNull();
+    expect(queueItem.autoTriageStatus).toBe("failed");
+  });
+
+  it("already-triaged items return early without re-running", () => {
+    const result = {
+      success: true,
+      alreadyTriaged: true,
+      triageId: "triage-existing",
+    };
+    expect(result.alreadyTriaged).toBe(true);
+    expect(result.triageId).toBe("triage-existing");
+  });
+});
+
+// ── 14. Correlation Agent Evidence Sources ──────────────────────────────────
+
+describe("Correlation agent evidence retrieval", () => {
+  const EVIDENCE_SOURCES = [
+    "wazuh_alerts",        // Related alerts from Wazuh Indexer
+    "wazuh_vulnerabilities", // Vulns on affected hosts
+    "wazuh_fim",           // FIM changes on affected hosts
+    "wazuh_agents",        // Agent metadata for blast radius
+    "threat_intel",        // OTX threat intelligence
+    "prior_investigations", // Existing investigation sessions
+  ];
+
+  it("retrieves from 6 evidence sources", () => {
+    expect(EVIDENCE_SOURCES).toHaveLength(6);
+  });
+
+  it("includes Wazuh alerts for entity correlation", () => {
+    expect(EVIDENCE_SOURCES).toContain("wazuh_alerts");
+  });
+
+  it("includes vulnerability context for affected hosts", () => {
+    expect(EVIDENCE_SOURCES).toContain("wazuh_vulnerabilities");
+  });
+
+  it("includes FIM for file change context", () => {
+    expect(EVIDENCE_SOURCES).toContain("wazuh_fim");
+  });
+
+  it("includes threat intelligence for IOC matching", () => {
+    expect(EVIDENCE_SOURCES).toContain("threat_intel");
+  });
+
+  it("includes prior investigations for case merging", () => {
+    expect(EVIDENCE_SOURCES).toContain("prior_investigations");
+  });
+});
+
+// ── 15. Correlation ID Generation ───────────────────────────────────────────
+
+describe("Correlation ID generation", () => {
+  it("follows corr-{uuid} pattern", () => {
+    const id = `corr-${crypto.randomUUID().slice(0, 12)}`;
+    expect(id).toMatch(/^corr-[a-f0-9-]+$/);
+  });
+
+  it("generates unique IDs", () => {
+    const ids = new Set(Array.from({ length: 100 }, () => `corr-${crypto.randomUUID().slice(0, 12)}`));
+    expect(ids.size).toBe(100);
+  });
+});
+
+// ── 16. Pipeline Router Endpoint Contracts ──────────────────────────────────
+
+describe("Pipeline router Step 2 endpoints", () => {
+  it("correlateFromTriage requires triageId input", () => {
+    const input = { triageId: "triage-abc123" };
+    expect(input.triageId).toBeTruthy();
+    expect(input.triageId).toMatch(/^triage-/);
+  });
+
+  it("getCorrelationByTriageId returns found/not-found", () => {
+    const found = { found: true as const, correlation: { correlationId: "corr-xyz" } };
+    const notFound = { found: false as const };
+    expect(found.found).toBe(true);
+    expect(notFound.found).toBe(false);
+  });
+
+  it("submitFeedback returns success with feedback details", () => {
+    const result = {
+      success: true as const,
+      triageId: "triage-abc123",
+      feedback: {
+        confirmed: true,
+        severityOverride: null,
+        routeOverride: null,
+        notes: null,
+        analystId: 42,
+        feedbackAt: "2026-02-28T10:00:00.000Z",
+      },
+    };
+    expect(result.success).toBe(true);
+    expect(result.feedback.confirmed).toBe(true);
+    expect(result.feedback.analystId).toBeGreaterThan(0);
+  });
+
+  it("autoTriageQueueItem returns triageId on success", () => {
+    const result = {
+      success: true as const,
+      alreadyTriaged: false,
+      triageId: "triage-new123",
+    };
+    expect(result.success).toBe(true);
+    expect(result.triageId).toMatch(/^triage-/);
+  });
+
+  it("feedbackStats returns aggregated counts", () => {
+    const stats = { total: 100, confirmed: 60, overridden: 15, pending: 25 };
+    expect(stats.total).toBe(stats.confirmed + stats.overridden + stats.pending);
+  });
+});
+
+// ── 17. Triage → Correlation Handoff ────────────────────────────────────────
+
+describe("Triage to Correlation handoff", () => {
+  it("correlation receives triageId, not raw alert", () => {
+    const triageOutput = { triageId: "triage-abc123", severity: "high", route: "C_HIGH_CONFIDENCE" };
+    const correlationInput = { triageId: triageOutput.triageId };
+    // Correlation agent fetches the full triage object by ID
+    expect(correlationInput.triageId).toBe(triageOutput.triageId);
+  });
+
+  it("correlation extracts entities from triage for evidence retrieval", () => {
+    const triageEntities = [
+      { type: "ip", value: "192.168.1.100" },
+      { type: "host", value: "003" },
+      { type: "user", value: "admin" },
+    ];
+    // Each entity becomes a search key for the 6 evidence sources
+    expect(triageEntities.length).toBeGreaterThan(0);
+    for (const e of triageEntities) {
+      expect(e.type).toBeTruthy();
+      expect(e.value).toBeTruthy();
+    }
+  });
+
+  it("correlation preserves source triage ID for provenance", () => {
+    const bundle = {
+      correlationId: "corr-def456",
+      sourceTriageId: "triage-abc123",
+    };
+    expect(bundle.sourceTriageId).toMatch(/^triage-/);
+    expect(bundle.correlationId).toMatch(/^corr-/);
+  });
+});

@@ -13,6 +13,7 @@ import { trpc } from "@/lib/trpc";
 import { GlassPanel, StatCard, RawJsonViewer, ThreatBadge } from "@/components/shared";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { useLocation } from "wouter";
+import { toast } from "sonner";
 import {
   Brain,
   ChevronDown,
@@ -35,6 +36,10 @@ import {
   Hash,
   Cpu,
   FileText,
+  ThumbsUp,
+  ThumbsDown,
+  GitBranch,
+  MessageSquare,
 } from "lucide-react";
 
 // ── Severity & Route Colors ──────────────────────────────────────────────────
@@ -144,12 +149,368 @@ function TriageStatsPanel() {
   );
 }
 
+// ── Correlation Bundle Card ─────────────────────────────────────────────────
+
+function CorrelationBundleCard({ bundle }: { bundle: any }) {
+  const [showDetails, setShowDetails] = useState(false);
+  const [showRawJson, setShowRawJson] = useState(false);
+
+  if (!bundle || !bundle.found) {
+    return (
+      <div className="mt-3 p-4 rounded-lg bg-white/[0.02] border border-white/[0.06] text-xs text-muted-foreground/50">
+        No correlation bundle found.
+      </div>
+    );
+  }
+
+  const corr = bundle.correlation;
+  const bd = corr?.bundleData as any;
+  if (!bd) return null;
+
+  const blastRadius = bd.blastRadius ?? {};
+  const campaign = bd.campaignAssessment ?? {};
+  const synthesis = bd.synthesis ?? {};
+  const caseRec = bd.caseRecommendation ?? {};
+  const relatedAlerts = bd.relatedAlerts ?? [];
+  const discoveredEntities = bd.discoveredEntities ?? [];
+  const vulnContext = bd.vulnerabilityContext ?? [];
+  const fimContext = bd.fimContext ?? [];
+  const threatIntel = bd.threatIntelMatches ?? [];
+  const priorInvestigations = bd.priorInvestigations ?? [];
+
+  const CASE_ACTION_LABELS: Record<string, { label: string; color: string }> = {
+    merge_existing: { label: "Merge into Existing Case", color: "text-cyan-400" },
+    create_new: { label: "Create New Case", color: "text-emerald-400" },
+    defer_to_analyst: { label: "Defer to Analyst", color: "text-yellow-400" },
+  };
+
+  return (
+    <div className="mt-3 rounded-lg bg-gradient-to-br from-violet-500/[0.04] to-cyan-500/[0.04] border border-violet-500/15 overflow-hidden">
+      {/* Header */}
+      <div className="p-4 border-b border-white/[0.04]">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <GitBranch className="w-4 h-4 text-violet-400" />
+            <span className="text-sm font-semibold text-violet-300">Correlation Bundle</span>
+            <span className="text-[10px] font-mono text-muted-foreground/40">{corr.correlationId}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+              corr.status === "completed" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" :
+              corr.status === "failed" ? "text-red-400 bg-red-500/10 border-red-500/20" :
+              "text-blue-400 bg-blue-500/10 border-blue-500/20"
+            }`}>{corr.status}</span>
+            {campaign.likelyCampaign && (
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-500/15 border border-red-500/30 text-red-400">
+                Campaign Detected
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Summary Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4">
+        <div className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-1">Related Alerts</div>
+          <div className="text-lg font-bold font-[Space_Grotesk] text-violet-300">{relatedAlerts.length}</div>
+        </div>
+        <div className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-1">Blast Radius</div>
+          <div className="text-lg font-bold font-[Space_Grotesk] text-orange-300">
+            {blastRadius.affectedHosts ?? 0} hosts / {blastRadius.affectedUsers ?? 0} users
+          </div>
+        </div>
+        <div className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-1">Discovered Entities</div>
+          <div className="text-lg font-bold font-[Space_Grotesk] text-cyan-300">{discoveredEntities.length}</div>
+        </div>
+        <div className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-1">Confidence</div>
+          <div className="text-lg font-bold font-[Space_Grotesk] text-emerald-300">
+            {((corr.confidence ?? 0) * 100).toFixed(0)}%
+          </div>
+        </div>
+      </div>
+
+      {/* Synthesis Narrative */}
+      {synthesis.narrative && (
+        <div className="px-4 pb-3">
+          <div className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.06]">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-2">Synthesis</div>
+            <p className="text-xs text-foreground/80 leading-relaxed">{synthesis.narrative}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Campaign Assessment */}
+      {campaign.likelyCampaign && (
+        <div className="px-4 pb-3">
+          <div className="p-3 rounded-lg bg-red-500/[0.04] border border-red-500/15">
+            <div className="text-[10px] uppercase tracking-wider text-red-400/70 mb-2 flex items-center gap-1.5">
+              <AlertTriangle className="w-3 h-3" />
+              Campaign Assessment
+            </div>
+            {campaign.campaignLabel && (
+              <div className="text-sm font-semibold text-red-300 mb-1">{campaign.campaignLabel}</div>
+            )}
+            <p className="text-xs text-foreground/70">{campaign.reasoning}</p>
+            {campaign.clusteredTechniques?.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-2">
+                {campaign.clusteredTechniques.map((t: any, i: number) => (
+                  <span key={i} className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-red-500/10 border border-red-500/20 text-red-300">
+                    {t.techniqueId}: {t.techniqueName}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Case Recommendation */}
+      <div className="px-4 pb-3">
+        <div className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.06]">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-2">Case Recommendation</div>
+          <div className="flex items-center gap-2">
+            <span className={`text-sm font-semibold ${CASE_ACTION_LABELS[caseRec.action]?.color ?? "text-muted-foreground"}`}>
+              {CASE_ACTION_LABELS[caseRec.action]?.label ?? caseRec.action}
+            </span>
+            <span className="text-[10px] text-muted-foreground/40">
+              ({((caseRec.confidence ?? 0) * 100).toFixed(0)}% confidence)
+            </span>
+          </div>
+          {caseRec.mergeTargetTitle && (
+            <div className="text-xs text-muted-foreground/60 mt-1">Target: {caseRec.mergeTargetTitle}</div>
+          )}
+          {caseRec.reasoning && (
+            <p className="text-xs text-foreground/60 mt-1">{caseRec.reasoning}</p>
+          )}
+        </div>
+      </div>
+
+      {/* Expandable Details */}
+      <div className="px-4 pb-4">
+        <button
+          onClick={() => setShowDetails(!showDetails)}
+          className="flex items-center gap-1.5 text-xs text-violet-400/70 hover:text-violet-400 transition-colors"
+        >
+          {showDetails ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+          {showDetails ? "Hide" : "Show"} Detailed Evidence ({relatedAlerts.length} alerts, {vulnContext.length} vulns, {fimContext.length} FIM, {threatIntel.length} TI)
+        </button>
+
+        {showDetails && (
+          <div className="mt-3 space-y-3">
+            {/* Related Alerts */}
+            {relatedAlerts.length > 0 && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-2">Related Alerts</div>
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {relatedAlerts.map((a: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2 text-xs p-2 rounded bg-white/[0.02] border border-white/[0.04]">
+                      <span className="font-mono text-violet-300/80">{a.ruleId}</span>
+                      <span className="text-foreground/70 truncate flex-1">{a.ruleDescription}</span>
+                      <span className="text-muted-foreground/40 font-mono text-[10px]">{a.agentId}</span>
+                      <span className="text-muted-foreground/30 text-[10px]">
+                        {a.timestamp ? new Date(a.timestamp).toLocaleString() : ""}
+                      </span>
+                      <span className="px-1 py-0.5 rounded text-[9px] bg-white/[0.04] text-muted-foreground/50">
+                        {((a.relevance ?? 0) * 100).toFixed(0)}% rel
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Discovered Entities */}
+            {discoveredEntities.length > 0 && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-2">Discovered Entities</div>
+                <div className="flex flex-wrap gap-1">
+                  {discoveredEntities.map((e: any, i: number) => (
+                    <span key={i} className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-500/10 border border-cyan-500/20 text-cyan-300">
+                      {e.type}: {e.value}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Vulnerability Context */}
+            {vulnContext.length > 0 && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-2">Vulnerability Context</div>
+                <div className="space-y-1">
+                  {vulnContext.map((v: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2 text-xs p-2 rounded bg-white/[0.02] border border-white/[0.04]">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border ${SEVERITY_COLORS[v.severity] ?? ""}`}>
+                        {v.severity}
+                      </span>
+                      <span className="font-mono text-orange-300/80">{v.cveId}</span>
+                      <span className="text-foreground/70 truncate flex-1">{v.name}</span>
+                      {v.affectedPackage && <span className="text-muted-foreground/40 text-[10px]">{v.affectedPackage}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* FIM Context */}
+            {fimContext.length > 0 && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-2">FIM Changes</div>
+                <div className="space-y-1">
+                  {fimContext.map((f: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2 text-xs p-2 rounded bg-white/[0.02] border border-white/[0.04]">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 border border-amber-500/20 text-amber-300">
+                        {f.event}
+                      </span>
+                      <span className="font-mono text-foreground/70 truncate flex-1">{f.path}</span>
+                      <span className="text-muted-foreground/30 text-[10px]">
+                        {f.timestamp ? new Date(f.timestamp).toLocaleString() : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Threat Intel Matches */}
+            {threatIntel.length > 0 && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-2">Threat Intelligence</div>
+                <div className="space-y-1">
+                  {threatIntel.map((t: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2 text-xs p-2 rounded bg-red-500/[0.03] border border-red-500/10">
+                      <span className="font-mono text-red-300/80">{t.iocType}: {t.ioc}</span>
+                      <span className="text-foreground/60 flex-1">{t.threatName ?? t.source}</span>
+                      <span className="text-[10px] text-muted-foreground/40">
+                        {((t.confidence ?? 0) * 100).toFixed(0)}% conf
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Prior Investigations */}
+            {priorInvestigations.length > 0 && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-2">Prior Investigations</div>
+                <div className="space-y-1">
+                  {priorInvestigations.map((p: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2 text-xs p-2 rounded bg-white/[0.02] border border-white/[0.04]">
+                      <span className="text-violet-300">#{p.investigationId}</span>
+                      <span className="text-foreground/70 flex-1">{p.title}</span>
+                      <span className="text-muted-foreground/40">{p.status}</span>
+                      <span className="text-[10px] text-muted-foreground/40">{p.linkReason}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Blast Radius Detail */}
+            {blastRadius.affectedAgentIds?.length > 0 && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-2">Affected Agents</div>
+                <div className="flex flex-wrap gap-1">
+                  {blastRadius.affectedAgentIds.map((id: string, i: number) => (
+                    <span key={i} className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-orange-500/10 border border-orange-500/20 text-orange-300">
+                      {id}
+                    </span>
+                  ))}
+                </div>
+                <div className="text-[10px] text-muted-foreground/40 mt-1">
+                  Asset Criticality: <span className="font-semibold">{blastRadius.assetCriticality ?? "unknown"}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Missing Evidence / Uncertainties */}
+            {synthesis.missingEvidence?.length > 0 && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-2">Missing Evidence / Gaps</div>
+                <div className="space-y-1">
+                  {synthesis.missingEvidence.map((m: any, i: number) => (
+                    <div key={i} className="text-xs p-2 rounded bg-yellow-500/[0.03] border border-yellow-500/10">
+                      <div className="text-yellow-300/80">{m.description}</div>
+                      <div className="text-muted-foreground/40 mt-0.5">Impact: {m.impact}</div>
+                      {m.suggestedAction && (
+                        <div className="text-violet-300/60 mt-0.5">Suggested: {m.suggestedAction}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Raw JSON toggle */}
+        <div className="mt-3">
+          <button
+            onClick={() => setShowRawJson(!showRawJson)}
+            className="text-[10px] uppercase tracking-wider text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors"
+          >
+            {showRawJson ? "Hide" : "Show"} Full Correlation Bundle JSON
+          </button>
+          {showRawJson && (
+            <div className="mt-2">
+              <RawJsonViewer data={bd} title="Correlation Bundle" />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Triage Result Card ───────────────────────────────────────────────────────
 
-function TriageResultCard({ triage }: { triage: any }) {
+function TriageResultCard({ triage, onRefresh }: { triage: any; onRefresh?: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [showRawJson, setShowRawJson] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackNote, setFeedbackNote] = useState("");
+  const [overrideSeverity, setOverrideSeverity] = useState("");
+  const [overrideRoute, setOverrideRoute] = useState("");
+  const [showCorrelation, setShowCorrelation] = useState(false);
   const [, navigate] = useLocation();
+
+  // Feedback mutation
+  const feedbackMutation = trpc.pipeline.submitFeedback.useMutation({
+    onSuccess: () => {
+      toast.success("Feedback recorded", { description: "Your override has been saved for future context" });
+      setShowFeedback(false);
+      setFeedbackNote("");
+      setOverrideSeverity("");
+      setOverrideRoute("");
+      onRefresh?.();
+    },
+    onError: (err) => toast.error("Feedback failed", { description: err.message }),
+  });
+
+  // Correlation mutation
+  const correlationMutation = trpc.pipeline.correlateFromTriage.useMutation({
+    onSuccess: (result: any) => {
+      if (result.success) {
+        toast.success("Correlation complete", { description: `Bundle ID: ${result.correlationId}` });
+        setShowCorrelation(true);
+        onRefresh?.();
+      } else {
+        toast.error("Correlation failed", { description: result.error });
+      }
+    },
+    onError: (err: any) => toast.error("Correlation error", { description: err.message }),
+  });
+
+  // Get correlation bundle if exists
+  const correlationQuery = trpc.pipeline.getCorrelationByTriageId.useQuery(
+    { triageId: triage.triageId },
+    { enabled: !!triage.triageId && (showCorrelation || triage.correlationBundleId != null) }
+  );
 
   const triageData = triage.triageData as any;
   const severity = triage.severity || "info";
@@ -340,6 +701,159 @@ function TriageResultCard({ triage }: { triage: any }) {
             </div>
           )}
 
+          {/* ── Analyst Feedback Section ── */}
+          <div className="border-t border-white/[0.04] pt-4">
+            {/* Existing feedback display */}
+            {triage.analystOverrideSeverity && (
+              <div className="mb-3 flex items-center gap-2 text-xs bg-emerald-500/5 border border-emerald-500/15 rounded p-2">
+                <ThumbsUp className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-emerald-300">Analyst Override:</span>
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border ${SEVERITY_COLORS[triage.analystOverrideSeverity] || ""}`}>
+                  {triage.analystOverrideSeverity}
+                </span>
+                {triage.analystOverrideRoute && (
+                  <span className="text-muted-foreground/50">→ {ROUTE_LABELS[triage.analystOverrideRoute]?.label || triage.analystOverrideRoute}</span>
+                )}
+                {triage.analystFeedbackNote && (
+                  <span className="text-muted-foreground/40 italic ml-2">"{triage.analystFeedbackNote}"</span>
+                )}
+              </div>
+            )}
+
+            {/* Feedback + Correlation Action Buttons */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Confirm button */}
+              {!triage.analystOverrideSeverity && triage.status === "completed" && (
+                <button
+                  onClick={() => feedbackMutation.mutate({
+                    triageId: triage.triageId,
+                    confirmed: true,
+                  })}
+                  disabled={feedbackMutation.isPending}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-medium hover:bg-emerald-500/20 transition-all disabled:opacity-50"
+                >
+                  <ThumbsUp className="w-3 h-3" />
+                  Confirm Triage
+                </button>
+              )}
+
+              {/* Override button */}
+              {!triage.analystOverrideSeverity && triage.status === "completed" && (
+                <button
+                  onClick={() => setShowFeedback(!showFeedback)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-300 text-xs font-medium hover:bg-orange-500/20 transition-all"
+                >
+                  <ThumbsDown className="w-3 h-3" />
+                  Override
+                </button>
+              )}
+
+              {/* Run Correlation button */}
+              {triage.status === "completed" && !triage.correlationBundleId && (
+                <button
+                  onClick={() => correlationMutation.mutate({ triageId: triage.triageId })}
+                  disabled={correlationMutation.isPending}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-300 text-xs font-medium hover:bg-violet-500/20 transition-all disabled:opacity-50"
+                >
+                  {correlationMutation.isPending ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <GitBranch className="w-3 h-3" />
+                  )}
+                  Run Correlation
+                </button>
+              )}
+
+              {/* View Correlation button */}
+              {triage.correlationBundleId && (
+                <button
+                  onClick={() => setShowCorrelation(!showCorrelation)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs font-medium hover:bg-cyan-500/20 transition-all"
+                >
+                  <GitBranch className="w-3 h-3" />
+                  {showCorrelation ? "Hide" : "View"} Correlation
+                </button>
+              )}
+            </div>
+
+            {/* Override Form */}
+            {showFeedback && (
+              <div className="mt-3 p-3 rounded-lg bg-white/[0.02] border border-white/[0.06] space-y-3">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50">Analyst Override</div>
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="text-[10px] text-muted-foreground/40 mb-1 block">Override Severity</label>
+                    <select
+                      value={overrideSeverity}
+                      onChange={(e) => setOverrideSeverity(e.target.value)}
+                      className="w-full bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 text-xs text-foreground/80 focus:outline-none focus:border-violet-500/40"
+                    >
+                      <option value="">Keep Original</option>
+                      {["critical", "high", "medium", "low", "info"].map(s => (
+                        <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[10px] text-muted-foreground/40 mb-1 block">Override Route</label>
+                    <select
+                      value={overrideRoute}
+                      onChange={(e) => setOverrideRoute(e.target.value)}
+                      className="w-full bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 text-xs text-foreground/80 focus:outline-none focus:border-violet-500/40"
+                    >
+                      <option value="">Keep Original</option>
+                      {Object.entries(ROUTE_LABELS).map(([k, v]) => (
+                        <option key={k} value={k}>{v.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground/40 mb-1 block">Analyst Note</label>
+                  <textarea
+                    value={feedbackNote}
+                    onChange={(e) => setFeedbackNote(e.target.value)}
+                    placeholder="Why is this override needed? This will be used as future retrieval context..."
+                    className="w-full bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1.5 text-xs text-foreground/80 focus:outline-none focus:border-violet-500/40 resize-none h-16"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => feedbackMutation.mutate({
+                      triageId: triage.triageId,
+                      confirmed: false,
+                      severityOverride: (overrideSeverity || undefined) as any,
+                      routeOverride: (overrideRoute || undefined) as any,
+                      notes: feedbackNote || undefined,
+                    })}
+                    disabled={feedbackMutation.isPending || (!overrideSeverity && !overrideRoute)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500/15 border border-orange-500/30 text-orange-300 text-xs font-medium hover:bg-orange-500/25 transition-all disabled:opacity-50"
+                  >
+                    {feedbackMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <MessageSquare className="w-3 h-3" />}
+                    Submit Override
+                  </button>
+                  <button
+                    onClick={() => setShowFeedback(false)}
+                    className="px-3 py-1.5 rounded-lg border border-white/10 text-muted-foreground text-xs hover:bg-white/5 transition-all"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Correlation Bundle Display */}
+            {showCorrelation && correlationQuery.data && (
+              <CorrelationBundleCard bundle={correlationQuery.data} />
+            )}
+            {showCorrelation && correlationQuery.isLoading && (
+              <div className="mt-3 p-4 rounded-lg bg-white/[0.02] border border-white/[0.06] flex items-center gap-2 text-xs text-muted-foreground/50">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Loading correlation bundle...
+              </div>
+            )}
+          </div>
+
           {/* Raw JSON Toggle */}
           <div>
             <button
@@ -459,7 +973,7 @@ export default function TriagePipeline() {
       ) : (
         <div className="space-y-2">
           {triages.map((triage: any) => (
-            <TriageResultCard key={triage.id} triage={triage} />
+            <TriageResultCard key={triage.id} triage={triage} onRefresh={() => refetch()} />
           ))}
         </div>
       )}

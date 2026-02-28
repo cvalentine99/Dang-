@@ -106,6 +106,40 @@ function SplunkTicketLink({ ticketId }: { ticketId: string }) {
   );
 }
 
+// ── Pipeline Triage Badge Components ─────────────────────────────────────────
+
+const ROUTE_BADGE_COLORS: Record<string, { label: string; color: string }> = {
+  A_DUPLICATE_NOISY: { label: "Duplicate/Noisy", color: "text-gray-400 bg-gray-500/10 border-gray-500/20" },
+  B_LOW_CONFIDENCE: { label: "Low Confidence", color: "text-blue-400 bg-blue-500/10 border-blue-500/20" },
+  C_HIGH_CONFIDENCE: { label: "High Confidence", color: "text-orange-400 bg-orange-500/10 border-orange-500/20" },
+  D_LIKELY_BENIGN: { label: "Likely Benign", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+};
+
+const SEVERITY_BADGE_COLORS: Record<string, string> = {
+  critical: "text-red-400 bg-red-500/15 border-red-500/30",
+  high: "text-orange-400 bg-orange-500/15 border-orange-500/30",
+  medium: "text-yellow-400 bg-yellow-500/15 border-yellow-500/30",
+  low: "text-blue-400 bg-blue-500/15 border-blue-500/30",
+  info: "text-gray-400 bg-gray-500/15 border-gray-500/30",
+};
+
+function TriageRouteBadge({ route }: { route: string }) {
+  const r = ROUTE_BADGE_COLORS[route] ?? ROUTE_BADGE_COLORS.B_LOW_CONFIDENCE;
+  return (
+    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ${r.color}`}>
+      {r.label}
+    </span>
+  );
+}
+
+function TriageSeverityBadge({ severity }: { severity: string }) {
+  return (
+    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ${SEVERITY_BADGE_COLORS[severity] ?? ""}`}>
+      {severity}
+    </span>
+  );
+}
+
 // Queue item card
 function QueueItemCard({
   item,
@@ -128,6 +162,8 @@ function QueueItemCard({
     queuedAt: Date;
     processedAt: Date | null;
     completedAt: Date | null;
+    pipelineTriageId?: string | null;
+    autoTriageStatus?: string | null;
   };
   onAnalyze: (id: number) => void;
   onDismiss: (id: number) => void;
@@ -136,6 +172,31 @@ function QueueItemCard({
   const [expanded, setExpanded] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const [, navigate] = useLocation();
+
+  // Auto-triage mutation
+  const autoTriageMutation = trpc.pipeline.autoTriageQueueItem.useMutation({
+    onSuccess: (result) => {
+      if (result.success) {
+        toast.success("Pipeline triage complete", {
+          description: `Triage ID: ${result.triageId}`,
+        });
+        trpc.useUtils().alertQueue.list.invalidate();
+      } else {
+        toast.error("Pipeline triage failed", { description: result.error });
+      }
+    },
+    onError: (err) => {
+      toast.error("Pipeline triage error", { description: err.message });
+    },
+  });
+
+  // Auto-triage status query (only if item has a pipeline triage ID)
+  const autoTriageStatusQ = trpc.pipeline.getAutoTriageStatus.useQuery(
+    { queueItemId: item.id },
+    { enabled: !!item.pipelineTriageId || item.autoTriageStatus === "running" || item.autoTriageStatus === "completed", staleTime: 10_000 }
+  );
+
+  const triageSummary = autoTriageStatusQ.data?.triageSummary;
 
   const triage = item.triageResult as {
     answer?: string;
@@ -195,12 +256,67 @@ function QueueItemCard({
             <span className="w-1 h-1 rounded-full bg-white/20" />
             <span>{item.alertTimestamp ? new Date(item.alertTimestamp).toLocaleString() : "—"}</span>
           </div>
+          {/* Pipeline Triage Summary Badge Row */}
+          {triageSummary && (
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              <TriageRouteBadge route={triageSummary.route} />
+              <TriageSeverityBadge severity={triageSummary.severity} />
+              {triageSummary.alertFamily && (
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-white/[0.04] border border-white/[0.08] text-muted-foreground/60">
+                  {triageSummary.alertFamily}
+                </span>
+              )}
+              {triageSummary.summary && (
+                <span className="text-[10px] text-muted-foreground/50 truncate max-w-xs" title={triageSummary.summary}>
+                  {triageSummary.summary.length > 80 ? triageSummary.summary.slice(0, 80) + "…" : triageSummary.summary}
+                </span>
+              )}
+              {triageSummary.analystConfirmed && (
+                <span className="px-1.5 py-0.5 rounded text-[9px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                  ✓ Confirmed
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Pipeline Auto-Triage indicator */}
+          {item.pipelineTriageId && (
+            <button
+              onClick={() => navigate("/triage")}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-300 text-[10px] font-medium hover:bg-violet-500/20 transition-all"
+              title={`Pipeline Triage: ${item.pipelineTriageId}`}
+            >
+              <Brain className="h-3 w-3" />
+              Triaged
+            </button>
+          )}
+          {item.autoTriageStatus === "running" && !item.pipelineTriageId && (
+            <span className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-[10px]">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Triaging...
+            </span>
+          )}
           {item.status === "queued" && (
             <>
+              {/* Pipeline triage button */}
+              {!item.pipelineTriageId && item.autoTriageStatus !== "running" && (
+                <button
+                  onClick={() => autoTriageMutation.mutate({ queueItemId: item.id })}
+                  disabled={autoTriageMutation.isPending}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-300 text-xs font-medium hover:bg-violet-500/20 transition-all disabled:opacity-50"
+                  title="Run structured triage pipeline"
+                >
+                  {autoTriageMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                  AI Triage
+                </button>
+              )}
               <button
                 onClick={() => onAnalyze(item.id)}
                 disabled={isProcessing}
