@@ -78,6 +78,13 @@
       "when": 1771843928938,
       "tag": "0010_good_master_chief",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1772323200000,
+      "tag": "0011_align_alert_queue",
+      "breakpoints": true
     }
   ]
 }
