@@ -186,11 +186,17 @@ export default function Compliance() {
   const complianceSource: "indexer" | "server" = indexerHealthy && complianceQ.data ? "indexer" : "server";
   const complianceData = useMemo(() => {
     if (indexerHealthy && complianceQ.data) {
-      const raw = complianceQ.data as Record<string, unknown>;
+      const wrapper = complianceQ.data as Record<string, unknown>;
+      const raw = wrapper.data as Record<string, unknown> | null;
+      if (!raw) return { total: 0, byControl: [] as Array<{ control: string; count: number }>, bySeverity: [] as Array<{ level: string; count: number }>, timeline: [] as Array<{ time: string; count: number }> };
       const aggs = raw.aggregations as Record<string, unknown> | undefined;
       if (aggs) {
-        const controlBuckets = ((aggs.controls as Record<string, unknown>)?.buckets ?? []) as Array<{ key: string; doc_count: number }>;
-        const levelBuckets = ((aggs.levels as Record<string, unknown>)?.buckets ?? []) as Array<{ key: number; doc_count: number }>;
+        const controlBucketsRaw = ((aggs.controls as Record<string, unknown>)?.buckets ?? []) as Array<{ key: string; doc_count: number; severity?: { buckets: Array<{ key: number; doc_count: number }> } }>;
+        const controlBuckets = controlBucketsRaw as Array<{ key: string; doc_count: number }>;
+        // Severity is nested inside each control bucket — aggregate across all
+        const sevMap = new Map<number, number>();
+        controlBucketsRaw.forEach(c => (c.severity?.buckets ?? []).forEach(sb => sevMap.set(sb.key, (sevMap.get(sb.key) ?? 0) + sb.doc_count)));
+        const levelBuckets = Array.from(sevMap.entries()).map(([key, doc_count]) => ({ key, doc_count }));
         const timelineBuckets = ((aggs.timeline as Record<string, unknown>)?.buckets ?? []) as Array<{ key_as_string: string; doc_count: number }>;
         const totalHits = ((raw.hits as Record<string, unknown>)?.total as Record<string, unknown>)?.value as number ?? 0;
         const byControl = controlBuckets.map(b => ({ control: b.key, count: b.doc_count }));

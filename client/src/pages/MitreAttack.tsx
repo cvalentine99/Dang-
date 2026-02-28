@@ -191,11 +191,18 @@ export default function MitreAttack() {
   const mitreSource: "indexer" | "server" = indexerHealthy && mitreAggQ.data ? "indexer" : "server";
   const { indexerTacticAlerts, indexerTimeline, indexerTopTechniques, totalMitreAlerts } = useMemo(() => {
     if (indexerHealthy && mitreAggQ.data) {
-      const raw = mitreAggQ.data as Record<string, unknown>;
+      const wrapper = mitreAggQ.data as Record<string, unknown>;
+      const raw = wrapper.data as Record<string, unknown> | null;
+      if (!raw) return {
+        indexerTacticAlerts: [] as Array<{ tactic: string; alerts: number; delta: number }>,
+        indexerTimeline: [] as Array<Record<string, string | number>>,
+        indexerTopTechniques: [] as Array<{ id: string; name: string; tactic: string; alerts: number }>,
+        totalMitreAlerts: 0,
+      };
       const aggs = raw.aggregations as Record<string, unknown> | undefined;
       if (aggs) {
         const tacticBuckets = ((aggs.tactics as Record<string, unknown>)?.buckets ?? []) as Array<{ key: string; doc_count: number }>;
-        const techBuckets = ((aggs.techniques as Record<string, unknown>)?.buckets ?? []) as Array<{ key: string; doc_count: number }>;
+        const techBuckets = ((aggs.techniques_total as Record<string, unknown>)?.buckets ?? []) as Array<{ key: string; doc_count: number }>;
         const timelineBuckets = ((aggs.timeline as Record<string, unknown>)?.buckets ?? []) as Array<{ key_as_string: string; doc_count: number; tactics?: { buckets: Array<{ key: string; doc_count: number }> } }>;
         const totalHits = ((raw.hits as Record<string, unknown>)?.total as Record<string, unknown>)?.value as number ?? 0;
 

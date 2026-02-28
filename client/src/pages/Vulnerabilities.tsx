@@ -118,7 +118,7 @@ export default function Vulnerabilities() {
   const vulnPkgQ = trpc.indexer.vulnAggByPackage.useQuery({ topN: 15 }, { retry: 1, staleTime: 30_000, enabled: isIndexerConnected && viewMode === "fleet" });
   const vulnCveQ = trpc.indexer.vulnAggByCVE.useQuery({ topN: 20 }, { retry: 1, staleTime: 30_000, enabled: isIndexerConnected && viewMode === "fleet" });
   const vulnSearchQ = trpc.indexer.vulnSearch.useQuery(
-    { size: pageSize, offset: page * pageSize, severity: sevFilter !== "all" ? sevFilter as "Critical" | "High" | "Medium" | "Low" : undefined, query: search || undefined },
+    { size: pageSize, offset: page * pageSize, severity: sevFilter !== "all" ? (sevFilter.charAt(0).toUpperCase() + sevFilter.slice(1)) as "Critical" | "High" | "Medium" | "Low" : undefined, query: search || undefined },
     { retry: 1, staleTime: 15_000, enabled: isIndexerConnected && viewMode === "fleet" }
   );
 
