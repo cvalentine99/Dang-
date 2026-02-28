@@ -1504,3 +1504,37 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Add visual diff indicators (better/worse/same)
 - [x] Add "Compare Agents" button to Fleet Command page header
 - [x] Write vitest tests for all three features (69 new tests, 546 total passing)
+
+## Phase: Agentic SOC Pipeline — Canonical Schemas & Structured Triage
+
+### Schema Contracts (Foundation)
+- [x] Design TriageObject TypeScript interface (alert identity, severity, confidence, entities, dedup, route, evidence summary, uncertainties, case-link)
+- [x] Design CorrelationBundle TypeScript interface (related alerts, entities, blast radius, campaign grouping, merge/new-case suggestion, confidence)
+- [x] Design LivingCaseObject TypeScript interface (working theory, alternate theories, completed pivots, evidence gaps, next steps, recommended actions, approval-required actions, timeline summary, linked alerts, linked entities)
+- [x] Create shared/agenticSchemas.ts with all three canonical interfaces
+- [x] Extend Drizzle schema: triage_objects table
+- [x] Extend Drizzle schema: correlation_bundles table
+- [x] Extend Drizzle schema: living case fields on investigation_sessions table
+- [x] Run database migrations
+
+### Step 1 — Structured Triage Pipeline
+- [x] Build server/agenticPipeline/triageAgent.ts — fresh-context triage with structured JSON output
+- [x] Entity extraction: host, user, process, hash, IP, domain, rule ID, MITRE mapping
+- [x] Severity + confidence assignment with evidence-backed reasoning
+- [x] Dedup/similarity detection against recent triage objects
+- [x] Route recommendation (A: duplicate/noisy, B: low-confidence interesting, C: high-confidence suspicious, D: likely benign)
+- [x] Case-link suggestion (match to existing investigations)
+- [x] Build triage tRPC router (triageAlert, getTriageById, listTriages, triageStats)
+- [x] Wire triage router into server/routers.ts (as pipeline.*)
+
+### Frontend — Triage Integration
+- [x] Build TriageResultCard component (structured display of triage object)
+- [x] Integrate triage into alert queue (auto-triage on queue intake)
+- [x] Add "Run Triage" button on Triage Pipeline page
+- [x] Show triage result inline with route recommendation badge
+- [x] Triage history view (list of past triage objects with filtering and pagination)
+
+### Tests
+- [x] Write vitest tests for canonical schema validation
+- [x] Write vitest tests for triage agent pipeline
+- [x] Write vitest tests for triage tRPC router (68 new tests, 614 total passing)
