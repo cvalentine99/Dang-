@@ -154,7 +154,7 @@ export default function SiemEvents() {
   const indexerStatusQ = trpc.indexer.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
   const indexerHealthy = indexerStatusQ.data?.configured === true && indexerStatusQ.data?.healthy === true;
   const timeRangeMs = useMemo(() => {
-    const map: Record<string, number> = { "1h": 3600000, "6h": 21600000, "24h": 86400000, "7d": 604800000 };
+    const map: Record<string, number> = { "15m": 900000, "1h": 3600000, "6h": 21600000, "24h": 86400000, "7d": 604800000 };
     return map[timeRange] ?? 86400000;
   }, [timeRange]);
   const timeWindow = useMemo(() => ({
@@ -169,7 +169,8 @@ export default function SiemEvents() {
   // ─── Data ────────────────────────────────────────────────────────────────
   const events: SiemEvent[] = useMemo(() => {
     if (!alertsSearchQ.data) return [];
-    const hits = ((alertsSearchQ.data as Record<string, unknown>)?.hits as Record<string, unknown>)?.hits as Array<{ _source: Record<string, unknown> }> ?? [];
+    const raw = (alertsSearchQ.data as Record<string, unknown>)?.data as Record<string, unknown> | null;
+    const hits = (raw?.hits as Record<string, unknown>)?.hits as Array<{ _id: string; _source: Record<string, unknown> }> ?? [];
     return hits.map((h) => {
       const s = h._source;
       const agent = (s.agent ?? {}) as Record<string, unknown>;
@@ -177,8 +178,8 @@ export default function SiemEvents() {
       const mitre = (rule.mitre ?? {}) as Record<string, unknown>;
       const decoder = (s.decoder ?? {}) as Record<string, unknown>;
       return {
-        id: String(s.id ?? h._source._id ?? Math.random()),
-        timestamp: String(s.timestamp ?? ""),
+        id: String(s.id ?? h._id ?? Math.random()),
+        timestamp: String(s["@timestamp"] ?? s.timestamp ?? ""),
         agent: { id: String(agent.id ?? ""), name: String(agent.name ?? ""), ip: String(agent.ip ?? "") },
         rule: {
           id: Number(rule.id ?? 0),
@@ -460,6 +461,7 @@ export default function SiemEvents() {
 
           <RefreshControl
             onRefresh={() => {
+              alertsSearchQ.refetch();
               rulesQ.refetch();
               agentsQ.refetch();
               savedSearchesQ.refetch();
