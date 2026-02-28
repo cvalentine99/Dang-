@@ -19,6 +19,7 @@ import { splunkRouter } from "./splunk/splunkRouter";
 import { autoQueueRouter } from "./alertQueue/autoQueueRouter";
 import { huntRouter } from "./hunt/huntRouter";
 import { enhancedLLMRouter } from "./enhancedLLM/enhancedLLMRouter";
+import { pipelineRouter } from "./agenticPipeline/pipelineRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -85,6 +86,9 @@ export const appRouter = router({
 
   // Enhanced LLM — Nemotron Nano agentic endpoints (chat, classify, DGX health)
   enhancedLLM: enhancedLLMRouter,
+
+  // Agentic SOC Pipeline — structured triage, correlation, case management
+  pipeline: pipelineRouter,
 });
 
 export type AppRouter = typeof appRouter;
