@@ -18,6 +18,7 @@ import { alertQueueRouter } from "./alertQueue/alertQueueRouter";
 import { splunkRouter } from "./splunk/splunkRouter";
 import { autoQueueRouter } from "./alertQueue/autoQueueRouter";
 import { huntRouter } from "./hunt/huntRouter";
+import { enhancedLLMRouter } from "./enhancedLLM/enhancedLLMRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -81,6 +82,9 @@ export const appRouter = router({
 
   // Threat Hunting — server-side multi-source IOC correlation
   hunt: huntRouter,
+
+  // Enhanced LLM — Nemotron Nano agentic endpoints (chat, classify, DGX health)
+  enhancedLLM: enhancedLLMRouter,
 });
 
 export type AppRouter = typeof appRouter;

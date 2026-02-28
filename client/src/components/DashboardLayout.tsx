@@ -51,6 +51,7 @@ import {
   Gauge,
   Inbox,
   Zap,
+  Cpu,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -149,6 +150,7 @@ const menuItems = [
   { icon: Gauge, label: "Token Usage", path: "/admin/token-usage", group: "Admin" },
   { icon: UserCog, label: "User Management", path: "/admin/users", group: "Admin" },
   { icon: Settings, label: "Connection Settings", path: "/admin/settings", group: "Admin" },
+  { icon: Cpu, label: "DGX Health", path: "/admin/dgx-health", group: "Admin" },
   { icon: StickyNote, label: "Analyst Notes", path: "/notes", group: "Tools" },
   { icon: Bot, label: "AI Assistant", path: "/assistant", group: "Tools" },
 ];

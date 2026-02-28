@@ -6,7 +6,7 @@ import {
   Send, Bot, User, ChevronDown, ChevronRight, FileJson, Lightbulb, Loader2,
   AlertTriangle, Database, Search, Sparkles, Copy, Check, Shield, ShieldAlert,
   ShieldOff, Terminal, Zap, Activity, Clock, CheckCircle2, XCircle, Eye,
-  Volume2, VolumeX, RotateCcw,
+  Volume2, VolumeX, RotateCcw, Crosshair, Brain, Microscope, Radar, Settings2,
 } from "lucide-react";
 import { Streamdown } from "streamdown";
 
@@ -841,10 +841,14 @@ export default function AnalystChat(): React.JSX.Element {
   const [liveSteps, setLiveSteps] = useState<AgentStep[]>([]);
   const [replayingId, setReplayingId] = useState<string | null>(null);
   const [replaySteps, setReplaySteps] = useState<AgentStep[]>([]);
+  const [sessionType, setSessionType] = useState<"alert_triage" | "quick_lookup" | "investigation" | "deep_dive" | "threat_hunt">("quick_lookup");
+  const [priority, setPriority] = useState<"critical" | "high" | "normal">("normal");
+  const [showSessionPicker, setShowSessionPicker] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const analystMutation = trpc.graph.analystQuery.useMutation();
+  const enhancedChatMutation = trpc.enhancedLLM.chat.useMutation();
 
   // Handle pre-loaded query from URL (e.g., from Alert Queue)
   const searchString = useSearch();
@@ -956,8 +960,11 @@ export default function AnalystChat(): React.JSX.Element {
     }));
 
     try {
-      const result = await analystMutation.mutateAsync({
+      const result = await enhancedChatMutation.mutateAsync({
         query: text,
+        sessionType,
+        priority,
+        includeTools: sessionType === "investigation" || sessionType === "deep_dive",
         conversationHistory,
       });
 
@@ -1004,7 +1011,7 @@ export default function AnalystChat(): React.JSX.Element {
       setIsAnalyzing(false);
       setLiveSteps([]);
     }
-  }, [input, isAnalyzing, messages, analystMutation]);
+  }, [input, isAnalyzing, messages, enhancedChatMutation, sessionType, priority]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -1037,7 +1044,7 @@ export default function AnalystChat(): React.JSX.Element {
                 New conversation
               </button>
             )}
-            {analystMutation.isError && (
+            {(analystMutation.isError || enhancedChatMutation.isError) && (
               <div className="flex items-center gap-1.5 text-xs text-threat-high">
                 <AlertTriangle className="w-3.5 h-3.5" />
                 <span>Pipeline error</span>
@@ -1071,6 +1078,72 @@ export default function AnalystChat(): React.JSX.Element {
       {/* Input area */}
       <div className="flex-shrink-0 px-6 py-4 border-t border-white/5">
         <div>
+          {/* Session Type & Priority Bar */}
+          <div className="flex items-center gap-2 mb-2">
+            <div className="relative">
+              <button
+                onClick={() => setShowSessionPicker(!showSessionPicker)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-white/10 text-xs text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
+              >
+                {sessionType === "quick_lookup" && <Search className="w-3 h-3" />}
+                {sessionType === "alert_triage" && <AlertTriangle className="w-3 h-3" />}
+                {sessionType === "investigation" && <Microscope className="w-3 h-3" />}
+                {sessionType === "deep_dive" && <Brain className="w-3 h-3" />}
+                {sessionType === "threat_hunt" && <Crosshair className="w-3 h-3" />}
+                <span className="capitalize">{sessionType.replace("_", " ")}</span>
+                <ChevronDown className="w-3 h-3" />
+              </button>
+              {showSessionPicker && (
+                <div className="absolute bottom-full left-0 mb-1 w-72 glass-panel rounded-lg border border-white/10 p-1 z-50">
+                  {[
+                    { type: "quick_lookup" as const, icon: Search, label: "Quick Lookup", desc: "Fast factual answers (8K ctx)", color: "text-cyan-400" },
+                    { type: "alert_triage" as const, icon: AlertTriangle, label: "Alert Triage", desc: "Structured classification (16K ctx)", color: "text-amber-400" },
+                    { type: "investigation" as const, icon: Microscope, label: "Investigation", desc: "Multi-turn with tools (32K ctx)", color: "text-purple-400" },
+                    { type: "deep_dive" as const, icon: Brain, label: "Deep Dive", desc: "Full forensic analysis (64K ctx)", color: "text-pink-400" },
+                    { type: "threat_hunt" as const, icon: Crosshair, label: "Threat Hunt", desc: "Proactive hunting (32K ctx)", color: "text-red-400" },
+                  ].map(s => (
+                    <button
+                      key={s.type}
+                      onClick={() => { setSessionType(s.type); setShowSessionPicker(false); }}
+                      className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-left transition-colors ${
+                        sessionType === s.type ? "bg-purple-500/15 border border-purple-500/30" : "hover:bg-white/5"
+                      }`}
+                    >
+                      <s.icon className={`w-4 h-4 ${s.color}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-foreground">{s.label}</p>
+                        <p className="text-[10px] text-muted-foreground">{s.desc}</p>
+                      </div>
+                      {sessionType === s.type && <Check className="w-3.5 h-3.5 text-purple-400" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-1 border-l border-white/10 pl-2">
+              {(["normal", "high", "critical"] as const).map(p => (
+                <button
+                  key={p}
+                  onClick={() => setPriority(p)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                    priority === p
+                      ? p === "critical" ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                        : p === "high" ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                        : "bg-white/10 text-foreground border border-white/20"
+                      : "text-muted-foreground hover:bg-white/5"
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+            <div className="flex-1" />
+            <span className="text-[10px] text-muted-foreground">
+              {sessionType === "investigation" || sessionType === "deep_dive" ? "Reasoning ON" : "Reasoning OFF"}
+              {" · "}
+              {sessionType === "investigation" || sessionType === "deep_dive" ? "Tools ON" : "Tools OFF"}
+            </span>
+          </div>
           <div className="glass-panel rounded-xl overflow-hidden flex items-end">
             <textarea
               ref={inputRef}

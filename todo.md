@@ -1504,3 +1504,41 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Add visual diff indicators (better/worse/same)
 - [x] Add "Compare Agents" button to Fleet Command page header
 - [x] Write vitest tests for all three features (69 new tests, 546 total passing)
+
+## Phase: Enhanced LLM tRPC Endpoints (Nemotron Nano Agentic Integration)
+
+### Backend — enhancedLLM Router
+- [x] Create server/enhancedLLM/enhancedLLMRouter.ts with tRPC procedures
+- [x] enhancedLLM.chat mutation: session-type-aware chat (alert_triage, quick_lookup, investigation, deep_dive, threat_hunt)
+- [x] enhancedLLM.classifyAlert mutation: structured alert classification with JSON schema output
+- [x] enhancedLLM.dgxHealth query: DGX Spark health metrics (model loaded, VRAM, decode rate, queue depth)
+- [x] Context allocation strategy: map sessionType → ctx-size (quick_lookup=8K, alert_triage=16K, investigation=32K, deep_dive=64K, threat_hunt=32K)
+- [x] Priority queue: critical > high > normal request ordering
+- [x] Prompt injection defense: wrap untrustedData in security delimiters
+- [x] Structured output schema for classifyAlert (severity, classification, IOCs, MITRE techniques, recommended actions, confidence)
+- [x] Tool calling support: search_alerts, get_agent_info, search_vulnerabilities, get_fim_events, search_sca_results
+- [x] Reasoning mode toggle: enable for investigation/deep_dive, disable for quick_lookup/alert_triage
+- [x] Wire router into server/routers.ts
+
+### Frontend — Enhanced Chat UI
+- [x] Update AnalystChat to use enhancedLLM.chat with sessionType selector
+- [x] Session type picker (5 modes with descriptions and icons)
+- [x] Priority selector for critical/high/normal
+- [x] Show reasoning traces in expandable panel when reasoning mode is on
+
+### Frontend — Alert Classification Component
+- [x] Add "AI Classify" button on alert rows in Alerts Timeline and SIEM Events
+- [x] Classification result card: severity, classification, IOCs, MITRE techniques, recommended actions, confidence gauge
+- [ ] Batch classification mode: select multiple alerts, classify all (deferred)
+
+### Frontend — DGX Health Admin Panel
+- [x] Build /admin/dgx-health page with DGX Spark metrics
+- [x] Model status card (loaded, model name, quantization, context size)
+- [x] Performance metrics (decode tok/s, prefill tok/s, active requests, queue depth)
+- [x] Memory usage gauge (model weights, KV cache, available)
+- [x] Add sidebar entry under Admin group
+
+### Tests
+- [x] Write vitest tests for enhancedLLM router (chat, classifyAlert, dgxHealth)
+- [x] Write vitest tests for context allocation and priority queue logic
+- [x] Write vitest tests for prompt injection defense (37 new tests, 583 total passing)

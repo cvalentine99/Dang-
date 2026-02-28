@@ -34,6 +34,7 @@ import AlertQueue from "./pages/AlertQueue";
 import AgentDetail from "./pages/AgentDetail";
 import AgentCompare from "./pages/AgentCompare";
 import AutoQueueRules from "./pages/AutoQueueRules";
+import DGXHealth from "./pages/DGXHealth";
 
 function Router() {
   return (
@@ -74,6 +75,7 @@ function Router() {
               <Route path="/pipeline" component={DataPipeline} />
               <Route path="/alert-queue" component={AlertQueue} />
               <Route path="/auto-queue-rules" component={AutoQueueRules} />
+              <Route path="/admin/dgx-health" component={DGXHealth} />
               <Route path="/404" component={NotFound} />
               <Route component={NotFound} />
             </Switch>
