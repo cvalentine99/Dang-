@@ -67,6 +67,8 @@ services:
       WAZUH_PORT: ${WAZUH_PORT:-55000}
       WAZUH_USER: ${WAZUH_USER:-}
       WAZUH_PASS: ${WAZUH_PASS:-}
+      WAZUH_VERIFY_TLS: ${WAZUH_VERIFY_TLS:-true}
+      WAZUH_CA_CERT: ${WAZUH_CA_CERT:-}
 
       # Wazuh Indexer (OpenSearch)
       WAZUH_INDEXER_HOST: ${WAZUH_INDEXER_HOST:-}

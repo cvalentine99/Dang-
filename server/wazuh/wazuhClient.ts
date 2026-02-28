@@ -35,6 +35,7 @@
 
 import axios, { AxiosInstance } from "axios";
 import https from "https";
+import fs from "fs";
 
 // ── Token state ───────────────────────────────────────────────────────────────
 // We store the JWT and its expiration from the Wazuh API response.
@@ -47,6 +48,7 @@ interface CachedToken {
 }
 
 let cachedToken: CachedToken | null = null;
+let tokenInflight: Promise<string> | null = null; // mutex for concurrent auth
 
 // ── Rate-limit state (simple token bucket per endpoint group) ─────────────────
 const rateLimitState: Record<string, { count: number; resetAt: number }> = {};
@@ -94,12 +96,44 @@ function stripSensitiveFields(obj: unknown): unknown {
   return obj;
 }
 
-// ── Axios instance (skip TLS verification for self-signed certs) ──────────────
+// ── TLS configuration ─────────────────────────────────────────────────────────
+// By default, TLS certificates are verified. For Wazuh deployments with
+// self-signed certs, set WAZUH_VERIFY_TLS=false. For custom CA certs,
+// set WAZUH_CA_CERT to the path of the CA bundle (PEM format).
+function buildHttpsAgent(): https.Agent {
+  const verifyTls = (process.env.WAZUH_VERIFY_TLS ?? "true").toLowerCase() !== "false";
+  const caCertPath = process.env.WAZUH_CA_CERT;
+
+  const opts: https.AgentOptions = { rejectUnauthorized: verifyTls };
+
+  if (caCertPath) {
+    try {
+      opts.ca = fs.readFileSync(caCertPath);
+      console.log("[Wazuh TLS] Using custom CA cert: %s", caCertPath);
+    } catch (err) {
+      console.error("[Wazuh TLS] Failed to read CA cert at %s: %s", caCertPath, (err as Error).message);
+    }
+  }
+
+  if (!verifyTls) {
+    console.warn("[Wazuh TLS] Certificate verification DISABLED (WAZUH_VERIFY_TLS=false)");
+  }
+
+  return new https.Agent(opts);
+}
+
+let _httpsAgent: https.Agent | null = null;
+function getHttpsAgent(): https.Agent {
+  if (!_httpsAgent) _httpsAgent = buildHttpsAgent();
+  return _httpsAgent;
+}
+
+// ── Axios instance ────────────────────────────────────────────────────────────
 function createAxiosInstance(baseURL: string): AxiosInstance {
   return axios.create({
     baseURL,
     timeout: 8_000,
-    httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+    httpsAgent: getHttpsAgent(),
     // NOTE: Do NOT set a default Content-Type here. The /security/user/authenticate
     // endpoint must receive NO body and NO Content-Type. GET requests also don't
     // need one. Axios sets Content-Type automatically when a body is present.
@@ -109,17 +143,9 @@ function createAxiosInstance(baseURL: string): AxiosInstance {
 // ── Token management ──────────────────────────────────────────────────────────
 
 /**
- * Returns a valid JWT, re-authenticating only when the cached token is missing
- * or expired. Logs all authentication lifecycle events.
+ * Performs the actual authentication call. Called only by getToken().
  */
-async function getToken(baseURL: string, user: string, pass: string): Promise<string> {
-  // Return cached token if it hasn't expired (with buffer)
-  if (cachedToken && Date.now() < cachedToken.expiresAt - TOKEN_EXPIRY_BUFFER_MS) {
-    console.log("[Wazuh Auth] Reusing cached JWT (expires in %ds)",
-      Math.round((cachedToken.expiresAt - Date.now()) / 1000));
-    return cachedToken.jwt;
-  }
-
+async function authenticateWazuh(baseURL: string, user: string, pass: string): Promise<string> {
   const wasExpired = cachedToken !== null;
   console.log("[Wazuh Auth] %s — calling POST /security/user/authenticate",
     wasExpired ? "Token expired, re-authenticating" : "Initial authentication");
@@ -151,6 +177,33 @@ async function getToken(baseURL: string, user: string, pass: string): Promise<st
     Math.round((expiresAt - Date.now()) / 1000));
 
   return token;
+}
+
+/**
+ * Returns a valid JWT, re-authenticating only when the cached token is missing
+ * or expired. Uses a promise lock so concurrent callers share a single
+ * in-flight auth request instead of firing duplicate POST calls.
+ */
+async function getToken(baseURL: string, user: string, pass: string): Promise<string> {
+  // Return cached token if it hasn't expired (with buffer)
+  if (cachedToken && Date.now() < cachedToken.expiresAt - TOKEN_EXPIRY_BUFFER_MS) {
+    console.log("[Wazuh Auth] Reusing cached JWT (expires in %ds)",
+      Math.round((cachedToken.expiresAt - Date.now()) / 1000));
+    return cachedToken.jwt;
+  }
+
+  // If another caller is already authenticating, wait for that result
+  if (tokenInflight) {
+    console.log("[Wazuh Auth] Waiting for in-flight authentication");
+    return tokenInflight;
+  }
+
+  // First caller — take the lock and authenticate
+  tokenInflight = authenticateWazuh(baseURL, user, pass).finally(() => {
+    tokenInflight = null;
+  });
+
+  return tokenInflight;
 }
 
 /** Clear cached token so the next getToken() call re-authenticates. */
