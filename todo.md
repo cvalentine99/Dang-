@@ -1782,3 +1782,18 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Pipeline artifacts endpoint tests — procedure existence verified
 - [x] Linkage integrity tests — report service importable, schema verified
 - [x] All 879 tests passing (39 test files)
+
+## Phase: Fix Denormalized Counter Drift (Code Review Feedback)
+
+### Problem: living_case_state counters go stale after action transitions
+- [x] pendingActionCount, approvalRequiredCount derived from snapshot at hypothesis time, not recomputed on transitions — FIXED
+- [x] actionSummary in caseData is write-once at materialization, never refreshed — FIXED
+- [x] recommendedActions still merged/preserved in hypothesisAgent (transitional scaffolding) — counters now derived from response_actions
+
+### Fix: Derive counters from response_actions table
+- [x] Create recomputeCaseSummary() helper that queries response_actions by caseId and returns fresh counts
+- [x] Wire syncCaseSummaryAfterTransition into stateMachine.ts after every state transition (approve/reject/defer/execute/repropose)
+- [x] Update hypothesisAgent to use recomputeCaseSummary after materializing actions instead of snapshot-based counting
+- [x] Ensure actionSummary in LivingCaseObject is refreshed on transitions — syncCaseSummaryAfterTransition updates caseData.actionSummary
+- [x] Write tests proving counters match response_actions table state after transitions — 23 tests in counterDrift.test.ts
+- [x] All 902 tests passing across 40 test files, 0 TypeScript errors

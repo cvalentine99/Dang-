@@ -22,11 +22,12 @@
  *   approved → executed (terminal)
  */
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import {
   responseActions,
   responseActionAudit,
+  livingCaseState,
 } from "../../drizzle/schema";
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -261,7 +262,12 @@ export async function transitionActionState(
     metadata: req.metadata,
   });
 
-  // 6. Return updated action
+  // 6. Recompute case summary counters from response_actions (eliminates counter drift)
+  if (action.caseId) {
+    await syncCaseSummaryAfterTransition(action.caseId);
+  }
+
+  // 7. Return updated action
   const [updated] = await db
     .select()
     .from(responseActions)
@@ -274,6 +280,122 @@ export async function transitionActionState(
     fromState,
     toState: req.targetState,
   };
+}
+
+// ── Case Summary Recompute ──────────────────────────────────────────────────
+
+/**
+ * Recomputes pendingActionCount, approvalRequiredCount, and actionSummary
+ * from the response_actions table — the SINGLE source of truth.
+ *
+ * This function is called after every state transition to keep
+ * living_case_state and LivingCaseObject.actionSummary in sync.
+ *
+ * This eliminates the "denormalized counter drift" problem where
+ * snapshot-based counters set at hypothesis time go stale after
+ * approve/reject/defer/execute transitions.
+ */
+export interface CaseSummary {
+  total: number;
+  proposed: number;
+  approved: number;
+  rejected: number;
+  executed: number;
+  deferred: number;
+}
+
+export async function recomputeCaseSummary(caseId: number): Promise<CaseSummary | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  // Count actions by state for this case — derived from response_actions, not snapshots
+  const rows = await db
+    .select({
+      state: responseActions.state,
+      count: sql<number>`COUNT(*)`.as("count"),
+    })
+    .from(responseActions)
+    .where(eq(responseActions.caseId, caseId))
+    .groupBy(responseActions.state);
+
+  const summary: CaseSummary = {
+    total: 0,
+    proposed: 0,
+    approved: 0,
+    rejected: 0,
+    executed: 0,
+    deferred: 0,
+  };
+
+  for (const row of rows) {
+    const count = Number(row.count);
+    summary.total += count;
+    if (row.state in summary) {
+      (summary as any)[row.state] = count;
+    }
+  }
+
+  return summary;
+}
+
+/**
+ * Updates living_case_state counters and LivingCaseObject.actionSummary
+ * from the response_actions table. Called after every state transition.
+ */
+export async function syncCaseSummaryAfterTransition(caseId: number): Promise<void> {
+  const db = await getDb();
+  if (!db || !caseId) return;
+
+  const summary = await recomputeCaseSummary(caseId);
+  if (!summary) return;
+
+  // 1. Update the denormalized counters on living_case_state
+  const [caseRow] = await db
+    .select()
+    .from(livingCaseState)
+    .where(eq(livingCaseState.id, caseId))
+    .limit(1);
+
+  if (!caseRow) return;
+
+  // 2. Update the counters on the table row
+  await db
+    .update(livingCaseState)
+    .set({
+      pendingActionCount: summary.proposed,
+      approvalRequiredCount: await getApprovalRequiredCount(db, caseId),
+    })
+    .where(eq(livingCaseState.id, caseId));
+
+  // 3. Update the actionSummary inside the caseData JSON
+  const caseData = caseRow.caseData as any;
+  if (caseData) {
+    caseData.actionSummary = summary;
+    await db
+      .update(livingCaseState)
+      .set({ caseData })
+      .where(eq(livingCaseState.id, caseId));
+  }
+}
+
+/**
+ * Count actions that require approval and are still in proposed state.
+ * Derived from response_actions, not from snapshot.
+ */
+async function getApprovalRequiredCount(
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+  caseId: number
+): Promise<number> {
+  const [result] = await db
+    .select({
+      count: sql<number>`COUNT(*)`.as("count"),
+    })
+    .from(responseActions)
+    .where(
+      sql`${responseActions.caseId} = ${caseId} AND ${responseActions.requiresApproval} = 1 AND ${responseActions.state} = 'proposed'`
+    );
+
+  return Number(result?.count ?? 0);
 }
 
 // ── Convenience Wrappers ────────────────────────────────────────────────────

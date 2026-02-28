@@ -26,6 +26,7 @@ import {
   responseActionAudit,
 } from "../../drizzle/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
+import { recomputeCaseSummary, syncCaseSummaryAfterTransition } from "./stateMachine";
 import { invokeLLMWithFallback } from "../llm/llmService";
 import type {
   TriageObject,
@@ -611,12 +612,10 @@ async function persistLivingCase(
           theoryConfidence: livingCase.workingTheory.confidence,
           completedPivotCount: livingCase.completedPivots.length,
           evidenceGapCount: livingCase.evidenceGaps.length,
-          pendingActionCount: livingCase.recommendedActions.filter(
-            (a) => a.state === "proposed"
-          ).length,
-          approvalRequiredCount: livingCase.recommendedActions.filter(
-            (a) => a.requiresApproval && a.state === "proposed"
-          ).length,
+          // Counters will be recomputed from response_actions after materialization
+          // (see syncCaseSummaryAfterTransition call below)
+          pendingActionCount: 0,
+          approvalRequiredCount: 0,
           linkedTriageIds: livingCase.linkedTriageIds,
           linkedCorrelationIds: livingCase.linkedCorrelationIds,
           ...(sourceTriageId ? { sourceTriageId } : {}),
@@ -636,12 +635,9 @@ async function persistLivingCase(
       theoryConfidence: livingCase.workingTheory.confidence,
       completedPivotCount: livingCase.completedPivots.length,
       evidenceGapCount: livingCase.evidenceGaps.length,
-      pendingActionCount: livingCase.recommendedActions.filter(
-        (a) => a.state === "proposed"
-      ).length,
-      approvalRequiredCount: livingCase.recommendedActions.filter(
-        (a) => a.requiresApproval && a.state === "proposed"
-      ).length,
+      // Counters will be recomputed from response_actions after materialization
+      pendingActionCount: 0,
+      approvalRequiredCount: 0,
       sourceTriageId: sourceTriageId ?? null,
       sourceCorrelationId: sourceCorrelationId ?? null,
       linkedTriageIds: livingCase.linkedTriageIds,
@@ -670,12 +666,9 @@ async function persistLivingCase(
           theoryConfidence: merged.workingTheory.confidence,
           completedPivotCount: merged.completedPivots.length,
           evidenceGapCount: merged.evidenceGaps.length,
-          pendingActionCount: merged.recommendedActions.filter(
-            (a) => a.state === "proposed"
-          ).length,
-          approvalRequiredCount: merged.recommendedActions.filter(
-            (a) => a.requiresApproval && a.state === "proposed"
-          ).length,
+          // Counters will be recomputed from response_actions after materialization
+          pendingActionCount: 0,
+          approvalRequiredCount: 0,
           linkedTriageIds: merged.linkedTriageIds,
           linkedCorrelationIds: merged.linkedCorrelationIds,
           ...(sourceTriageId ? { sourceTriageId } : {}),
@@ -695,12 +688,9 @@ async function persistLivingCase(
       theoryConfidence: livingCase.workingTheory.confidence,
       completedPivotCount: 0,
       evidenceGapCount: livingCase.evidenceGaps.length,
-      pendingActionCount: livingCase.recommendedActions.filter(
-        (a) => a.state === "proposed"
-      ).length,
-      approvalRequiredCount: livingCase.recommendedActions.filter(
-        (a) => a.requiresApproval && a.state === "proposed"
-      ).length,
+      // Counters will be recomputed from response_actions after materialization
+      pendingActionCount: 0,
+      approvalRequiredCount: 0,
       sourceTriageId: sourceTriageId ?? null,
       sourceCorrelationId: sourceCorrelationId ?? null,
       linkedTriageIds: livingCase.linkedTriageIds,
@@ -844,24 +834,27 @@ export async function runHypothesisAgent(
     ctx
   );
 
-  // 7b. Direction 4: Store action IDs + summary on the living case (reference, not ownership)
+  // 7b. Direction 4: Store action IDs on the living case (reference, not ownership)
+  //      Then recompute summary from response_actions (single source of truth)
   if (materializedActionIds.length > 0) {
     livingCase.recommendedActionIds = materializedActionIds;
-    livingCase.actionSummary = {
-      total: materializedActionIds.length,
-      proposed: materializedActionIds.length,
-      approved: 0,
-      rejected: 0,
-      executed: 0,
-      deferred: 0,
-    };
-    // Update the persisted case with the action references
+
+    // Derive actionSummary from response_actions table, not from snapshot
+    const freshSummary = await recomputeCaseSummary(caseStateId);
+    if (freshSummary) {
+      livingCase.actionSummary = freshSummary;
+    }
+
+    // Update the persisted case with action references + fresh summary
     const dbUpdate = await getDb();
     if (dbUpdate) {
       await dbUpdate.update(livingCaseState)
         .set({ caseData: livingCase as any })
         .where(eq(livingCaseState.sessionId, sessionId));
     }
+
+    // Sync the denormalized counters on living_case_state row
+    await syncCaseSummaryAfterTransition(caseStateId);
   }
 
   // 8. Calculate metrics
