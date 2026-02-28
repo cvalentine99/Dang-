@@ -585,3 +585,62 @@ export const autoQueueRules = mysqlTable("auto_queue_rules", {
 
 export type AutoQueueRule = typeof autoQueueRules.$inferSelect;
 export type InsertAutoQueueRule = typeof autoQueueRules.$inferInsert;
+
+/**
+ * Saved Hunt Results — persists threat hunting correlation results.
+ * Analysts can save hunt results to share findings across sessions,
+ * review historical hunts, and export correlation reports.
+ * Local-only: never written back to Wazuh.
+ */
+export const savedHunts = mysqlTable("saved_hunts", {
+  id: int("id").autoincrement().primaryKey(),
+  /** User who executed and saved this hunt */
+  userId: int("userId").notNull(),
+  /** Human-readable title for the saved hunt */
+  title: varchar("title", { length: 512 }).notNull(),
+  /** Optional analyst notes / description */
+  description: text("description"),
+  /** Original search query */
+  query: varchar("query", { length: 500 }).notNull(),
+  /** IOC type used for the hunt */
+  iocType: varchar("iocType", { length: 32 }).notNull(),
+  /** Time range start */
+  timeFrom: varchar("timeFrom", { length: 32 }).notNull(),
+  /** Time range end */
+  timeTo: varchar("timeTo", { length: 32 }).notNull(),
+  /** Total hits across all sources */
+  totalHits: int("totalHits").default(0).notNull(),
+  /** Total execution time in milliseconds */
+  totalTimeMs: int("totalTimeMs").default(0).notNull(),
+  /** Number of sources that returned results */
+  sourcesWithHits: int("sourcesWithHits").default(0).notNull(),
+  /** Agent IDs that were searched */
+  agentsSearched: json("agentsSearched").$type<string[]>(),
+  /** Full correlation results — array of source objects with matches */
+  results: json("results").$type<Array<{
+    source: string;
+    sourceLabel: string;
+    matches: unknown[];
+    count: number;
+    searchTimeMs: number;
+  }>>().notNull(),
+  /** Tags for categorization */
+  tags: json("tags").$type<string[]>(),
+  /** Severity assessment by analyst */
+  severity: mysqlEnum("severity", ["critical", "high", "medium", "low", "info"])
+    .default("info")
+    .notNull(),
+  /** Whether this hunt has been marked as resolved */
+  resolved: int("resolved").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ([
+  index("sh_userId_idx").on(table.userId),
+  index("sh_query_idx").on(table.query),
+  index("sh_iocType_idx").on(table.iocType),
+  index("sh_severity_idx").on(table.severity),
+  index("sh_createdAt_idx").on(table.createdAt),
+]));
+
+export type SavedHunt = typeof savedHunts.$inferSelect;
+export type InsertSavedHunt = typeof savedHunts.$inferInsert;

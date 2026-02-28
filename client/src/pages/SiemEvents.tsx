@@ -1,5 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { GlassPanel, StatCard, ThreatBadge, RawJsonViewer, RefreshControl, IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared";
+import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
+import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { trpc } from "@/lib/trpc";
@@ -574,6 +576,13 @@ export default function SiemEvents() {
       </div>
 
       {/* ── Charts Row ────────────────────────────────────────────────────── */}
+      {alertsSearchQ.isLoading ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <ChartSkeleton variant="area" height={180} title="Event Volume (24h)" />
+          <ChartSkeleton variant="pie" height={180} title="Severity Distribution" />
+          <ChartSkeleton variant="bar" height={180} title="MITRE Tactic Hits" />
+        </div>
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Event Timeline */}
         <GlassPanel className="lg:col-span-1">
@@ -652,8 +661,15 @@ export default function SiemEvents() {
           </ResponsiveContainer>
         </GlassPanel>
       </div>
+      )}
 
       {/* ── Log Source + Decoder Breakdown ─────────────────────────────────── */}
+      {alertsSearchQ.isLoading ? (
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          <ChartSkeleton variant="bar" height={200} title="Log Sources" />
+          <ChartSkeleton variant="bar" height={200} title="Events by Decoder" className="lg:col-span-3" />
+        </div>
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <GlassPanel className="lg:col-span-1">
           <h3 className="text-sm font-semibold text-violet-300 mb-3 flex items-center gap-2">
@@ -703,6 +719,7 @@ export default function SiemEvents() {
           </ResponsiveContainer>
         </GlassPanel>
       </div>
+      )}
 
       {/* ── Search + Filters ──────────────────────────────────────────────── */}
       <GlassPanel>
@@ -827,6 +844,9 @@ export default function SiemEvents() {
 
       {/* ── Event Table ───────────────────────────────────────────────────── */}
       <GlassPanel className="!p-0 overflow-hidden">
+        {alertsSearchQ.isLoading ? (
+          <TableSkeleton columns={7} rows={12} columnWidths={[1, 2, 4, 2, 1, 1, 1]} />
+        ) : (<>
         {/* Table Header */}
         <div className="grid grid-cols-[60px_160px_1fr_180px_120px_100px_80px] gap-2 px-4 py-3 bg-white/5 border-b border-white/10 text-xs font-semibold text-slate-400 uppercase tracking-wider">
           <span>Level</span>
@@ -1397,6 +1417,7 @@ export default function SiemEvents() {
             </div>
           </div>
         )}
+        </>)}
       </GlassPanel>
 
       {/* ── OTX IOC Lookup Dialog ──────────────────────────────────────── */}

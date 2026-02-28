@@ -2,6 +2,8 @@ import { trpc } from "@/lib/trpc";
 import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
 import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared/IndexerStates";
+import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
+import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
@@ -18,9 +20,10 @@ import {
 import {
   Users, Activity, AlertTriangle, Wifi, WifiOff, Clock, Search,
   Monitor, Server, Cpu, ChevronLeft, ChevronRight, X,
-  ArrowDownCircle, FolderX,
+  ArrowDownCircle, FolderX, BarChart3,
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
+import { useLocation } from "wouter";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
@@ -92,6 +95,7 @@ export default function AgentHealth() {
   const agentOsQ = trpc.wazuh.agentOs.useQuery({ agentId: selectedAgent ?? "000" }, { enabled: !!selectedAgent && isConnected });
   const agentHwQ = trpc.wazuh.agentHardware.useQuery({ agentId: selectedAgent ?? "000" }, { enabled: !!selectedAgent && isConnected });
 
+  const [, navigate] = useLocation();
   const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); }, [utils]);
 
   // ── Agent summary (real or fallback) ──────────────────────────────────
@@ -182,7 +186,17 @@ export default function AgentHealth() {
   return (
     <WazuhGuard>
       <div className="space-y-6">
-        <PageHeader title="Fleet Command" subtitle="Agent lifecycle management — status, OS distribution, groups, and deep inspection" onRefresh={handleRefresh} isLoading={isLoading} />
+        <div className="flex items-center justify-between">
+          <PageHeader title="Fleet Command" subtitle="Agent lifecycle management — status, OS distribution, groups, and deep inspection" onRefresh={handleRefresh} isLoading={isLoading} />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/fleet-compare")}
+            className="h-8 bg-transparent border-purple-500/30 text-purple-300 hover:bg-purple-500/10 flex-shrink-0"
+          >
+            <BarChart3 className="w-3.5 h-3.5 mr-1.5" /> Compare Agents
+          </Button>
+        </div>
 
         {/* ── Loading State ── */}
         {isLoading && <IndexerLoadingState message="Fetching fleet status from Wazuh…" />}
@@ -209,6 +223,13 @@ export default function AgentHealth() {
         </div>
 
         {/* Charts Row */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <ChartSkeleton variant="pie" height={200} title="Connection Status" className="lg:col-span-3" />
+            <ChartSkeleton variant="bar" height={200} title="OS Distribution" className="lg:col-span-5" />
+            <ChartSkeleton variant="bar" height={200} title="Agent Groups" className="lg:col-span-4" />
+          </div>
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <GlassPanel className="lg:col-span-3">
             <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Activity className="h-4 w-4 text-primary" /> Connection Status</h3>
@@ -249,6 +270,7 @@ export default function AgentHealth() {
             </div>
           </GlassPanel>
         </div>
+        )}
 
         {/* Agent Table */}
         <GlassPanel>
@@ -275,6 +297,9 @@ export default function AgentHealth() {
             </div>
           </div>
 
+          {isLoading ? (
+            <TableSkeleton columns={9} rows={10} columnWidths={[1, 2, 2, 2, 1, 2, 1, 2, 1]} />
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead><tr className="border-b border-border/30">
@@ -287,7 +312,7 @@ export default function AgentHealth() {
                   const status = String(agent.status ?? "unknown");
                   const os = agent.os as Record<string, unknown> | undefined;
                   return (
-                    <tr key={String(agent.id)} className="border-b border-border/10 hover:bg-secondary/20 transition-colors">
+                    <tr key={String(agent.id)} className="border-b border-border/10 hover:bg-secondary/20 transition-colors cursor-pointer" onClick={() => navigate(`/fleet/${String(agent.id)}`)}>
                       <td className="py-2.5 px-3 font-mono text-primary">{String(agent.id)}</td>
                       <td className="py-2.5 px-3 text-foreground font-medium">{String(agent.name ?? "—")}</td>
                       <td className="py-2.5 px-3 font-mono text-muted-foreground">{String(agent.ip ?? "—")}</td>
@@ -302,7 +327,7 @@ export default function AgentHealth() {
                       </td>
                       <td className="py-2.5 px-3 text-muted-foreground font-mono text-[10px]">{agent.lastKeepAlive ? new Date(String(agent.lastKeepAlive)).toLocaleString() : "—"}</td>
                       <td className="py-2.5 px-3">
-                        <Button variant="outline" size="sm" onClick={() => setSelectedAgent(String(agent.id))} className="h-6 text-[10px] bg-transparent border-border hover:bg-accent px-2">Inspect</Button>
+                        <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/fleet/${String(agent.id)}`); }} className="h-6 text-[10px] bg-transparent border-border hover:bg-accent px-2">Drilldown</Button>
                       </td>
                     </tr>
                   );
@@ -310,6 +335,7 @@ export default function AgentHealth() {
               </tbody>
             </table>
           </div>
+          )}
 
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-4 pt-4 border-t border-border/30">

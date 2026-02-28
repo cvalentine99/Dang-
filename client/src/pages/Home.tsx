@@ -7,6 +7,8 @@ import { ThreatBadge, threatLevelFromNumber } from "@/components/shared/ThreatBa
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { ExportButton } from "@/components/shared/ExportButton";
 import { ThreatMap } from "@/components/shared/ThreatMap";
+import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
+import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { EXPORT_COLUMNS } from "@/lib/exportUtils";
 
 import {
@@ -432,6 +434,13 @@ export default function Home() {
         </div>
 
         {/* ── Row 2: EPS Gauge + Threat Trends (Indexer) + Fleet Status ──── */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <ChartSkeleton variant="bar" height={210} title="Events Per Second" className="lg:col-span-3" />
+            <ChartSkeleton variant="area" height={210} title="Threat Trends — Last 24h" className="lg:col-span-6" />
+            <ChartSkeleton variant="pie" height={210} title="Fleet Status" className="lg:col-span-3" />
+          </div>
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <GlassPanel className="lg:col-span-3 flex flex-col items-center justify-center py-6">
             <div className="flex items-center gap-2 mb-2">
@@ -492,8 +501,16 @@ export default function Home() {
             </ResponsiveContainer>
           </GlassPanel>
         </div>
+        )}
 
         {/* ── Row 3: Top Talkers + Geographic Heatmap + Top Firing Rules ─── */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <ChartSkeleton variant="pie" height={220} title="Top Talkers" className="lg:col-span-4" />
+            <ChartSkeleton variant="area" height={340} title="Geographic Threat Distribution" className="lg:col-span-4" />
+            <ChartSkeleton variant="bar" height={340} title="Top Firing Rules" className="lg:col-span-4" />
+          </div>
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <GlassPanel className="lg:col-span-4">
             <div className="flex items-center justify-between mb-3">
@@ -571,6 +588,7 @@ export default function Home() {
             </div>
           </GlassPanel>
         </div>
+        )}
 
         {/* ── Row 4: Quick Actions + MITRE Trends (Indexer) + API Connectivity */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -636,6 +654,12 @@ export default function Home() {
         </div>
 
         {/* ── Row 5: Event Ingestion + Fleet Agents ───────────────────────── */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartSkeleton variant="area" height={210} title="Event Ingestion — Last 24h" />
+            <ChartSkeleton variant="bar" height={210} title="Fleet Agents" />
+          </div>
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <GlassPanel>
             <div className="flex items-center justify-between mb-3">
@@ -670,6 +694,9 @@ export default function Home() {
                 {(isConnected && agentsQ.data) ? <RawJsonViewer data={agentsQ.data as Record<string, unknown>} title="Agents Data" /> : null}
               </div>
             </div>
+            {isLoading ? (
+              <TableSkeleton columns={5} rows={6} columnWidths={[1, 2, 2, 2, 1]} />
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead><tr className="border-b border-border/30">
@@ -700,8 +727,10 @@ export default function Home() {
                 </tbody>
               </table>
             </div>
+            )}
           </GlassPanel>
         </div>
+        )}
       </div>
     </WazuhGuard>
   );

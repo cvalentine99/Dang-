@@ -940,7 +940,7 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 
 - [ ] Fix frontend rendering crash on /rules page — backend APIs confirmed returning data
 - [ ] Debug exact field shape mismatch causing the crash with real Wazuh responses
-- [ ] Add error boundary to catch and display render errors gracefully
+- [x] Add error boundary to catch and display render errors gracefully
 
 - [x] Rename "SecondSight Analyst" to "Walter" on the Security Analyst page
 
@@ -1379,3 +1379,128 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Add loading spinner to ThreatHunting page
 - [x] Add loading spinner to FleetCommand page
 - [x] Add skeleton stat cards to all dashboard pages during loading
+
+## Phase: Chart Skeleton Loaders, Global Error Boundary, KG Seed
+- [x] Create ChartSkeleton component with shimmer animation for Recharts panels
+- [x] Apply ChartSkeleton to all 7 dashboard pages during loading state
+- [x] Create global GlassErrorBoundary component to catch page-level crashes
+- [x] Wire GlassErrorBoundary into App.tsx route layout
+- [x] Seed KG tables on Docker database using seed-kg.mjs --drop
+- [x] Write tests for ChartSkeleton and GlassErrorBoundary components
+
+## Phase: RulesetExplorer Fix, Table Skeletons, Threat Hunting Wiring
+- [x] Fix RulesetExplorer .length crash — defensive field handling for real API data
+- [x] Create TableSkeleton component with shimmer rows matching glass-panel theme
+- [x] Apply TableSkeleton to Agent Fleet table (AgentHealth)
+- [x] Apply TableSkeleton to CVE table (Vulnerabilities)
+- [x] Apply TableSkeleton to Alerts table (AlertsTimeline)
+- [x] Apply TableSkeleton to SIEM Events table (SiemEvents)
+- [x] Apply TableSkeleton to Compliance checks table (Compliance)
+- [x] Apply TableSkeleton to FIM files table (FileIntegrity)
+- [x] Apply TableSkeleton to RulesetExplorer tables
+- [x] Wire up Threat Hunting query builder — backend tRPC procedures for hunt execution
+- [x] Connect Threat Hunting frontend to backend hunt procedures
+- [x] Write vitest tests for new components and fixes
+
+## Phase: IT Hygiene Build-out, Alerts Timeline Rebuild, Hunt Persistence
+- [x] IT Hygiene: Three-column layout (Extensions | Services | Identity) — already built
+- [x] IT Hygiene: Packages table with version, architecture, vendor — already built
+- [x] IT Hygiene: Open ports table with protocol, PID, process — already built
+- [x] IT Hygiene: Running processes table with CPU/memory — already built
+- [x] IT Hygiene: Browser extensions table — already built
+- [x] IT Hygiene: System services table with state/startup type — already built
+- [x] IT Hygiene: Local users and groups tables — already built
+- [x] IT Hygiene: Agent selector for per-agent syscollector data — already built
+- [x] Alerts Timeline: Dense SOC-grade alert table with rule ID, description, agent, level, timestamp — already built
+- [x] Alerts Timeline: Severity heatmap (hour × day-of-week) — already built
+- [x] Alerts Timeline: Rule level distribution bar chart — already built (severity trends area chart)
+- [x] Alerts Timeline: Top firing rules table — already built
+- [x] Alerts Timeline: Alert detail panel with raw JSON — already built
+- [x] Alerts Timeline: Time range selector with presets — already built
+- [x] Hunt Persistence: Database schema for saved hunt results
+- [x] Hunt Persistence: Backend tRPC procedures for save/list/get/delete hunts
+- [x] Hunt Persistence: Frontend save hunt dialog and hunt history from DB
+- [x] Hunt Persistence: Export correlation reports (JSON/CSV)
+- [x] Write vitest tests for all new features
+
+## Phase: Knowledge Graph Enhancements
+
+- [x] KG: Node expansion/drill-down — double-click resource to expand endpoints, double-click endpoint to expand params/responses
+- [x] KG: Manage expanded state so new nodes merge into the live D3 simulation
+- [x] KG: Search-to-focus — animate-zoom to selected search result node and pulse-highlight it
+- [x] KG: Endpoint table view — tabular alternative with sortable columns (method, path, risk, trust, LLM)
+- [x] KG: Table/graph view toggle in header
+- [x] Write vitest tests for KG enhancements
+
+## Phase: Knowledge Graph — Context Menu, Add to Investigation, Export
+
+- [x] KG: Right-click context menu — "Show connected nodes", "Hide this node", "Pin position", "Copy node ID"
+- [x] KG: Context menu neighbor expansion — expand connected nodes inline
+- [x] KG: Hidden nodes tracking and "Show All" reset button
+- [x] KG: Pinned nodes tracking with visual indicator
+- [x] KG: "Add to Investigation" button in node detail panel
+- [x] KG: Wire investigation attachment to backend (create/append evidence)
+- [x] KG: Graph export as PNG (canvas snapshot)
+- [x] KG: Graph export as SVG (DOM serialization)
+- [x] Write vitest tests for new KG features
+
+## Phase: Knowledge Graph — Multi-Select Mode
+
+- [x] KG: Multi-select toggle button in header toolbar
+- [x] KG: Shift+click and click-to-toggle node selection in multi-select mode
+- [x] KG: Lasso/rubber-band drag selection for area-select
+- [x] KG: Visual selection ring on selected nodes (distinct from focus/pulse)
+- [x] KG: Floating bulk action toolbar showing selected count
+- [x] KG: Bulk "Hide Selected" action
+- [x] KG: Bulk "Pin/Unpin Selected" action
+- [x] KG: Bulk "Add to Investigation" action
+- [x] KG: Bulk "Copy Node IDs" action
+- [x] KG: Select All / Deselect All buttons
+- [x] KG: Escape key to clear selection
+- [x] KG: Select/Deselect Node in right-click context menu
+- [x] Write vitest tests for multi-select features
+
+## Phase: Lasso Selection, Agent Drilldown, Investigation Export
+
+- [x] KG: Lasso/rubber-band drag selection on graph canvas
+- [x] KG: Visual rubber-band rectangle overlay during drag
+- [x] KG: Select all nodes within lasso bounds on mouse-up
+- [x] KG: Integrate lasso with existing multi-select mode
+- [x] Fleet Command: Agent detail drilldown page (/fleet/:agentId)
+- [x] Fleet Command: Agent overview header (name, OS, IP, status, last keepalive)
+- [x] Fleet Command: Agent alerts tab with recent alerts table
+- [x] Fleet Command: Agent vulnerabilities tab with CVE list
+- [x] Fleet Command: Agent FIM tab with file integrity events
+- [x] Fleet Command: Agent syscollector tab (packages, ports, processes, network)
+- [x] Fleet Command: Link from fleet table to agent detail page
+- [x] Investigation: Export report as Markdown — already built (reportService.ts + ExportButton)
+- [x] Investigation: Export report as HTML (styled, print-ready) — already built
+- [x] Investigation: Report includes evidence, notes, timeline, metadata — already built
+- [x] Write vitest tests for all new features (477 tests passing across 33 files)
+
+## Fleet Command Agent Detail Enhancements
+
+### Feature 1: Related Investigations Section
+- [x] Add backend procedure to find investigations linked to a specific agent ID (by evidence items)
+- [x] Build RelatedInvestigations component in agent detail Overview tab
+- [x] Show linked investigations with status, title, evidence count, and direct link
+- [x] Allow creating new investigation from agent detail with agent pre-attached as evidence
+
+### Feature 2: Agent Activity Timeline Tab
+- [x] Add new "Timeline" tab to AgentDetail page
+- [x] Build backend procedure to fetch unified event stream (alerts + FIM + vulns) for an agent
+- [x] Build ActivityTimeline component with chronological event display
+- [x] Color-code events by source type (alert=purple, FIM=cyan, vuln=orange)
+- [x] Add time range selector and event type filters
+- [x] Show event details on click with raw JSON viewer
+
+### Feature 3: Agent Comparison View
+- [x] Create /fleet-compare route and AgentCompare page
+- [x] Build agent selector (pick 2-3 agents from fleet)
+- [x] Build side-by-side comparison panels with agent identity cards
+- [x] Compare vulnerability counts by severity
+- [x] Compare alert volumes by level
+- [x] Compare compliance scores (SCA pass/fail)
+- [x] Add visual diff indicators (better/worse/same)
+- [x] Add "Compare Agents" button to Fleet Command page header
+- [x] Write vitest tests for all three features (69 new tests, 546 total passing)

@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { GlassPanel, StatCard, ThreatBadge, RawJsonViewer, RefreshControl } from "@/components/shared";
+import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { trpc } from "@/lib/trpc";
@@ -194,7 +195,7 @@ export default function RulesetExplorer() {
     return {
       name: String(d.name ?? ""),
       position: Number(d.position ?? 0),
-      status: String(d.status ?? ""),
+      status: String(d.status ?? "unknown"),
       file: String(d.file ?? ""),
       path: String(d.path ?? ""),
       details: safeDetails,
@@ -202,9 +203,9 @@ export default function RulesetExplorer() {
     };
   });
 
-  const ruleGroups: string[] = (
+  const ruleGroups: string[] = ((
     (ruleGroupsRaw as Record<string, unknown>)?.data as Record<string, unknown> | undefined
-  )?.affected_items as string[] ?? [];
+  )?.affected_items as unknown[] ?? []).map((g) => String(g ?? "")).filter(Boolean);
 
   // ─── Filtering: Rules ────────────────────────────────────────────────────
   const filteredRules = useMemo(() => {
@@ -248,8 +249,8 @@ export default function RulesetExplorer() {
     const q = searchQuery.toLowerCase();
     return decoders.filter(
       (d) =>
-        d.name.toLowerCase().includes(q) ||
-        d.file.toLowerCase().includes(q) ||
+        (d.name || "").toLowerCase().includes(q) ||
+        (d.file || "").toLowerCase().includes(q) ||
         (d.details?.parent ?? "").toLowerCase().includes(q) ||
         (d.details?.prematch ?? "").toLowerCase().includes(q)
     );
@@ -277,7 +278,8 @@ export default function RulesetExplorer() {
     const parentCounts: Record<string, number> = {};
 
     decoders.forEach((d) => {
-      fileCounts[d.file] = (fileCounts[d.file] || 0) + 1;
+      const fname = d.file || "unknown";
+      fileCounts[fname] = (fileCounts[fname] || 0) + 1;
       const parent = d.details?.parent ?? "root";
       parentCounts[parent] = (parentCounts[parent] || 0) + 1;
     });
@@ -583,6 +585,9 @@ export default function RulesetExplorer() {
       {/* ── Rules Table ───────────────────────────────────────────────────── */}
       {activeTab === "rules" && (
         <GlassPanel className="overflow-hidden">
+          {rulesQ.isLoading ? (
+            <TableSkeleton columns={7} rows={12} columnWidths={[1, 1, 4, 2, 1, 1, 1]} />
+          ) : (<>
           {/* Header */}
           <div className="grid grid-cols-[60px_60px_1fr_150px_120px_100px_60px] gap-3 px-4 py-2.5 bg-white/5 border-b border-white/10 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
             <span>Level</span>
@@ -857,12 +862,16 @@ export default function RulesetExplorer() {
               <p className="text-sm">No rules match your filters</p>
             </div>
           )}
+          </>)}
         </GlassPanel>
       )}
 
       {/* ── Decoders Table ────────────────────────────────────────────────── */}
       {activeTab === "decoders" && (
         <GlassPanel className="overflow-hidden">
+          {decodersQ.isLoading ? (
+            <TableSkeleton columns={6} rows={12} columnWidths={[2, 1, 3, 2, 1, 1]} />
+          ) : (<>
           {/* Header */}
           <div className="grid grid-cols-[180px_80px_1fr_200px_120px_60px] gap-3 px-4 py-2.5 bg-white/5 border-b border-white/10 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
             <span>Name</span>
@@ -1024,6 +1033,7 @@ export default function RulesetExplorer() {
               <p className="text-sm">No decoders match your search</p>
             </div>
           )}
+          </>)}
         </GlassPanel>
       )}
     </div>

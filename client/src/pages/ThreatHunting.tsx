@@ -34,6 +34,12 @@ import {
   BookmarkPlus,
   Save,
   Trash2,
+  Download,
+  FileJson,
+  FileSpreadsheet,
+  CheckCircle2,
+  Archive,
+  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -110,6 +116,15 @@ export default function ThreatHunting() {
   const [saveDescription, setSaveDescription] = useState("");
   const [showSavedSearches, setShowSavedSearches] = useState(false);
 
+  // ── Hunt persistence state ───────────────────────────────────────────────
+  const [showSaveResultsDialog, setShowSaveResultsDialog] = useState(false);
+  const [saveResultTitle, setSaveResultTitle] = useState("");
+  const [saveResultDescription, setSaveResultDescription] = useState("");
+  const [saveResultSeverity, setSaveResultSeverity] = useState<"critical" | "high" | "medium" | "low" | "info">("info");
+  const [saveResultTags, setSaveResultTags] = useState("");
+  const [showSavedHunts, setShowSavedHunts] = useState(false);
+  const [viewingHuntId, setViewingHuntId] = useState<number | null>(null);
+
   // ── Saved search queries ──────────────────────────────────────────────────
   const savedSearchesQ = trpc.savedSearches.list.useQuery({ searchType: "hunting" });
   const createSearchMut = trpc.savedSearches.create.useMutation({
@@ -130,114 +145,144 @@ export default function ThreatHunting() {
     onError: (err) => toast.error(`Failed to delete: ${err.message}`),
   });
 
-  // ── API queries (always enabled, use fallback when not connected) ──────────
-  const agentsQ = trpc.wazuh.agents.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 60_000 });
-  const rulesQ = trpc.wazuh.rules.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 60_000 });
-  const logsQ = trpc.wazuh.managerLogs.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 30_000 });
-  const mitreQ = trpc.wazuh.mitreTechniques.useQuery({ limit: 500, offset: 0 }, { retry: 1, staleTime: 60_000 });
+  // ── Hunt persistence queries ─────────────────────────────────────────────
+  const savedHuntsQ = trpc.hunt.list.useQuery(undefined, { staleTime: 30_000 });
+  const savedHuntDetailQ = trpc.hunt.get.useQuery(
+    { id: viewingHuntId! },
+    { enabled: viewingHuntId !== null }
+  );
+  const saveHuntMut = trpc.hunt.save.useMutation({
+    onSuccess: () => {
+      savedHuntsQ.refetch();
+      setShowSaveResultsDialog(false);
+      setSaveResultTitle("");
+      setSaveResultDescription("");
+      setSaveResultSeverity("info");
+      setSaveResultTags("");
+      toast.success("Hunt results saved to database");
+    },
+    onError: (err) => toast.error(`Failed to save hunt: ${err.message}`),
+  });
+  const deleteHuntMut = trpc.hunt.delete.useMutation({
+    onSuccess: () => {
+      savedHuntsQ.refetch();
+      toast.success("Saved hunt deleted");
+    },
+    onError: (err) => toast.error(`Failed to delete: ${err.message}`),
+  });
+  const updateHuntMut = trpc.hunt.update.useMutation({
+    onSuccess: () => {
+      savedHuntsQ.refetch();
+      toast.success("Hunt updated");
+    },
+  });
 
-  const agents = agentsQ.data ?? { data: { affected_items: [] } };
-  const rules = rulesQ.data ?? { data: { affected_items: [] } };
-  const logs = logsQ.data ?? { data: { affected_items: [] } };
-  const mitreTechniques = mitreQ.data ?? { data: { affected_items: [] } };
-  const vulns = { data: { affected_items: [] as Record<string, unknown>[] } }; // Vulns require agentId, queried per-agent
-  const syscheck = { data: { affected_items: [] as Record<string, unknown>[] } }; // Syscheck requires agentId, queried per-agent
+  // ── Server-side hunt query ─────────────────────────────────────────────────
+  const [huntInput, setHuntInput] = useState<{
+    query: string;
+    iocType: typeof iocType;
+    timeFrom: string;
+    timeTo: string;
+  } | null>(null);
 
-  // ── Correlation engine ────────────────────────────────────────────────────
-  const correlationResults = useMemo<CorrelationHit[]>(() => {
-    if (!activeQuery) return [];
-
-    const q = activeQuery.toLowerCase();
-    const results: CorrelationHit[] = [];
-
-    // Search agents
-    const agentsData = (agents as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    const agentHits = ((agentsData?.affected_items ?? []) as Record<string, unknown>[]).filter((a: Record<string, unknown>) => {
-      const str = JSON.stringify(a).toLowerCase();
-      if (activeIocType === "ip") return String(a.ip ?? "").includes(q);
-      if (activeIocType === "username") return String(a.name ?? "").toLowerCase().includes(q);
-      return str.includes(q);
-    });
-    if (agentHits.length > 0) {
-      results.push({ source: "agents", sourceLabel: "Agents", matches: agentHits, count: agentHits.length });
+  const huntQ = trpc.hunt.execute.useQuery(
+    {
+      query: huntInput?.query ?? "",
+      iocType: huntInput?.iocType ?? "freetext",
+      timeFrom: huntInput?.timeFrom ?? "now-24h",
+      timeTo: huntInput?.timeTo ?? "now",
+      maxResults: 50,
+    },
+    {
+      enabled: !!huntInput?.query,
+      retry: 1,
+      staleTime: 30_000,
     }
+  );
 
-    // Search rules
-    const rulesData = (rules as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    const ruleHits = ((rulesData?.affected_items ?? []) as Record<string, unknown>[]).filter((r: Record<string, unknown>) => {
-      const str = JSON.stringify(r).toLowerCase();
-      if (activeIocType === "rule_id") return String(r.id ?? "") === q || String(r.id ?? "").includes(q);
-      if (activeIocType === "mitre_id") {
-        const mitre = r.mitre as { id?: string[] } | undefined;
-        return (mitre?.id ?? []).some((id: string) => id.toLowerCase().includes(q));
-      }
-      return str.includes(q);
+  // ── Export helpers ───────────────────────────────────────────────────────
+  const exportAsJson = useCallback(() => {
+    if (!huntQ.data) return;
+    const payload = {
+      query: activeQuery,
+      iocType: activeIocType,
+      executedAt: new Date().toISOString(),
+      totalHits: huntQ.data.totalHits,
+      totalTimeMs: huntQ.data.totalTimeMs,
+      sourcesSearched: huntQ.data.sourcesSearched,
+      sources: huntQ.data.sources,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `hunt-${activeQuery.replace(/[^a-zA-Z0-9]/g, "_")}-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Hunt results exported as JSON");
+  }, [huntQ.data, activeQuery, activeIocType]);
+
+  const exportAsCsv = useCallback(() => {
+    if (!huntQ.data?.sources) return;
+    const rows: string[] = ["Source,SourceLabel,Index,Field,Value"];
+    huntQ.data.sources.forEach((src) => {
+      src.matches.forEach((match, idx) => {
+        const m = match as Record<string, unknown>;
+        Object.entries(m).forEach(([key, val]) => {
+          const v = typeof val === "object" ? JSON.stringify(val) : String(val ?? "");
+          rows.push(`"${src.source}","${src.sourceLabel}",${idx},"${key}","${v.replace(/"/g, '""')}"`);
+        });
+      });
     });
-    if (ruleHits.length > 0) {
-      results.push({ source: "rules", sourceLabel: "Rules", matches: ruleHits, count: ruleHits.length });
-    }
+    const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `hunt-${activeQuery.replace(/[^a-zA-Z0-9]/g, "_")}-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Hunt results exported as CSV");
+  }, [huntQ.data, activeQuery]);
 
-    // Search vulnerabilities
-    const vulnsData = (vulns as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    const vulnHits = ((vulnsData?.affected_items ?? []) as Record<string, unknown>[]).filter((v: Record<string, unknown>) => {
-      const str = JSON.stringify(v).toLowerCase();
-      if (activeIocType === "cve") return String(v.cve ?? "").toLowerCase().includes(q);
-      return str.includes(q);
-    });
-    if (vulnHits.length > 0) {
-      results.push({ source: "vulnerabilities", sourceLabel: "Vulnerabilities", matches: vulnHits, count: vulnHits.length });
-    }
+  // ── Lightweight status queries for KPI row ────────────────────────────────
+  const agentsQ = trpc.wazuh.agentSummaryStatus.useQuery(undefined, { retry: 1, staleTime: 60_000 });
+  const rulesQ = trpc.wazuh.rules.useQuery({ limit: 1, offset: 0 }, { retry: 1, staleTime: 60_000 });
 
-    // Search syscheck
-    const fimData = (syscheck as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    const fimHits = ((fimData?.affected_items ?? []) as Record<string, unknown>[]).filter((f: Record<string, unknown>) => {
-      const str = JSON.stringify(f).toLowerCase();
-      if (activeIocType === "hash") return str.includes(q);
-      if (activeIocType === "filename") return String(f.file ?? "").toLowerCase().includes(q);
-      return str.includes(q);
-    });
-    if (fimHits.length > 0) {
-      results.push({ source: "syscheck", sourceLabel: "File Integrity", matches: fimHits, count: fimHits.length });
-    }
+  // ── Correlation results from server ────────────────────────────────────────
+  const correlationResults: CorrelationHit[] = useMemo(() => {
+    if (!huntQ.data?.sources) return [];
+    return huntQ.data.sources.map((s) => ({
+      source: s.source as CorrelationHit["source"],
+      sourceLabel: s.sourceLabel,
+      matches: s.matches as Record<string, unknown>[],
+      count: s.count,
+    }));
+  }, [huntQ.data]);
 
-    // Search logs
-    const logsData = (logs as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    const logHits = ((logsData?.affected_items ?? []) as Record<string, unknown>[]).filter((l: Record<string, unknown>) => {
-      const str = JSON.stringify(l).toLowerCase();
-      return str.includes(q);
-    });
-    if (logHits.length > 0) {
-      results.push({ source: "logs", sourceLabel: "Manager Logs", matches: logHits, count: logHits.length });
-    }
-
-    // Search MITRE techniques
-    const mitreData = (mitreTechniques as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-    const mitreHits = ((mitreData?.affected_items ?? []) as Record<string, unknown>[]).filter((t: Record<string, unknown>) => {
-      const str = JSON.stringify(t).toLowerCase();
-      if (activeIocType === "mitre_id") return String(t.external_id ?? "").toLowerCase().includes(q);
-      return str.includes(q);
-    });
-    if (mitreHits.length > 0) {
-      results.push({ source: "mitre", sourceLabel: "MITRE ATT&CK", matches: mitreHits, count: mitreHits.length });
-    }
-
-    return results;
-  }, [activeQuery, activeIocType, agents, rules, vulns, syscheck, logs, mitreTechniques]);
-
-  const totalHits = correlationResults.reduce((sum, r) => sum + r.count, 0);
+  const totalHits = huntQ.data?.totalHits ?? 0;
+  const huntTimeMs = huntQ.data?.totalTimeMs ?? 0;
 
   // ── Execute hunt ──────────────────────────────────────────────────────────
   const executeHunt = useCallback(() => {
     if (!searchValue.trim()) return;
-    setActiveQuery(searchValue.trim());
+    const q = searchValue.trim();
+    setActiveQuery(q);
     setActiveIocType(iocType);
     setExpandedSource(null);
     setSelectedHunt(null);
 
+    // Trigger the server-side hunt
+    setHuntInput({
+      query: q,
+      iocType,
+      timeFrom: "now-24h",
+      timeTo: "now",
+    });
+
     const entry: HuntEntry = {
       id: `hunt-${Date.now()}`,
       timestamp: new Date().toISOString(),
-      query: searchValue.trim(),
+      query: q,
       iocType,
       totalHits: 0, // Will be updated after render
       sources: [],
@@ -267,18 +312,24 @@ export default function ThreatHunting() {
   const handleRefresh = () => {
     agentsQ.refetch();
     rulesQ.refetch();
-    logsQ.refetch();
-    mitreQ.refetch();
+    if (huntInput) huntQ.refetch();
     savedSearchesQ.refetch();
   };
 
-  const isLoading = agentsQ.isLoading || rulesQ.isLoading || logsQ.isLoading || mitreQ.isLoading;
+  const isLoading = huntQ.isFetching;
 
   // ── Computed stats ────────────────────────────────────────────────────────
-  const agentCount = Number(((agents as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items ?? 0);
-  const ruleCount = Number(((rules as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items ?? 0);
-  const vulnCount = Number(((vulns as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items ?? 0);
-  const fimCount = Number(((syscheck as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items ?? 0);
+  const agentSummary = (agentsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+  const agentCount = Number(
+    (agentSummary?.connection as Record<string, unknown>)?.active ?? 0
+  ) + Number(
+    (agentSummary?.connection as Record<string, unknown>)?.disconnected ?? 0
+  );
+  const ruleCount = Number(((rulesQ.data as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items ?? 0);
+  const vulnCount = huntQ.data?.sources?.find(s => s.source === "vulnerabilities")?.count ?? 0;
+  const fimCount = huntQ.data?.sources?.find(s => s.source === "syscheck")?.count ?? 0;
+  const indexerHitCount = (huntQ.data?.sources?.find(s => s.source === "indexer_alerts")?.count ?? 0) +
+    (huntQ.data?.sources?.find(s => s.source === "indexer_archives")?.count ?? 0);
 
   // Source distribution for pie chart
   const sourceDistribution = correlationResults.map((r) => ({
@@ -420,7 +471,7 @@ export default function ThreatHunting() {
             )}
           </div>
 
-          {/* Save Current Hunt */}
+          {/* Save Current Hunt Query */}
           <Button
             variant="outline"
             size="sm"
@@ -429,8 +480,153 @@ export default function ThreatHunting() {
             className="text-xs bg-transparent border-border text-muted-foreground hover:bg-secondary/50"
           >
             <BookmarkPlus className="h-3.5 w-3.5 mr-1" />
-            Save Hunt
+            Save Query
           </Button>
+
+          {/* Save Hunt Results to DB */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setSaveResultTitle(`Hunt: ${activeQuery}`);
+              setShowSaveResultsDialog(true);
+            }}
+            disabled={!huntQ.data || totalHits === 0}
+            className="text-xs bg-transparent border-primary/40 text-primary hover:bg-primary/10"
+          >
+            <Save className="h-3.5 w-3.5 mr-1" />
+            Save Results
+          </Button>
+
+          {/* Export Dropdown */}
+          {huntQ.data && totalHits > 0 && (
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportAsJson}
+                className="text-xs bg-transparent border-border text-muted-foreground hover:bg-secondary/50"
+                title="Export as JSON"
+              >
+                <FileJson className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportAsCsv}
+                className="text-xs bg-transparent border-border text-muted-foreground hover:bg-secondary/50"
+                title="Export as CSV"
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
+
+          {/* Saved Hunts from DB */}
+          <div className="relative">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowSavedHunts(!showSavedHunts)}
+              className="text-xs bg-transparent border-border text-muted-foreground hover:bg-secondary/50"
+            >
+              <Archive className="h-3.5 w-3.5 mr-1" />
+              Saved ({savedHuntsQ.data?.total ?? 0})
+            </Button>
+            {showSavedHunts && (
+              <div className="absolute right-0 top-full mt-1 w-96 bg-[oklch(0.17_0.025_286)] border border-border rounded-lg shadow-xl z-50 max-h-[500px] overflow-y-auto">
+                <div className="p-3 border-b border-border flex items-center justify-between">
+                  <h4 className="text-xs font-semibold text-primary">Saved Hunt Results</h4>
+                  <span className="text-[10px] text-muted-foreground">{savedHuntsQ.data?.total ?? 0} saved</span>
+                </div>
+                {(savedHuntsQ.data?.items ?? []).length === 0 ? (
+                  <div className="p-4 text-center text-xs text-muted-foreground">
+                    No saved hunt results yet
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border/30">
+                    {(savedHuntsQ.data?.items ?? []).map((h) => (
+                      <div
+                        key={h.id}
+                        className="flex items-start gap-2 px-3 py-2.5 hover:bg-secondary/30 group"
+                      >
+                        <div
+                          className="flex-1 min-w-0 cursor-pointer"
+                          onClick={() => {
+                            // Load this hunt's query into the builder and re-execute
+                            setSearchValue(h.query);
+                            setIocType(h.iocType as IOCType);
+                            setActiveQuery(h.query);
+                            setActiveIocType(h.iocType as IOCType);
+                            setHuntInput({
+                              query: h.query,
+                              iocType: h.iocType as IOCType,
+                              timeFrom: h.timeFrom,
+                              timeTo: h.timeTo,
+                            });
+                            setShowSavedHunts(false);
+                            toast.success("Hunt query loaded — re-executing");
+                          }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs text-foreground truncate font-medium">{h.title}</p>
+                            <span className={`shrink-0 px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                              h.severity === "critical" ? "bg-threat-critical/20 text-threat-critical"
+                              : h.severity === "high" ? "bg-threat-high/20 text-threat-high"
+                              : h.severity === "medium" ? "bg-threat-medium/20 text-threat-medium"
+                              : h.severity === "low" ? "bg-threat-low/20 text-threat-low"
+                              : "bg-threat-info/20 text-threat-info"
+                            }`}>
+                              {h.severity}
+                            </span>
+                            {h.resolved === 1 && (
+                              <CheckCircle2 className="h-3 w-3 text-threat-low shrink-0" />
+                            )}
+                          </div>
+                          <p className="text-[10px] font-mono text-primary truncate mt-0.5">{h.query}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] text-muted-foreground">
+                              {new Date(h.createdAt).toLocaleString()}
+                            </span>
+                            <span className="text-[10px] text-primary">{h.totalHits} hits</span>
+                            <span className="text-[10px] text-muted-foreground">{h.totalTimeMs}ms</span>
+                          </div>
+                          {h.tags && (h.tags as string[]).length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {(h.tags as string[]).map((tag) => (
+                                <span key={tag} className="px-1.5 py-0.5 rounded bg-secondary/50 border border-border text-[9px] text-muted-foreground">{tag}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateHuntMut.mutate({ id: h.id, resolved: h.resolved === 1 ? 0 : 1 });
+                            }}
+                            className="p-1 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground"
+                            title={h.resolved === 1 ? "Mark unresolved" : "Mark resolved"}
+                          >
+                            <CheckCircle2 className={`h-3 w-3 ${h.resolved === 1 ? "text-threat-low" : ""}`} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteHuntMut.mutate({ id: h.id });
+                            }}
+                            className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -505,14 +701,125 @@ export default function ThreatHunting() {
         </div>
       )}
 
+      {/* ── Save Hunt Results Dialog ──────────────────────────────────── */}
+      {showSaveResultsDialog && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center" onClick={() => setShowSaveResultsDialog(false)}>
+          <div className="bg-[oklch(0.17_0.025_286)] border border-border rounded-xl p-6 w-full max-w-lg shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-primary mb-4 flex items-center gap-2">
+              <Save className="h-4 w-4" /> Save Hunt Results
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Title *</label>
+                <input
+                  type="text"
+                  value={saveResultTitle}
+                  onChange={(e) => setSaveResultTitle(e.target.value)}
+                  placeholder="e.g., Brute force investigation 2026-02-27"
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Description (optional)</label>
+                <textarea
+                  value={saveResultDescription}
+                  onChange={(e) => setSaveResultDescription(e.target.value)}
+                  placeholder="Analyst notes about this hunt..."
+                  rows={2}
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50 resize-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Severity</label>
+                  <select
+                    value={saveResultSeverity}
+                    onChange={(e) => setSaveResultSeverity(e.target.value as typeof saveResultSeverity)}
+                    className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground appearance-none cursor-pointer focus:outline-none focus:border-primary/50"
+                  >
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                    <option value="info">Info</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Tags (comma-separated)</label>
+                  <input
+                    type="text"
+                    value={saveResultTags}
+                    onChange={(e) => setSaveResultTags(e.target.value)}
+                    placeholder="e.g., ssh, brute-force, incident"
+                    className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+                  />
+                </div>
+              </div>
+              <div className="bg-secondary/30 rounded-lg p-3 text-xs text-muted-foreground space-y-1">
+                <p className="font-semibold text-foreground">Hunt Summary:</p>
+                <p>Query: <span className="font-mono text-primary">{activeQuery}</span> ({IOC_TYPES.find((t) => t.value === activeIocType)?.label})</p>
+                <p>Total Hits: <span className="text-primary font-medium">{totalHits}</span> across {correlationResults.length} sources</p>
+                <p>Execution Time: <span className="font-mono">{huntTimeMs}ms</span></p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowSaveResultsDialog(false)}
+                className="bg-transparent border-border text-muted-foreground"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (!saveResultTitle.trim()) {
+                    toast.error("Please enter a title");
+                    return;
+                  }
+                  const tags = saveResultTags.split(",").map(t => t.trim()).filter(Boolean);
+                  saveHuntMut.mutate({
+                    title: saveResultTitle.trim(),
+                    description: saveResultDescription.trim() || undefined,
+                    query: activeQuery,
+                    iocType: activeIocType,
+                    timeFrom: huntInput?.timeFrom ?? "now-24h",
+                    timeTo: huntInput?.timeTo ?? "now",
+                    totalHits,
+                    totalTimeMs: huntTimeMs,
+                    sourcesWithHits: correlationResults.filter(r => r.count > 0).length,
+                    agentsSearched: huntQ.data?.sources?.find(s => s.source === "agents")?.matches?.map((m: any) => String(m.id ?? "")) ?? [],
+                    results: correlationResults.map(r => ({
+                      source: r.source,
+                      sourceLabel: r.sourceLabel,
+                      matches: r.matches as unknown[],
+                      count: r.count,
+                      searchTimeMs: 0,
+                    })),
+                    tags: tags.length > 0 ? tags : undefined,
+                    severity: saveResultSeverity,
+                  });
+                }}
+                disabled={saveHuntMut.isPending}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              >
+                {saveHuntMut.isPending ? "Saving..." : "Save Results"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Loading State ── */}
-      {isLoading && <IndexerLoadingState message="Loading threat hunting data…" />}
+      {huntQ.isFetching && <IndexerLoadingState message="Searching across 8 data sources…" />}
       {/* ── Error State ── */}
-      {agentsQ.isError && (
+      {huntQ.isError && (
         <IndexerErrorState
-          message="Failed to load threat hunting data from Wazuh"
-          detail={agentsQ.error?.message}
-          onRetry={() => handleRefresh()}
+          message="Hunt query failed"
+          detail={huntQ.error?.message}
+          onRetry={() => huntQ.refetch()}
         />
       )}
 
@@ -601,6 +908,12 @@ export default function ThreatHunting() {
                 setActiveQuery(qh.value);
                 setActiveIocType(qh.type);
                 setExpandedSource(null);
+                setHuntInput({
+                  query: qh.value,
+                  iocType: qh.type,
+                  timeFrom: "now-24h",
+                  timeTo: "now",
+                });
                 const entry: HuntEntry = {
                   id: `hunt-${Date.now()}`,
                   timestamp: new Date().toISOString(),
@@ -619,7 +932,7 @@ export default function ThreatHunting() {
         </div>
       </GlassPanel>
 
-      {/* ── Results Section ──────────────────────────────────────────────── */}
+        {/* ── Results Section ────────────────────────────────────────── */}
       {activeQuery && (
         <>
           {/* Results Header */}
@@ -633,12 +946,23 @@ export default function ThreatHunting() {
               <span className="text-xs text-muted-foreground">
                 ({IOC_TYPES.find((t) => t.value === activeIocType)?.label})
               </span>
+              {isLoading && (
+                <span className="flex items-center gap-1.5 text-xs text-primary animate-pulse">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  Searching {huntQ.data?.sourcesSearched ?? 8} sources…
+                </span>
+              )}
             </div>
             <div className="ml-auto flex items-center gap-2">
+              {huntTimeMs > 0 && (
+                <span className="text-xs font-mono text-muted-foreground">
+                  {huntTimeMs}ms
+                </span>
+              )}
               <span className="text-sm font-medium text-foreground">
                 {totalHits} total hit{totalHits !== 1 ? "s" : ""} across {correlationResults.length} source{correlationResults.length !== 1 ? "s" : ""}
               </span>
-              <RawJsonViewer data={correlationResults} title="Correlation Results" />
+              <RawJsonViewer data={huntQ.data ?? correlationResults} title="Hunt Results (Raw)" />
             </div>
           </div>
 
@@ -1036,6 +1360,12 @@ export default function ThreatHunting() {
                     setActiveQuery(entry.query);
                     setActiveIocType(entry.iocType);
                     setSelectedHunt(entry.id);
+                    setHuntInput({
+                      query: entry.query,
+                      iocType: entry.iocType,
+                      timeFrom: "now-24h",
+                      timeTo: "now",
+                    });
                   }}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
                     selectedHunt === entry.id ? "bg-primary/10 border border-primary/20" : "hover:bg-secondary/30"
@@ -1079,8 +1409,8 @@ export default function ThreatHunting() {
               { label: "Detection Rules", count: ruleCount, icon: Shield, color: "bg-[oklch(0.789_0.154_211.53)]" },
               { label: "Vulnerabilities (CVE)", count: vulnCount, icon: Bug, color: "bg-[oklch(0.705_0.191_22.216)]" },
               { label: "FIM Events", count: fimCount, icon: FileWarning, color: "bg-[oklch(0.795_0.184_86.047)]" },
-              { label: "MITRE Techniques", count: Number(((mitreTechniques as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items ?? 0), icon: Target, color: "bg-[oklch(0.637_0.237_25.331)]" },
-              { label: "Manager Log Entries", count: Number(((logs as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items ?? 0), icon: Terminal, color: "bg-[oklch(0.765_0.177_163.223)]" },
+              { label: "Indexer Hits", count: indexerHitCount, icon: Target, color: "bg-[oklch(0.637_0.237_25.331)]" },
+              { label: "Sources Searched", count: huntQ.data?.sourcesSearched ?? 0, icon: Terminal, color: "bg-[oklch(0.765_0.177_163.223)]" },
             ].map((src) => {
               const Icon = src.icon;
               const maxCount = Math.max(agentCount, ruleCount, vulnCount, fimCount, 1);
