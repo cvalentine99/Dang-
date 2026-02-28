@@ -76,7 +76,6 @@ const STRIP_FIELDS = new Set([
   "token",
   "secret",
   "api_key",
-  "key",
   "auth",
   "credential",
 ]);
@@ -258,6 +257,35 @@ export async function getEffectiveWazuhConfig(): Promise<WazuhConfig | null> {
     if (isWazuhConfigured()) return getWazuhConfig();
     return null;
   }
+}
+
+/**
+ * Resolve candidate Wazuh configs in priority order.
+ *
+ * 1) DB override (Admin > Connection Settings)
+ * 2) Environment variables (docker/.env)
+ *
+ * This allows runtime fallback when stale DB overrides are persisted while
+ * environment variables have already been corrected.
+ */
+export async function getWazuhConfigCandidates(): Promise<WazuhConfig[]> {
+  const candidates: WazuhConfig[] = [];
+
+  const dbConfig = await getEffectiveWazuhConfig();
+  if (dbConfig) candidates.push(dbConfig);
+
+  if (isWazuhConfigured()) {
+    const envConfig = getWazuhConfig();
+    const isDuplicate = candidates.some((candidate) =>
+      candidate.host === envConfig.host &&
+      candidate.port === envConfig.port &&
+      candidate.user === envConfig.user &&
+      candidate.pass === envConfig.pass
+    );
+    if (!isDuplicate) candidates.push(envConfig);
+  }
+
+  return candidates;
 }
 
 /**

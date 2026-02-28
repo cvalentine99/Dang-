@@ -17,6 +17,15 @@ vi.mock("./indexerClient", () => ({
     user: "admin",
     pass: "admin",
   })),
+  getIndexerConfigCandidates: vi.fn(async () => ([
+    {
+      host: "https://indexer.example.com",
+      port: 9200,
+      user: "admin",
+      pass: "admin",
+      protocol: "https",
+    },
+  ])),
   isIndexerEffectivelyConfigured: vi.fn(async () => true),
   indexerSearch: vi.fn(async () => ({
     hits: {

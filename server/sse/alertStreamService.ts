@@ -146,9 +146,9 @@ async function pollForAlerts(): Promise<void> {
       {
         query,
         size: MAX_ALERTS_PER_POLL,
-        sort: [{ timestamp: { order: "desc" } }],
+        sort: [{ "@timestamp": { order: "desc" } }],
         _source: [
-          "timestamp",
+          "@timestamp",
           "rule.id",
           "rule.level",
           "rule.description",
@@ -170,7 +170,7 @@ async function pollForAlerts(): Promise<void> {
         const s = h._source;
         return {
           id: h._id,
-          timestamp: (s.timestamp as string) ?? new Date().toISOString(),
+          timestamp: (s["@timestamp"] as string) ?? (s.timestamp as string) ?? new Date().toISOString(),
           rule: {
             id: (s.rule as Record<string, unknown>)?.id as string | number ?? 0,
             level: ((s.rule as Record<string, unknown>)?.level as number) ?? 0,

@@ -8,10 +8,9 @@
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
 import {
-  isIndexerConfigured,
-  getIndexerConfig,
   getEffectiveIndexerConfig,
   isIndexerEffectivelyConfigured,
+  getIndexerConfigCandidates,
   indexerSearch,
   indexerHealth,
   indexerIndexExists,
@@ -40,16 +39,22 @@ async function safeSearch(
   body: ESSearchBody,
   rateLimitGroup: string
 ) {
-  const config = await getEffectiveIndexerConfig();
-  if (!config) {
+  const candidates = await getIndexerConfigCandidates();
+  if (candidates.length === 0) {
     return { configured: false, data: null };
   }
-  try {
-    const data = await indexerSearch(config, index, body, rateLimitGroup);
-    return { configured: true, data };
-  } catch (err) {
-    return { configured: true, data: null, error: (err as Error).message };
+
+  let lastError: Error | null = null;
+  for (const config of candidates) {
+    try {
+      const data = await indexerSearch(config, index, body, rateLimitGroup);
+      return { configured: true, data };
+    } catch (err) {
+      lastError = err as Error;
+    }
   }
+
+  return { configured: true, data: null, error: lastError?.message ?? "Unknown Indexer error" };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -106,7 +111,7 @@ export const indexerRouter = router({
         ruleId: z.string().optional(),
         srcip: z.string().optional(),
         geoCountry: z.string().optional(),
-        sortField: z.enum(["timestamp", "rule.level", "agent.id"]).default("timestamp"),
+        sortField: z.enum(["timestamp", "@timestamp", "rule.level", "agent.id"]).default("@timestamp"),
         sortOrder: z.enum(["asc", "desc"]).default("desc"),
       })
     )
@@ -141,7 +146,7 @@ export const indexerRouter = router({
           query: boolQuery({ must, filter: filters }),
           size: input.size,
           from: input.offset,
-          sort: [{ [input.sortField]: { order: input.sortOrder } }],
+          sort: [{ [input.sortField === "timestamp" ? "@timestamp" : input.sortField]: { order: input.sortOrder } }],
         },
         "alerts"
       );
@@ -158,7 +163,7 @@ export const indexerRouter = router({
           size: 0,
           aggs: {
             timeline: {
-              ...dateHistogramAgg("timestamp", input.interval),
+              ...dateHistogramAgg("@timestamp", input.interval),
               aggs: {
                 levels: termsAgg("rule.level", 16),
               },
@@ -212,7 +217,7 @@ export const indexerRouter = router({
               ...termsAgg("rule.mitre.tactic", 20),
               aggs: {
                 techniques: termsAgg("rule.mitre.id", 20),
-                over_time: dateHistogramAgg("timestamp", input.interval),
+                over_time: dateHistogramAgg("@timestamp", input.interval),
               },
             },
             techniques_total: termsAgg("rule.mitre.id", 30),
@@ -255,7 +260,7 @@ export const indexerRouter = router({
           query: boolQuery({ filter: [timeRangeFilter(input.from, input.to)] }),
           size: 0,
           aggs: {
-            timeline: dateHistogramAgg("timestamp", input.interval),
+            timeline: dateHistogramAgg("@timestamp", input.interval),
           },
         },
         "alerts"
@@ -440,12 +445,12 @@ export const indexerRouter = router({
             controls: {
               ...termsAgg(frameworkField, 50),
               aggs: {
-                over_time: dateHistogramAgg("timestamp", "1d"),
+                over_time: dateHistogramAgg("@timestamp", "1d"),
                 severity: termsAgg("rule.level", 16),
               },
             },
             timeline: {
-              ...dateHistogramAgg("timestamp", "1d"),
+              ...dateHistogramAgg("@timestamp", "1d"),
               aggs: {
                 controls: termsAgg(frameworkField, 10),
               },
@@ -629,7 +634,7 @@ export const indexerRouter = router({
           size: 0,
           aggs: {
             status_over_time: {
-              ...dateHistogramAgg("timestamp", input.interval),
+              ...dateHistogramAgg("@timestamp", input.interval),
               aggs: {
                 status: termsAgg("status", 5),
               },
@@ -641,8 +646,8 @@ export const indexerRouter = router({
                 latest_status: {
                   top_hits: {
                     size: 1,
-                    sort: [{ timestamp: { order: "desc" } }],
-                    _source: ["status", "timestamp", "ip"],
+                    sort: [{ "@timestamp": { order: "desc" } }],
+                    _source: ["status", "@timestamp", "ip"],
                   },
                 },
               },
@@ -672,7 +677,7 @@ export const indexerRouter = router({
           size: 0,
           aggs: {
             metrics_over_time: {
-              ...dateHistogramAgg("timestamp", input.interval),
+              ...dateHistogramAgg("@timestamp", input.interval),
               aggs: {
                 avg_events: { avg: { field: "analysisd.events_received" } },
                 avg_decoded: { avg: { field: "analysisd.events_decoded_breakdown.syscheck" } },
@@ -724,7 +729,7 @@ export const indexerRouter = router({
           query: boolQuery({ must, filter: filters }),
           size: input.size,
           from: input.offset,
-          sort: [{ timestamp: { order: "desc" } }],
+          sort: [{ "@timestamp": { order: "desc" } }],
         },
         "archives"
       );

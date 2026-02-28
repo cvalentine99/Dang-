@@ -43,7 +43,7 @@ function checkRateLimit(group: string): void {
 
 // ── Sensitive fields to strip ────────────────────────────────────────────────
 const STRIP_FIELDS = new Set([
-  "password", "token", "secret", "api_key", "key", "auth", "credential",
+  "password", "token", "secret", "api_key", "auth", "credential",
 ]);
 
 function stripSensitiveFields(obj: unknown): unknown {
@@ -108,6 +108,35 @@ export async function getEffectiveIndexerConfig(): Promise<IndexerConfig | null>
     if (isIndexerConfigured()) return getIndexerConfig();
     return null;
   }
+}
+
+/**
+ * Resolve candidate Indexer configs in priority order.
+ *
+ * 1) DB override (Admin > Connection Settings)
+ * 2) Environment variables (docker/.env)
+ *
+ * This supports runtime fallback when persisted DB overrides are stale.
+ */
+export async function getIndexerConfigCandidates(): Promise<IndexerConfig[]> {
+  const candidates: IndexerConfig[] = [];
+
+  const dbConfig = await getEffectiveIndexerConfig();
+  if (dbConfig) candidates.push(dbConfig);
+
+  if (isIndexerConfigured()) {
+    const envConfig = getIndexerConfig();
+    const isDuplicate = candidates.some((candidate) =>
+      candidate.host === envConfig.host &&
+      candidate.port === envConfig.port &&
+      candidate.user === envConfig.user &&
+      candidate.pass === envConfig.pass &&
+      candidate.protocol === envConfig.protocol
+    );
+    if (!isDuplicate) candidates.push(envConfig);
+  }
+
+  return candidates;
 }
 
 /**
@@ -226,7 +255,7 @@ export async function indexerIndexExists(
 export function timeRangeFilter(
   from: string,
   to: string,
-  field: string = "timestamp"
+  field: string = "@timestamp"
 ): Record<string, unknown> {
   return {
     range: {
@@ -258,7 +287,7 @@ export function boolQuery(opts: {
 
 /** Date histogram aggregation */
 export function dateHistogramAgg(
-  field: string = "timestamp",
+  field: string = "@timestamp",
   interval: string = "1h"
 ): Record<string, unknown> {
   return {

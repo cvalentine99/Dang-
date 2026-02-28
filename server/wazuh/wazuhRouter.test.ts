@@ -19,6 +19,14 @@ vi.mock("./wazuhClient", () => ({
     user: "wazuh-wui",
     pass: "test-pass",
   })),
+  getWazuhConfigCandidates: vi.fn(async () => ([
+    {
+      host: "https://wazuh.example.com",
+      port: 55000,
+      user: "wazuh-wui",
+      pass: "test-pass",
+    },
+  ])),
   isWazuhEffectivelyConfigured: vi.fn(async () => true),
 }));
 

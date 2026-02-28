@@ -9,7 +9,7 @@
 
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
-import { getWazuhConfig, isWazuhConfigured, wazuhGet, getEffectiveWazuhConfig, isWazuhEffectivelyConfigured } from "./wazuhClient";
+import { wazuhGet, getWazuhConfigCandidates, isWazuhEffectivelyConfigured } from "./wazuhClient";
 
 // ── Shared input schemas ───────────────────────────────────────────────────────
 const paginationSchema = z.object({
@@ -21,9 +21,21 @@ const agentIdSchema = z.string().regex(/^\d{3,}$/, "Invalid agent ID format");
 
 // ── Helper: wrap with config check (uses DB override → env fallback) ─────────
 async function proxyGet(path: string, params?: Record<string, string | number | boolean | undefined>, group?: string) {
-  const config = await getEffectiveWazuhConfig();
-  if (!config) throw new Error("Wazuh is not configured. Set connection settings in Admin > Connection Settings or via environment variables.");
-  return wazuhGet(config, { path, params, rateLimitGroup: group });
+  const candidates = await getWazuhConfigCandidates();
+  if (candidates.length === 0) {
+    throw new Error("Wazuh is not configured. Set connection settings in Admin > Connection Settings or via environment variables.");
+  }
+
+  let lastError: Error | null = null;
+  for (const config of candidates) {
+    try {
+      return await wazuhGet(config, { path, params, rateLimitGroup: group });
+    } catch (err) {
+      lastError = err as Error;
+    }
+  }
+
+  throw new Error(`Wazuh request failed for all configured endpoints: ${lastError?.message ?? "Unknown error"}`);
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────

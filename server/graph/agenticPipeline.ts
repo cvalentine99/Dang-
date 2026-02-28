@@ -430,7 +430,7 @@ async function retrieveFromIndexer(intent: IntentAnalysis, steps: AgentStep[]): 
               },
             },
             size: 20,
-            sort: [{ timestamp: { order: "desc" } }],
+            sort: [{ "@timestamp": { order: "desc" } }],
           },
           "alerts"
         );
@@ -495,7 +495,7 @@ async function retrieveFromIndexer(intent: IntentAnalysis, steps: AgentStep[]): 
               filter: [{ term: { "agent.id": agentId } }],
             }),
             size: 20,
-            sort: [{ timestamp: { order: "desc" } }],
+            sort: [{ "@timestamp": { order: "desc" } }],
           },
           "alerts"
         );

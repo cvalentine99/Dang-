@@ -189,7 +189,7 @@ async function pollAndEnqueue(): Promise<{ matched: number; queued: number; skip
         filter: [timeRangeFilter("now-90s", "now")],
       }),
       size: 100,
-      sort: [{ timestamp: { order: "desc" } }],
+      sort: [{ "@timestamp": { order: "desc" } }],
     };
 
     const searchResult = await indexerSearch(indexerConfig, INDEX_PATTERNS.ALERTS, body, "auto-queue");
