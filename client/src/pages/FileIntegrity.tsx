@@ -4,6 +4,7 @@ import { StatCard } from "@/components/shared/StatCard";
 import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { IndexerErrorState } from "@/components/shared/IndexerStates";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
@@ -128,6 +129,14 @@ export default function FileIntegrity() {
     <WazuhGuard>
       <div className="space-y-6">
         <PageHeader title="File Integrity Monitoring" subtitle="Syscheck analysis — file changes, hash comparison, and integrity scan results" onRefresh={handleRefresh} isLoading={isLoading} />
+
+        {statusQ.isError && (
+          <IndexerErrorState
+            message="Failed to connect to Wazuh Manager"
+            detail={statusQ.error?.message}
+            onRetry={() => statusQ.refetch()}
+          />
+        )}
 
         <GlassPanel className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <div className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /><span className="text-sm font-medium text-muted-foreground">Target Agent:</span></div>

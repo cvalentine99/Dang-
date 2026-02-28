@@ -135,6 +135,19 @@ export const alertQueueRouter = router({
         }
       }
 
+      // Strip bulky log fields that can make netstat/syscheck alerts 50KB+.
+      // Walter's triage prompt already caps JSON at 4K chars, so the full
+      // text of previous_output / full_log / previous_log is never used.
+      let trimmedJson: Record<string, unknown> | null = null;
+      if (input.rawJson) {
+        const { previous_output, full_log, previous_log, ...rest } = input.rawJson;
+        trimmedJson = rest;
+        // Keep a short excerpt so analysts still get context
+        if (typeof full_log === "string") trimmedJson.full_log = (full_log as string).slice(0, 2000);
+        if (typeof previous_output === "string") trimmedJson.previous_output = "[trimmed]";
+        if (typeof previous_log === "string") trimmedJson.previous_log = "[trimmed]";
+      }
+
       // Insert the new alert
       const [result] = await db.insert(alertQueue).values({
         alertId: input.alertId,
@@ -144,7 +157,7 @@ export const alertQueueRouter = router({
         agentId: input.agentId ?? null,
         agentName: input.agentName ?? null,
         alertTimestamp: input.alertTimestamp ?? null,
-        rawJson: input.rawJson ?? null,
+        rawJson: trimmedJson,
         status: "queued",
         queuedBy: ctx.user?.id ?? null,
       });

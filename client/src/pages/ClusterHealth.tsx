@@ -2,6 +2,7 @@ import { trpc } from "@/lib/trpc";
 import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { IndexerErrorState } from "@/components/shared/IndexerStates";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
@@ -159,6 +160,14 @@ export default function ClusterHealth() {
     <WazuhGuard>
       <div className="space-y-6">
         <PageHeader title="Cluster Health" subtitle="Manager daemons, event queues, cluster topology, and configuration validation" onRefresh={handleRefresh} isLoading={isLoading} />
+
+        {statusQ.isError && (
+          <IndexerErrorState
+            message="Failed to connect to Wazuh Manager"
+            detail={statusQ.error?.message}
+            onRetry={() => statusQ.refetch()}
+          />
+        )}
 
         {/* KPIs */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">

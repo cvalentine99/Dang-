@@ -1,4 +1,5 @@
 import { GlassPanel } from "@/components/shared/GlassPanel";
+import { IndexerErrorState } from "@/components/shared/IndexerStates";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
@@ -1055,7 +1056,13 @@ export default function AgentDetail() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
-        {agentQ.isLoading ? (
+        {agentQ.isError ? (
+          <IndexerErrorState
+            message="Failed to load agent data"
+            detail={agentQ.error?.message}
+            onRetry={() => agentQ.refetch()}
+          />
+        ) : agentQ.isLoading ? (
           <div className="space-y-6">
             <GlassPanel className="p-6">
               <div className="animate-pulse space-y-3">

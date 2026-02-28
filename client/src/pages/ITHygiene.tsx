@@ -2,6 +2,7 @@ import { trpc } from "@/lib/trpc";
 import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { IndexerErrorState } from "@/components/shared/IndexerStates";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { ExportButton } from "@/components/shared/ExportButton";
@@ -394,6 +395,14 @@ export default function ITHygiene() {
             {comparisonMode ? "Exit Comparison" : "Compare Agents"}
           </Button>
         </PageHeader>
+
+        {statusQ.isError && (
+          <IndexerErrorState
+            message="Failed to connect to Wazuh Manager"
+            detail={statusQ.error?.message}
+            onRetry={() => statusQ.refetch()}
+          />
+        )}
 
         {/* ── Comparison Mode ──────────────────────────────────────── */}
         {comparisonMode && (

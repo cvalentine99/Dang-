@@ -18,6 +18,14 @@ const paginationSchema = z.object({
 });
 
 const agentIdSchema = z.string().regex(/^\d{3,}$/, "Invalid agent ID format");
+const nodeIdSchema = z.string().regex(/^[\w.\-]+$/, "Invalid node ID format");
+const groupIdSchema = z.string().regex(/^[\w.\-]+$/, "Invalid group ID format");
+const policyIdSchema = z.string().regex(/^[\w.\-]+$/, "Invalid policy ID format");
+const filenameSchema = z.string().regex(/^[\w.\-]+$/, "Invalid filename format");
+const componentSchema = z.string().regex(/^[\w]+$/, "Invalid component name");
+const configurationSchema = z.string().regex(/^[\w.\-]+$/, "Invalid configuration name");
+const requirementSchema = z.string().regex(/^[\w.\-]+$/, "Invalid requirement format");
+const daemonSchema = z.string().regex(/^[\w.\-]+$/, "Invalid daemon name");
 
 // ── Helper: wrap with config check (uses DB override → env fallback) ─────────
 async function proxyGet(path: string, params?: Record<string, string | number | boolean | undefined>, group?: string) {
@@ -84,7 +92,7 @@ export const wazuhRouter = router({
   // ── Manager daemon stats (4.14+ enhanced) ─────────────────────────────────
   daemonStats: publicProcedure
     .input(z.object({
-      daemons: z.array(z.string()).optional(),
+      daemons: z.array(daemonSchema).optional(),
     }).optional())
     .query(({ input }) =>
       proxyGet("/manager/daemons/stats", input?.daemons ? { daemons_list: input.daemons.join(",") } : {})
@@ -123,15 +131,15 @@ export const wazuhRouter = router({
   clusterLocalConfig: publicProcedure.query(() => proxyGet("/cluster/local/config")),
 
   clusterNodeInfo: publicProcedure
-    .input(z.object({ nodeId: z.string() }))
+    .input(z.object({ nodeId: nodeIdSchema }))
     .query(({ input }) => proxyGet(`/cluster/${input.nodeId}/info`)),
 
   clusterNodeStats: publicProcedure
-    .input(z.object({ nodeId: z.string() }))
+    .input(z.object({ nodeId: nodeIdSchema }))
     .query(({ input }) => proxyGet(`/cluster/${input.nodeId}/stats`)),
 
   clusterNodeStatsHourly: publicProcedure
-    .input(z.object({ nodeId: z.string() }))
+    .input(z.object({ nodeId: nodeIdSchema }))
     .query(({ input }) => proxyGet(`/cluster/${input.nodeId}/stats/hourly`)),
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -190,7 +198,7 @@ export const wazuhRouter = router({
     ),
 
   agentStats: publicProcedure
-    .input(z.object({ agentId: agentIdSchema, component: z.string().default("logcollector") }))
+    .input(z.object({ agentId: agentIdSchema, component: componentSchema.default("logcollector") }))
     .query(({ input }) =>
       proxyGet(`/agents/${input.agentId}/stats/${input.component}`)
     ),
@@ -198,8 +206,8 @@ export const wazuhRouter = router({
   agentConfig: publicProcedure
     .input(z.object({
       agentId: agentIdSchema,
-      component: z.string(),
-      configuration: z.string(),
+      component: componentSchema,
+      configuration: configurationSchema,
     }))
     .query(({ input }) =>
       proxyGet(`/agents/${input.agentId}/config/${input.component}/${input.configuration}`)
@@ -229,7 +237,7 @@ export const wazuhRouter = router({
     ),
 
   agentGroupMembers: publicProcedure
-    .input(z.object({ groupId: z.string(), ...paginationSchema.shape }))
+    .input(z.object({ groupId: groupIdSchema, ...paginationSchema.shape }))
     .query(({ input }) =>
       proxyGet(`/groups/${input.groupId}/agents`, {
         limit: input.limit,
@@ -394,7 +402,7 @@ export const wazuhRouter = router({
   ruleGroups: publicProcedure.query(() => proxyGet("/rules/groups")),
 
   rulesByRequirement: publicProcedure
-    .input(z.object({ requirement: z.string() }))
+    .input(z.object({ requirement: requirementSchema }))
     .query(({ input }) =>
       proxyGet(`/rules/requirement/${input.requirement}`)
     ),
@@ -407,7 +415,7 @@ export const wazuhRouter = router({
 
   /** View rule file content by filename */
   ruleFileContent: publicProcedure
-    .input(z.object({ filename: z.string() }))
+    .input(z.object({ filename: filenameSchema }))
     .query(({ input }) =>
       proxyGet(`/rules/files/${input.filename}`)
     ),
@@ -475,7 +483,7 @@ export const wazuhRouter = router({
     .input(
       z.object({
         agentId: agentIdSchema,
-        policyId: z.string(),
+        policyId: policyIdSchema,
         result: z.enum(["passed", "failed", "not applicable"]).optional(),
         search: z.string().optional(),
         ...paginationSchema.shape,
@@ -576,7 +584,7 @@ export const wazuhRouter = router({
 
   /** View decoder file content by filename */
   decoderFileContent: publicProcedure
-    .input(z.object({ filename: z.string() }))
+    .input(z.object({ filename: filenameSchema }))
     .query(({ input }) =>
       proxyGet(`/decoders/files/${input.filename}`)
     ),
@@ -623,14 +631,14 @@ export const wazuhRouter = router({
   // ══════════════════════════════════════════════════════════════════════════════
   /** Group configuration (agent.conf for the group) */
   groupConfiguration: publicProcedure
-    .input(z.object({ groupId: z.string() }))
+    .input(z.object({ groupId: groupIdSchema }))
     .query(({ input }) =>
       proxyGet(`/groups/${input.groupId}/configuration`)
     ),
 
   /** Group files listing */
   groupFiles: publicProcedure
-    .input(z.object({ groupId: z.string() }))
+    .input(z.object({ groupId: groupIdSchema }))
     .query(({ input }) =>
       proxyGet(`/groups/${input.groupId}/files`)
     ),

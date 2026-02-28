@@ -1,4 +1,5 @@
 import { GlassPanel } from "@/components/shared/GlassPanel";
+import { IndexerErrorState } from "@/components/shared/IndexerStates";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
 import { Button } from "@/components/ui/button";
 import {
@@ -441,6 +442,18 @@ function AgentDataColumn({ agentId, index, allSlots, onSlotReady }: {
 
   // Report slot to parent for cross-comparison
   useMemo(() => { if (!isLoading) onSlotReady(slot); }, [isLoading, slot]);
+
+  const hasError = agentQ.isError || alertsQ.isError || vulnsQ.isError || scaQ.isError;
+
+  if (hasError) {
+    return (
+      <IndexerErrorState
+        message={`Failed to load data for Agent ${agentId}`}
+        detail={agentQ.error?.message || alertsQ.error?.message || vulnsQ.error?.message || scaQ.error?.message}
+        onRetry={() => { agentQ.refetch(); alertsQ.refetch(); vulnsQ.refetch(); scaQ.refetch(); }}
+      />
+    );
+  }
 
   if (isLoading) {
     return (
