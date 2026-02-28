@@ -23,6 +23,7 @@ import {
   ArrowDownCircle, FolderX,
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
+import { useLocation } from "wouter";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
@@ -94,6 +95,7 @@ export default function AgentHealth() {
   const agentOsQ = trpc.wazuh.agentOs.useQuery({ agentId: selectedAgent ?? "000" }, { enabled: !!selectedAgent && isConnected });
   const agentHwQ = trpc.wazuh.agentHardware.useQuery({ agentId: selectedAgent ?? "000" }, { enabled: !!selectedAgent && isConnected });
 
+  const [, navigate] = useLocation();
   const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); }, [utils]);
 
   // ── Agent summary (real or fallback) ──────────────────────────────────
@@ -300,7 +302,7 @@ export default function AgentHealth() {
                   const status = String(agent.status ?? "unknown");
                   const os = agent.os as Record<string, unknown> | undefined;
                   return (
-                    <tr key={String(agent.id)} className="border-b border-border/10 hover:bg-secondary/20 transition-colors">
+                    <tr key={String(agent.id)} className="border-b border-border/10 hover:bg-secondary/20 transition-colors cursor-pointer" onClick={() => navigate(`/fleet/${String(agent.id)}`)}>
                       <td className="py-2.5 px-3 font-mono text-primary">{String(agent.id)}</td>
                       <td className="py-2.5 px-3 text-foreground font-medium">{String(agent.name ?? "—")}</td>
                       <td className="py-2.5 px-3 font-mono text-muted-foreground">{String(agent.ip ?? "—")}</td>
@@ -315,7 +317,7 @@ export default function AgentHealth() {
                       </td>
                       <td className="py-2.5 px-3 text-muted-foreground font-mono text-[10px]">{agent.lastKeepAlive ? new Date(String(agent.lastKeepAlive)).toLocaleString() : "—"}</td>
                       <td className="py-2.5 px-3">
-                        <Button variant="outline" size="sm" onClick={() => setSelectedAgent(String(agent.id))} className="h-6 text-[10px] bg-transparent border-border hover:bg-accent px-2">Inspect</Button>
+                        <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/fleet/${String(agent.id)}`); }} className="h-6 text-[10px] bg-transparent border-border hover:bg-accent px-2">Drilldown</Button>
                       </td>
                     </tr>
                   );

@@ -31,6 +31,7 @@ import DataPipeline from "./pages/DataPipeline";
 import AdminSettings from "./pages/AdminSettings";
 import TokenUsage from "./pages/TokenUsage";
 import AlertQueue from "./pages/AlertQueue";
+import AgentDetail from "./pages/AgentDetail";
 import AutoQueueRules from "./pages/AutoQueueRules";
 
 function Router() {
@@ -47,6 +48,7 @@ function Router() {
             <Switch>
               <Route path="/" component={Home} />
               <Route path="/agents" component={AgentHealth} />
+              <Route path="/fleet/:agentId" component={AgentDetail} />
               <Route path="/alerts" component={AlertsTimeline} />
               <Route path="/vulnerabilities" component={Vulnerabilities} />
               <Route path="/mitre" component={MitreAttack} />

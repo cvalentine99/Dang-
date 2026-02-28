@@ -1448,7 +1448,7 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 
 - [x] KG: Multi-select toggle button in header toolbar
 - [x] KG: Shift+click and click-to-toggle node selection in multi-select mode
-- [ ] KG: Lasso/rubber-band drag selection for area-select (deferred — complex D3 interaction)
+- [x] KG: Lasso/rubber-band drag selection for area-select
 - [x] KG: Visual selection ring on selected nodes (distinct from focus/pulse)
 - [x] KG: Floating bulk action toolbar showing selected count
 - [x] KG: Bulk "Hide Selected" action
@@ -1459,3 +1459,21 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] KG: Escape key to clear selection
 - [x] KG: Select/Deselect Node in right-click context menu
 - [x] Write vitest tests for multi-select features
+
+## Phase: Lasso Selection, Agent Drilldown, Investigation Export
+
+- [x] KG: Lasso/rubber-band drag selection on graph canvas
+- [x] KG: Visual rubber-band rectangle overlay during drag
+- [x] KG: Select all nodes within lasso bounds on mouse-up
+- [x] KG: Integrate lasso with existing multi-select mode
+- [x] Fleet Command: Agent detail drilldown page (/fleet/:agentId)
+- [x] Fleet Command: Agent overview header (name, OS, IP, status, last keepalive)
+- [x] Fleet Command: Agent alerts tab with recent alerts table
+- [x] Fleet Command: Agent vulnerabilities tab with CVE list
+- [x] Fleet Command: Agent FIM tab with file integrity events
+- [x] Fleet Command: Agent syscollector tab (packages, ports, processes, network)
+- [x] Fleet Command: Link from fleet table to agent detail page
+- [x] Investigation: Export report as Markdown — already built (reportService.ts + ExportButton)
+- [x] Investigation: Export report as HTML (styled, print-ready) — already built
+- [x] Investigation: Report includes evidence, notes, timeline, metadata — already built
+- [x] Write vitest tests for all new features (477 tests passing across 33 files)

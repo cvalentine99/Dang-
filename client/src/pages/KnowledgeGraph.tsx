@@ -767,6 +767,12 @@ export default function KnowledgeGraph(): React.JSX.Element {
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set());
 
+  // Lasso/rubber-band selection state
+  const lassoRef = useRef<{ startX: number; startY: number; active: boolean }>({ startX: 0, startY: 0, active: false });
+  const [lassoRect, setLassoRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const selectedNodesRef = useRef<Set<string>>(selectedNodes);
+  selectedNodesRef.current = selectedNodes;
+
   // Fetch graph data
   const overviewQuery = trpc.graph.overviewGraph.useQuery(
     { layer: layerFilter as any, riskLevel: riskFilter as any, limit: 100 },
@@ -942,10 +948,71 @@ export default function KnowledgeGraph(): React.JSX.Element {
 
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 4])
+      .filter((event) => {
+        // Block pan (not scroll-zoom) when shift is held or multi-select is active
+        if (event.type === "wheel") return true; // always allow scroll-zoom
+        if (event.shiftKey || multiSelectMode) return false; // block pan for lasso
+        return !event.button; // default: allow left-button pan
+      })
       .on("zoom", (event) => { g.attr("transform", event.transform); });
 
     zoomRef.current = zoom;
     svg.call(zoom);
+
+    // ── Lasso rubber-band selection ──────────────────────────────────
+    svg.on("mousedown.lasso", (event: MouseEvent) => {
+      if (!event.shiftKey && !multiSelectMode) return;
+      if ((event.target as Element).closest(".kg-node")) return; // don't lasso on nodes
+      event.preventDefault();
+      const rect = container.getBoundingClientRect();
+      lassoRef.current = { startX: event.clientX - rect.left, startY: event.clientY - rect.top, active: true };
+      if (!multiSelectMode) setMultiSelectMode(true);
+    });
+
+    svg.on("mousemove.lasso", (event: MouseEvent) => {
+      if (!lassoRef.current.active) return;
+      const rect = container.getBoundingClientRect();
+      const cx = event.clientX - rect.left;
+      const cy = event.clientY - rect.top;
+      const sx = lassoRef.current.startX;
+      const sy = lassoRef.current.startY;
+      setLassoRect({
+        x: Math.min(sx, cx),
+        y: Math.min(sy, cy),
+        w: Math.abs(cx - sx),
+        h: Math.abs(cy - sy),
+      });
+    });
+
+    svg.on("mouseup.lasso", () => {
+      if (!lassoRef.current.active) return;
+      lassoRef.current.active = false;
+      // Select nodes inside the lasso rectangle
+      const lr = lassoRef.current;
+      const containerRect = container.getBoundingClientRect();
+      const currentTransform = d3.zoomTransform(svg.node()!);
+      const newSelected = new Set(Array.from(selectedNodesRef.current));
+
+      nodesRef.current.forEach(n => {
+        if (!n.x || !n.y) return;
+        // Transform node coords to screen coords
+        const screenX = currentTransform.applyX(n.x);
+        const screenY = currentTransform.applyY(n.y);
+        // Get the lasso rect from the current state
+        const lRect = document.querySelector(".lasso-overlay");
+        if (!lRect) return;
+        const lx = parseFloat(lRect.getAttribute("data-x") ?? "0");
+        const ly = parseFloat(lRect.getAttribute("data-y") ?? "0");
+        const lw = parseFloat(lRect.getAttribute("data-w") ?? "0");
+        const lh = parseFloat(lRect.getAttribute("data-h") ?? "0");
+        if (screenX >= lx && screenX <= lx + lw && screenY >= ly && screenY <= ly + lh) {
+          newSelected.add(n.id);
+        }
+      });
+
+      setSelectedNodes(newSelected);
+      setLassoRect(null);
+    });
     const g = svg.append("g");
 
     // Defs for glow effects
@@ -1744,6 +1811,23 @@ export default function KnowledgeGraph(): React.JSX.Element {
             <svg ref={svgRef} className="w-full h-full" />
           )}
 
+          {/* Lasso rubber-band overlay */}
+          {lassoRect && (
+            <div
+              className="lasso-overlay absolute pointer-events-none z-30 border-2 border-dashed border-cyan-400/60 bg-cyan-400/8 rounded-sm"
+              data-x={lassoRect.x}
+              data-y={lassoRect.y}
+              data-w={lassoRect.w}
+              data-h={lassoRect.h}
+              style={{
+                left: lassoRect.x,
+                top: lassoRect.y,
+                width: lassoRect.w,
+                height: lassoRect.h,
+              }}
+            />
+          )}
+
           {/* Zoom controls */}
           <div className="absolute top-4 left-4 flex flex-col gap-1 z-10">
             <button onClick={handleZoomIn} className="p-1.5 glass-panel rounded-lg border border-white/10 text-muted-foreground hover:text-foreground transition-colors">
@@ -1780,7 +1864,7 @@ export default function KnowledgeGraph(): React.JSX.Element {
               <div className="flex items-center gap-1.5 px-2 border-r border-white/10">
                 <SquareMousePointer className="w-3.5 h-3.5 text-cyan-400" />
                 <span className="text-xs text-cyan-300 font-mono">
-                  {selectedNodes.size > 0 ? `${selectedNodes.size} selected` : "Click nodes to select"}
+                  {selectedNodes.size > 0 ? `${selectedNodes.size} selected` : "Click or drag to select"}
                 </span>
               </div>
 
