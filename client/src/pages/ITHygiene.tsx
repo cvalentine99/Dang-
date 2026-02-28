@@ -74,18 +74,19 @@ function extractItems(data: unknown): {
 // ── State badge helper ─────────────────────────────────────────────────────────
 function ServiceStateBadge({ state }: { state: string }) {
   const s = state.toLowerCase();
-  const color =
-    s === "running"
-      ? "bg-[oklch(0.765_0.177_163.223)]/15 text-[oklch(0.765_0.177_163.223)] border-[oklch(0.765_0.177_163.223)]/30"
-      : s === "stopped"
-        ? "bg-[oklch(0.637_0.237_25.331)]/15 text-[oklch(0.637_0.237_25.331)] border-[oklch(0.637_0.237_25.331)]/30"
-        : "bg-secondary/50 text-muted-foreground border-border";
+  const isRunning = s === "running" || s === "active";
+  const isStopped = s === "stopped" || s === "inactive" || s === "dead";
+  const color = isRunning
+    ? "bg-[oklch(0.765_0.177_163.223)]/15 text-[oklch(0.765_0.177_163.223)] border-[oklch(0.765_0.177_163.223)]/30"
+    : isStopped
+      ? "bg-[oklch(0.637_0.237_25.331)]/15 text-[oklch(0.637_0.237_25.331)] border-[oklch(0.637_0.237_25.331)]/30"
+      : "bg-secondary/50 text-muted-foreground border-border";
   return (
     <span
       className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${color}`}
     >
       <span
-        className={`h-1.5 w-1.5 rounded-full mr-1.5 ${s === "running" ? "bg-[oklch(0.765_0.177_163.223)]" : s === "stopped" ? "bg-[oklch(0.637_0.237_25.331)]" : "bg-muted-foreground"}`}
+        className={`h-1.5 w-1.5 rounded-full mr-1.5 ${isRunning ? "bg-[oklch(0.765_0.177_163.223)]" : isStopped ? "bg-[oklch(0.637_0.237_25.331)]" : "bg-muted-foreground"}`}
       />
       {state}
     </span>
@@ -104,6 +105,30 @@ function ShellBadge({ shell }: { shell: string }) {
     >
       {isLogin ? "interactive" : "system"}
     </span>
+  );
+}
+
+// ── Tabs that support server-side search ─────────────────────────────────────
+const SEARCHABLE_TABS = new Set<TabKey>(["packages", "processes"]);
+
+// ── Unavailable data placeholder ─────────────────────────────────────────────
+function UnavailableTab({ label, error }: { label: string; error?: { message?: string } | null }) {
+  const msg = error?.message ?? "";
+  const isNotSupported = msg.includes("404") || msg.includes("1000") || msg.includes("not found");
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="h-12 w-12 rounded-full bg-secondary/50 flex items-center justify-center mb-3">
+        <Shield className="h-6 w-6 text-muted-foreground/50" />
+      </div>
+      <p className="text-sm text-muted-foreground">
+        {isNotSupported
+          ? `${label} data is not available for this agent's operating system.`
+          : `Unable to load ${label.toLowerCase()} data.`}
+      </p>
+      {!isNotSupported && msg && (
+        <p className="text-xs text-muted-foreground/50 mt-1 max-w-md">{msg.substring(0, 200)}</p>
+      )}
+    </div>
   );
 }
 
@@ -140,81 +165,81 @@ export default function ITHygiene() {
     {
       agentId,
       limit: pageSize,
-      offset: page * pageSize,
-      search: search || undefined,
+      offset: tab === "packages" ? page * pageSize : 0,
+      search: tab === "packages" ? search || undefined : undefined,
     },
     {
       retry: 1,
       staleTime: 30_000,
-      enabled: isConnected && tab === "packages",
+      enabled: isConnected,
     }
   );
   const portsQ = trpc.wazuh.agentPorts.useQuery(
-    { agentId, limit: pageSize, offset: page * pageSize },
-    { retry: 1, staleTime: 30_000, enabled: isConnected && tab === "ports" }
+    { agentId, limit: pageSize, offset: tab === "ports" ? page * pageSize : 0 },
+    { retry: 1, staleTime: 30_000, enabled: isConnected }
   );
   const processesQ = trpc.wazuh.agentProcesses.useQuery(
     {
       agentId,
       limit: pageSize,
-      offset: page * pageSize,
-      search: search || undefined,
+      offset: tab === "processes" ? page * pageSize : 0,
+      search: tab === "processes" ? search || undefined : undefined,
     },
     {
       retry: 1,
       staleTime: 30_000,
-      enabled: isConnected && tab === "processes",
+      enabled: isConnected,
     }
   );
   const netifaceQ = trpc.wazuh.agentNetiface.useQuery(
     { agentId },
-    { retry: 1, staleTime: 60_000, enabled: isConnected && tab === "network" }
+    { retry: 1, staleTime: 60_000, enabled: isConnected }
   );
   const netaddrQ = trpc.wazuh.agentNetaddr.useQuery(
     { agentId },
-    { retry: 1, staleTime: 60_000, enabled: isConnected && tab === "network" }
+    { retry: 1, staleTime: 60_000, enabled: isConnected }
   );
   const netprotoQ = trpc.wazuh.agentNetproto.useQuery(
-    { agentId },
-    { retry: 1, staleTime: 60_000, enabled: isConnected && tab === "network" }
+    { agentId, limit: 100, offset: 0 },
+    { retry: 1, staleTime: 60_000, enabled: isConnected }
   );
   const hotfixesQ = trpc.wazuh.agentHotfixes.useQuery(
-    { agentId, limit: pageSize, offset: page * pageSize },
+    { agentId, limit: pageSize, offset: tab === "hotfixes" ? page * pageSize : 0 },
     {
       retry: 1,
       staleTime: 60_000,
-      enabled: isConnected && tab === "hotfixes",
+      enabled: isConnected,
     }
   );
 
   // ── Extensions column queries ────────────────────────────────────────────
   const extensionsQ = trpc.wazuh.agentBrowserExtensions.useQuery(
-    { agentId, limit: pageSize, offset: page * pageSize },
+    { agentId, limit: pageSize, offset: tab === "extensions" ? page * pageSize : 0 },
     {
       retry: 1,
       staleTime: 60_000,
-      enabled: isConnected && tab === "extensions",
+      enabled: isConnected,
     }
   );
 
   // ── Services column queries ──────────────────────────────────────────────
   const servicesQ = trpc.wazuh.agentServices.useQuery(
-    { agentId, limit: pageSize, offset: page * pageSize },
+    { agentId, limit: pageSize, offset: tab === "services" ? page * pageSize : 0 },
     {
       retry: 1,
       staleTime: 60_000,
-      enabled: isConnected && tab === "services",
+      enabled: isConnected,
     }
   );
 
   // ── Identity column queries ──────────────────────────────────────────────
   const usersQ = trpc.wazuh.agentUsers.useQuery(
-    { agentId, limit: pageSize, offset: page * pageSize },
-    { retry: 1, staleTime: 60_000, enabled: isConnected && tab === "users" }
+    { agentId, limit: pageSize, offset: tab === "users" ? page * pageSize : 0 },
+    { retry: 1, staleTime: 60_000, enabled: isConnected }
   );
   const groupsQ = trpc.wazuh.agentGroups2.useQuery(
-    { agentId, limit: pageSize, offset: page * pageSize },
-    { retry: 1, staleTime: 60_000, enabled: isConnected && tab === "groups" }
+    { agentId, limit: pageSize, offset: tab === "groups" ? page * pageSize : 0 },
+    { retry: 1, staleTime: 60_000, enabled: isConnected }
   );
 
   const handleRefresh = useCallback(() => {
@@ -280,11 +305,15 @@ export default function ITHygiene() {
   const isLoading = statusQ.isLoading;
 
   // ── KPI stats ────────────────────────────────────────────────────────────
-  const runningServices = servicesData.items.filter(
-    (s) => String(s.state ?? "").toLowerCase() === "running"
-  ).length;
+  // Wazuh nests service data under item.service and user data under item.user
+  const runningServices = servicesData.items.filter((s) => {
+    const svc = (s.service as Record<string, unknown>) ?? s;
+    const state = String(svc.state ?? svc.sub_state ?? "").toLowerCase();
+    return state === "running" || state === "active";
+  }).length;
   const interactiveUsers = usersData.items.filter((u) => {
-    const shell = String(u.shell ?? "");
+    const usr = (u.user as Record<string, unknown>) ?? u;
+    const shell = String(usr.shell ?? "");
     return shell && !shell.includes("nologin") && !shell.includes("false");
   }).length;
 
@@ -379,49 +408,49 @@ export default function ITHygiene() {
         <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3">
           <StatCard
             label="Packages"
-            value={packagesData.total}
+            value={packagesQ.isError ? "—" : packagesData.total}
             icon={Package}
             colorClass="text-primary"
           />
           <StatCard
             label="Open Ports"
-            value={portsData.total}
+            value={portsQ.isError ? "—" : portsData.total}
             icon={Globe}
             colorClass="text-threat-info"
           />
           <StatCard
             label="Processes"
-            value={processesData.total}
+            value={processesQ.isError ? "—" : processesData.total}
             icon={Cpu}
             colorClass="text-[oklch(0.795_0.184_86.047)]"
           />
           <StatCard
             label="Extensions"
-            value={extensionsData.total}
+            value={extensionsQ.isError ? "—" : extensionsData.total}
             icon={Puzzle}
             colorClass="text-[oklch(0.789_0.154_211.53)]"
           />
           <StatCard
             label="Services"
-            value={servicesData.total}
+            value={servicesQ.isError ? "—" : servicesData.total}
             icon={Server}
             colorClass="text-[oklch(0.765_0.177_163.223)]"
           />
           <StatCard
             label="Running"
-            value={runningServices}
+            value={servicesQ.isError ? "—" : runningServices}
             icon={Activity}
             colorClass="text-[oklch(0.765_0.177_163.223)]"
           />
           <StatCard
             label="Users"
-            value={usersData.total}
+            value={usersQ.isError ? "—" : usersData.total}
             icon={UserCheck}
             colorClass="text-[oklch(0.705_0.191_22.216)]"
           />
           <StatCard
             label="Interactive"
-            value={interactiveUsers}
+            value={usersQ.isError ? "—" : interactiveUsers}
             icon={Shield}
             colorClass="text-threat-high"
           />
@@ -454,18 +483,20 @@ export default function ITHygiene() {
               ))}
             </SelectContent>
           </Select>
-          <div className="relative ml-auto">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(0);
-              }}
-              className="h-8 w-48 pl-8 text-xs bg-secondary/50 border-border"
-            />
-          </div>
+          {SEARCHABLE_TABS.has(tab) && (
+            <div className="relative ml-auto">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder={`Search ${tab}...`}
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(0);
+                }}
+                className="h-8 w-48 pl-8 text-xs bg-secondary/50 border-border"
+              />
+            </div>
+          )}
         </GlassPanel>
 
         {/* ── Three-Column Selector ────────────────────────────────────── */}
@@ -1004,6 +1035,11 @@ export default function ITHygiene() {
                   </tbody>
                 </table>
               </div>
+              {hotfixesData.items.length === 0 && !hotfixesQ.isLoading && (
+                <p className="text-xs text-muted-foreground/60 text-center py-6">
+                  No hotfixes found. This data is typically only available for Windows agents.
+                </p>
+              )}
               {Math.ceil(hotfixesData.total / pageSize) > 1 && (
                 <Pagination
                   page={page}
@@ -1019,6 +1055,9 @@ export default function ITHygiene() {
 
           {/* Browser Extensions Tab */}
           <TabsContent value="extensions">
+            {extensionsQ.isError ? (
+              <GlassPanel><UnavailableTab label="Browser Extensions" error={extensionsQ.error} /></GlassPanel>
+            ) : (
             <GlassPanel>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs text-muted-foreground">
@@ -1047,30 +1086,34 @@ export default function ITHygiene() {
                     </tr>
                   </thead>
                   <tbody>
-                    {extensionsData.items.map((ext, i) => (
-                      <tr
-                        key={i}
-                        className="border-b border-border/10 hover:bg-secondary/20 transition-colors"
-                      >
-                        <td className="py-2 px-3 text-foreground font-medium">
-                          {String(ext.name ?? "—")}
-                        </td>
-                        <td className="py-2 px-3">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 border border-primary/20 text-primary">
-                            {String(ext.browser ?? "—")}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 font-mono text-primary">
-                          {String(ext.version ?? "—")}
-                        </td>
-                        <td className="py-2 px-3 text-muted-foreground truncate max-w-[350px]">
-                          {String(ext.description ?? "—")}
-                        </td>
-                        <td className="py-2 px-3 font-mono text-muted-foreground/60 truncate max-w-[250px]">
-                          {String(ext.path ?? "—")}
-                        </td>
-                      </tr>
-                    ))}
+                    {extensionsData.items.map((ext, i) => {
+                      const pkg = (ext.package as Record<string, unknown>) ?? ext;
+                      const br = (ext.browser as Record<string, unknown>) ?? {};
+                      return (
+                        <tr
+                          key={i}
+                          className="border-b border-border/10 hover:bg-secondary/20 transition-colors"
+                        >
+                          <td className="py-2 px-3 text-foreground font-medium">
+                            {String(pkg.name ?? ext.name ?? "—")}
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 border border-primary/20 text-primary">
+                              {String(br.name ?? ext.browser ?? "—")}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 font-mono text-primary">
+                            {String(pkg.version ?? ext.version ?? "—")}
+                          </td>
+                          <td className="py-2 px-3 text-muted-foreground truncate max-w-[350px]">
+                            {String(pkg.description ?? ext.description ?? "—")}
+                          </td>
+                          <td className="py-2 px-3 font-mono text-muted-foreground/60 truncate max-w-[250px]">
+                            {String(pkg.type ?? ext.path ?? "—")}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1092,7 +1135,8 @@ export default function ITHygiene() {
                   {Object.entries(
                     extensionsData.items.reduce<Record<string, number>>(
                       (acc, ext) => {
-                        const browser = String(ext.browser ?? "Unknown");
+                        const br = (ext.browser as Record<string, unknown>) ?? {};
+                        const browser = String(br.name ?? ext.browser ?? "Unknown");
                         acc[browser] = (acc[browser] || 0) + 1;
                         return acc;
                       },
@@ -1115,10 +1159,14 @@ export default function ITHygiene() {
                 </div>
               </div>
             </GlassPanel>
+            )}
           </TabsContent>
 
           {/* System Services Tab */}
           <TabsContent value="services">
+            {servicesQ.isError ? (
+              <GlassPanel><UnavailableTab label="System Services" error={servicesQ.error} /></GlassPanel>
+            ) : (
             <GlassPanel>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-4">
@@ -1160,43 +1208,47 @@ export default function ITHygiene() {
                     </tr>
                   </thead>
                   <tbody>
-                    {servicesData.items.map((svc, i) => (
-                      <tr
-                        key={i}
-                        className="border-b border-border/10 hover:bg-secondary/20 transition-colors"
-                      >
-                        <td className="py-2 px-3 font-mono text-foreground font-medium">
-                          {String(svc.name ?? "—")}
-                        </td>
-                        <td className="py-2 px-3 text-foreground">
-                          {String(svc.display_name ?? "—")}
-                        </td>
-                        <td className="py-2 px-3">
-                          <ServiceStateBadge
-                            state={String(svc.state ?? "unknown")}
-                          />
-                        </td>
-                        <td className="py-2 px-3">
-                          <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full border ${
-                              String(svc.start_type) === "auto"
-                                ? "bg-primary/10 text-primary border-primary/20"
-                                : String(svc.start_type) === "disabled"
-                                  ? "bg-destructive/10 text-destructive border-destructive/20"
-                                  : "bg-secondary/50 text-muted-foreground border-border"
-                            }`}
-                          >
-                            {String(svc.start_type ?? "—")}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 font-mono text-muted-foreground">
-                          {svc.pid ? String(svc.pid) : "—"}
-                        </td>
-                        <td className="py-2 px-3 text-muted-foreground truncate max-w-[300px]">
-                          {String(svc.description ?? "—")}
-                        </td>
-                      </tr>
-                    ))}
+                    {servicesData.items.map((svc, i) => {
+                      const s = (svc.service as Record<string, unknown>) ?? svc;
+                      const proc = (svc.process as Record<string, unknown>) ?? {};
+                      const state = String(s.sub_state ?? s.state ?? "unknown");
+                      const enabled = String(s.enabled ?? s.start_type ?? "—");
+                      return (
+                        <tr
+                          key={i}
+                          className="border-b border-border/10 hover:bg-secondary/20 transition-colors"
+                        >
+                          <td className="py-2 px-3 font-mono text-foreground font-medium">
+                            {String(s.name ?? svc.name ?? "—")}
+                          </td>
+                          <td className="py-2 px-3 text-foreground">
+                            {String(s.description ?? svc.display_name ?? "—")}
+                          </td>
+                          <td className="py-2 px-3">
+                            <ServiceStateBadge state={state} />
+                          </td>
+                          <td className="py-2 px-3">
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                                enabled === "enabled" || enabled === "auto"
+                                  ? "bg-primary/10 text-primary border-primary/20"
+                                  : enabled === "disabled"
+                                    ? "bg-destructive/10 text-destructive border-destructive/20"
+                                    : "bg-secondary/50 text-muted-foreground border-border"
+                              }`}
+                            >
+                              {enabled}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 font-mono text-muted-foreground">
+                            {proc.pid ? String(proc.pid) : s.pid ? String(s.pid) : "—"}
+                          </td>
+                          <td className="py-2 px-3 text-muted-foreground truncate max-w-[300px]">
+                            {String(s.object_path ?? svc.description ?? "—")}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1218,7 +1270,8 @@ export default function ITHygiene() {
                   {Object.entries(
                     servicesData.items.reduce<Record<string, number>>(
                       (acc, svc) => {
-                        const type = String(svc.start_type ?? "unknown");
+                        const s = (svc.service as Record<string, unknown>) ?? svc;
+                        const type = String(s.enabled ?? s.start_type ?? "unknown");
                         acc[type] = (acc[type] || 0) + 1;
                         return acc;
                       },
@@ -1241,12 +1294,16 @@ export default function ITHygiene() {
                 </div>
               </div>
             </GlassPanel>
+            )}
           </TabsContent>
 
           {/* ── IDENTITY COLUMN ──────────────────────────────────────── */}
 
           {/* Users Tab */}
           <TabsContent value="users">
+            {usersQ.isError ? (
+              <GlassPanel><UnavailableTab label="Local Users" error={usersQ.error} /></GlassPanel>
+            ) : (
             <GlassPanel>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-4">
@@ -1283,41 +1340,45 @@ export default function ITHygiene() {
                     </tr>
                   </thead>
                   <tbody>
-                    {usersData.items.map((user, i) => (
-                      <tr
-                        key={i}
-                        className="border-b border-border/10 hover:bg-secondary/20 transition-colors"
-                      >
-                        <td className="py-2 px-3 font-mono text-foreground font-medium">
-                          <span className="flex items-center gap-1.5">
-                            <UserCheck className="h-3 w-3 text-primary" />
-                            {String(user.name ?? "—")}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 font-mono text-primary">
-                          {String(user.uid ?? "—")}
-                        </td>
-                        <td className="py-2 px-3 font-mono text-muted-foreground">
-                          {String(user.gid ?? "—")}
-                        </td>
-                        <td className="py-2 px-3 font-mono text-muted-foreground truncate max-w-[200px]">
-                          {String(user.home ?? "—")}
-                        </td>
-                        <td className="py-2 px-3 font-mono text-muted-foreground/70 truncate max-w-[180px]">
-                          {String(user.shell ?? "—")}
-                        </td>
-                        <td className="py-2 px-3">
-                          <ShellBadge shell={String(user.shell ?? "")} />
-                        </td>
-                        <td className="py-2 px-3 text-muted-foreground">
-                          {user.last_login
-                            ? new Date(
-                                String(user.last_login)
-                              ).toLocaleDateString()
-                            : "—"}
-                        </td>
-                      </tr>
-                    ))}
+                    {usersData.items.map((user, i) => {
+                      const u = (user.user as Record<string, unknown>) ?? user;
+                      const login = (user.login as Record<string, unknown>) ?? {};
+                      return (
+                        <tr
+                          key={i}
+                          className="border-b border-border/10 hover:bg-secondary/20 transition-colors"
+                        >
+                          <td className="py-2 px-3 font-mono text-foreground font-medium">
+                            <span className="flex items-center gap-1.5">
+                              <UserCheck className="h-3 w-3 text-primary" />
+                              {String(u.name ?? user.name ?? "—")}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 font-mono text-primary">
+                            {String(u.id ?? u.uid_signed ?? user.uid ?? "—")}
+                          </td>
+                          <td className="py-2 px-3 font-mono text-muted-foreground">
+                            {String(u.group_id ?? user.gid ?? "—")}
+                          </td>
+                          <td className="py-2 px-3 font-mono text-muted-foreground truncate max-w-[200px]">
+                            {String(u.home ?? user.home ?? "—")}
+                          </td>
+                          <td className="py-2 px-3 font-mono text-muted-foreground/70 truncate max-w-[180px]">
+                            {String(u.shell ?? user.shell ?? "—")}
+                          </td>
+                          <td className="py-2 px-3">
+                            <ShellBadge shell={String(u.shell ?? user.shell ?? "")} />
+                          </td>
+                          <td className="py-2 px-3 text-muted-foreground">
+                            {login.type && String(login.type).trim()
+                              ? String(login.type)
+                              : u.password_status
+                                ? String(u.password_status)
+                                : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1343,9 +1404,10 @@ export default function ITHygiene() {
                     </p>
                     <p className="text-lg font-display font-bold text-threat-critical">
                       {
-                        usersData.items.filter(
-                          (u) => String(u.uid) === "0"
-                        ).length
+                        usersData.items.filter((u) => {
+                          const usr = (u.user as Record<string, unknown>) ?? u;
+                          return String(usr.id ?? usr.uid_signed ?? u.uid) === "0";
+                        }).length
                       }
                     </p>
                   </div>
@@ -1371,19 +1433,24 @@ export default function ITHygiene() {
                     </p>
                     <p className="text-lg font-display font-bold text-primary">
                       {
-                        usersData.items.filter(
-                          (u) => u.last_login != null
-                        ).length
+                        usersData.items.filter((u) => {
+                          const login = (u.login as Record<string, unknown>) ?? {};
+                          return (login.type && String(login.type).trim()) || u.last_login != null;
+                        }).length
                       }
                     </p>
                   </div>
                 </div>
               </div>
             </GlassPanel>
+            )}
           </TabsContent>
 
           {/* Groups Tab */}
           <TabsContent value="groups">
+            {groupsQ.isError ? (
+              <GlassPanel><UnavailableTab label="Local Groups" error={groupsQ.error} /></GlassPanel>
+            ) : (
             <GlassPanel>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs text-muted-foreground">
@@ -1409,7 +1476,9 @@ export default function ITHygiene() {
                   </thead>
                   <tbody>
                     {groupsData.items.map((grp, i) => {
-                      const members = (grp.members as string[]) ?? [];
+                      const g = (grp.group as Record<string, unknown>) ?? grp;
+                      const rawUsers = String(g.users ?? grp.members ?? "").trim();
+                      const members = rawUsers ? rawUsers.split(",").map(s => s.trim()).filter(Boolean) : [];
                       return (
                         <tr
                           key={i}
@@ -1418,22 +1487,22 @@ export default function ITHygiene() {
                           <td className="py-2 px-3 font-mono text-foreground font-medium">
                             <span className="flex items-center gap-1.5">
                               <Users className="h-3 w-3 text-primary" />
-                              {String(grp.name ?? "—")}
+                              {String(g.name ?? grp.name ?? "—")}
                             </span>
                           </td>
                           <td className="py-2 px-3 font-mono text-primary">
-                            {String(grp.gid ?? "—")}
+                            {String(g.id ?? g.id_signed ?? grp.gid ?? "—")}
                           </td>
                           <td className="py-2 px-3">
                             <div className="flex flex-wrap gap-1">
-                              {members.map((m) => (
+                              {members.length > 0 ? members.map((m) => (
                                 <span
                                   key={m}
                                   className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-secondary/50 border border-border/30 text-muted-foreground"
                                 >
                                   {m}
                                 </span>
-                              ))}
+                              )) : <span className="text-[10px] text-muted-foreground/50">none</span>}
                             </div>
                           </td>
                           <td className="py-2 px-3 font-mono text-muted-foreground">
@@ -1462,8 +1531,9 @@ export default function ITHygiene() {
                 </h4>
                 <div className="flex flex-wrap gap-2">
                   {groupsData.items
-                    .filter((g) => {
-                      const name = String(g.name ?? "").toLowerCase();
+                    .filter((grp) => {
+                      const g = (grp.group as Record<string, unknown>) ?? grp;
+                      const name = String(g.name ?? grp.name ?? "").toLowerCase();
                       return (
                         name === "root" ||
                         name === "sudo" ||
@@ -1474,17 +1544,20 @@ export default function ITHygiene() {
                         name === "staff"
                       );
                     })
-                    .map((g) => {
-                      const members = (g.members as string[]) ?? [];
+                    .map((grp) => {
+                      const g = (grp.group as Record<string, unknown>) ?? grp;
+                      const groupName = String(g.name ?? grp.name ?? "");
+                      const rawUsers = String(g.users ?? grp.members ?? "").trim();
+                      const members = rawUsers ? rawUsers.split(",").map(s => s.trim()).filter(Boolean) : [];
                       return (
                         <div
-                          key={String(g.name)}
+                          key={groupName}
                           className="glass-card px-3 py-2"
                         >
                           <div className="flex items-center gap-2 mb-1">
                             <Shield className="h-3 w-3 text-threat-high" />
                             <span className="text-xs font-mono text-foreground font-medium">
-                              {String(g.name)}
+                              {groupName}
                             </span>
                             <span className="text-[10px] text-muted-foreground">
                               ({members.length} members)
@@ -1506,6 +1579,7 @@ export default function ITHygiene() {
                 </div>
               </div>
             </GlassPanel>
+            )}
           </TabsContent>
         </Tabs>
         </>)}

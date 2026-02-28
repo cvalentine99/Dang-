@@ -317,44 +317,44 @@ export const wazuhRouter = router({
   // SYSCOLLECTOR — EXTENSIONS / SERVICES / IDENTITY
   // ══════════════════════════════════════════════════════════════════════════════
 
-  /** Browser extensions installed on the agent (Windows only) */
+  /** Browser extensions installed on the agent (may not be supported on all OS) */
   agentBrowserExtensions: publicProcedure
     .input(z.object({ agentId: agentIdSchema, ...paginationSchema.shape }))
     .query(({ input }) =>
       proxyGet(`/syscollector/${input.agentId}/browser_extensions`, {
         limit: input.limit,
         offset: input.offset,
-      }).catch(() => ({ data: { affected_items: [], total_affected_items: 0 } }))
+      })
     ),
 
-  /** System services / daemons (Windows services, systemd units) */
+  /** System services / daemons (may not be supported on all OS) */
   agentServices: publicProcedure
     .input(z.object({ agentId: agentIdSchema, ...paginationSchema.shape }))
     .query(({ input }) =>
       proxyGet(`/syscollector/${input.agentId}/services`, {
         limit: input.limit,
         offset: input.offset,
-      }).catch(() => ({ data: { affected_items: [], total_affected_items: 0 } }))
+      })
     ),
 
-  /** Local users on the agent */
+  /** Local users on the agent (may not be supported on all OS) */
   agentUsers: publicProcedure
     .input(z.object({ agentId: agentIdSchema, ...paginationSchema.shape }))
     .query(({ input }) =>
       proxyGet(`/syscollector/${input.agentId}/users`, {
         limit: input.limit,
         offset: input.offset,
-      }).catch(() => ({ data: { affected_items: [], total_affected_items: 0 } }))
+      })
     ),
 
-  /** Local groups on the agent */
+  /** Local groups on the agent (may not be supported on all OS) */
   agentGroups2: publicProcedure
     .input(z.object({ agentId: agentIdSchema, ...paginationSchema.shape }))
     .query(({ input }) =>
       proxyGet(`/syscollector/${input.agentId}/groups`, {
         limit: input.limit,
         offset: input.offset,
-      }).catch(() => ({ data: { affected_items: [], total_affected_items: 0 } }))
+      })
     ),
 
   /** Network protocol inventory per agent */
@@ -364,7 +364,7 @@ export const wazuhRouter = router({
       proxyGet(`/syscollector/${input.agentId}/netproto`, {
         limit: input.limit,
         offset: input.offset,
-      }).catch(() => ({ data: { affected_items: [], total_affected_items: 0 } }))
+      })
     ),
 
   // ══════════════════════════════════════════════════════════════════════════════
