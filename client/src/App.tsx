@@ -32,6 +32,7 @@ import AdminSettings from "./pages/AdminSettings";
 import TokenUsage from "./pages/TokenUsage";
 import AlertQueue from "./pages/AlertQueue";
 import AgentDetail from "./pages/AgentDetail";
+import AgentCompare from "./pages/AgentCompare";
 import AutoQueueRules from "./pages/AutoQueueRules";
 
 function Router() {
@@ -49,6 +50,7 @@ function Router() {
               <Route path="/" component={Home} />
               <Route path="/agents" component={AgentHealth} />
               <Route path="/fleet/:agentId" component={AgentDetail} />
+              <Route path="/fleet-compare" component={AgentCompare} />
               <Route path="/alerts" component={AlertsTimeline} />
               <Route path="/vulnerabilities" component={Vulnerabilities} />
               <Route path="/mitre" component={MitreAttack} />

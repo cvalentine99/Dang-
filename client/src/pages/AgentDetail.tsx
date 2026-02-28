@@ -8,6 +8,7 @@ import {
   ArrowLeft, Shield, Activity, Bug, FileSearch, Cpu, Monitor,
   Server, Wifi, WifiOff, Clock, Package, Globe, Users, HardDrive,
   AlertTriangle, ChevronLeft, ChevronRight, ExternalLink, Eye,
+  FolderSearch, Plus, Link2, GitBranch,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useRoute, useLocation } from "wouter";
@@ -18,7 +19,7 @@ import {
 } from "recharts";
 
 // ── Types ──────────────────────────────────────────────────────────────────
-type Tab = "overview" | "alerts" | "vulnerabilities" | "fim" | "syscollector";
+type Tab = "overview" | "alerts" | "vulnerabilities" | "fim" | "syscollector" | "timeline";
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "overview", label: "Overview", icon: <Monitor className="w-3.5 h-3.5" /> },
@@ -26,6 +27,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "vulnerabilities", label: "Vulnerabilities", icon: <Bug className="w-3.5 h-3.5" /> },
   { id: "fim", label: "File Integrity", icon: <FileSearch className="w-3.5 h-3.5" /> },
   { id: "syscollector", label: "System Info", icon: <Cpu className="w-3.5 h-3.5" /> },
+  { id: "timeline", label: "Timeline", icon: <GitBranch className="w-3.5 h-3.5" /> },
 ];
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -191,6 +193,9 @@ function OverviewTab({ agentId, agent }: { agentId: string; agent: any }) {
         )}
       </GlassPanel>
 
+      {/* Related Investigations */}
+      <RelatedInvestigations agentId={agentId} agentName={String(agent?.name ?? agentId)} />
+
       {/* Raw Agent JSON */}
       <GlassPanel className="p-6">
         <h3 className="text-sm font-display font-bold text-foreground mb-3 flex items-center gap-2">
@@ -199,6 +204,106 @@ function OverviewTab({ agentId, agent }: { agentId: string; agent: any }) {
         <RawJsonViewer data={agent} />
       </GlassPanel>
     </div>
+  );
+}
+
+// ── Related Investigations ────────────────────────────────────────────────
+function RelatedInvestigations({ agentId, agentName }: { agentId: string; agentName: string }) {
+  const [, navigate] = useLocation();
+  const investigationsQ = trpc.graph.investigationsByAgent.useQuery({ agentId }, { retry: false });
+  const utils = trpc.useUtils();
+  const createMutation = trpc.graph.createInvestigation.useMutation({
+    onSuccess: (data) => {
+      utils.graph.investigationsByAgent.invalidate({ agentId });
+      utils.graph.listInvestigations.invalidate();
+      // Add agent as evidence to the new investigation
+      addEvidenceMutation.mutate({
+        id: data.id,
+        evidence: [{
+          type: "agent",
+          label: `Agent ${agentId}: ${agentName}`,
+          data: { agentId, agentName, addedFrom: "agent-detail" },
+          addedAt: new Date().toISOString(),
+        }],
+      });
+    },
+  });
+  const addEvidenceMutation = trpc.graph.updateInvestigation.useMutation({
+    onSuccess: () => {
+      utils.graph.investigationsByAgent.invalidate({ agentId });
+    },
+  });
+
+  const sessions = investigationsQ.data?.sessions ?? [];
+  const STATUS_COLORS: Record<string, string> = {
+    active: "bg-green-500/15 text-green-300 border-green-500/20",
+    closed: "bg-blue-500/15 text-blue-300 border-blue-500/20",
+    archived: "bg-gray-500/15 text-gray-300 border-gray-500/20",
+  };
+
+  return (
+    <GlassPanel className="p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-display font-bold text-foreground flex items-center gap-2">
+          <FolderSearch className="w-4 h-4 text-purple-400" /> Related Investigations
+        </h3>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => createMutation.mutate({ title: `Investigation: Agent ${agentId} (${agentName})`, description: `Auto-created from agent detail drilldown for agent ${agentId}` })}
+          disabled={createMutation.isPending}
+          className="h-7 text-[10px] bg-transparent border-purple-500/30 text-purple-300 hover:bg-purple-500/10"
+        >
+          <Plus className="w-3 h-3 mr-1" /> New Investigation
+        </Button>
+      </div>
+
+      {investigationsQ.isLoading ? (
+        <div className="animate-pulse space-y-2">
+          {[...Array(2)].map((_, i) => <div key={i} className="h-12 bg-white/5 rounded-lg" />)}
+        </div>
+      ) : sessions.length === 0 ? (
+        <div className="text-center py-6">
+          <FolderSearch className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+          <p className="text-xs text-muted-foreground">No investigations linked to this agent.</p>
+          <p className="text-[10px] text-muted-foreground/60 mt-1">Create one to start tracking findings.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {sessions.map((s: any) => {
+            const evidenceCount = Array.isArray(s.evidence) ? s.evidence.length : 0;
+            const noteCount = Array.isArray(s.timeline) ? s.timeline.length : 0;
+            return (
+              <div
+                key={s.id}
+                onClick={() => navigate("/investigations")}
+                className="flex items-center justify-between p-3 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] cursor-pointer transition-colors group"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center flex-shrink-0">
+                    <GitBranch className="w-4 h-4 text-purple-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-foreground truncate">{s.title}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium border ${STATUS_COLORS[s.status] ?? STATUS_COLORS.active}`}>
+                        {s.status}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">{evidenceCount} evidence</span>
+                      <span className="text-[10px] text-muted-foreground">{noteCount} events</span>
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        {s.updatedAt ? new Date(s.updatedAt).toLocaleDateString() : "—"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <Link2 className="w-3.5 h-3.5 text-muted-foreground/40 group-hover:text-purple-400 transition-colors flex-shrink-0" />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </GlassPanel>
   );
 }
 
@@ -636,6 +741,227 @@ function SyscollectorTab({ agentId }: { agentId: string }) {
   );
 }
 
+// ── Activity Timeline Tab ─────────────────────────────────────────────────
+type TimelineEvent = {
+  id: string;
+  timestamp: string;
+  source: "alert" | "fim" | "vulnerability";
+  title: string;
+  detail: string;
+  severity: string;
+  raw: unknown;
+};
+
+const SOURCE_CONFIG = {
+  alert: { color: "oklch(0.541 0.281 293.009)", bg: "bg-purple-500/15", border: "border-purple-500/30", text: "text-purple-300", icon: AlertTriangle, label: "Alert" },
+  fim: { color: "oklch(0.789 0.154 211.53)", bg: "bg-cyan-500/15", border: "border-cyan-500/30", text: "text-cyan-300", icon: FileSearch, label: "FIM" },
+  vulnerability: { color: "oklch(0.705 0.191 47)", bg: "bg-orange-500/15", border: "border-orange-500/30", text: "text-orange-300", icon: Bug, label: "Vuln" },
+} as const;
+
+function ActivityTimelineTab({ agentId }: { agentId: string }) {
+  const [timeRange] = useState("now-7d");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "alert" | "fim" | "vulnerability">("all");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Fetch alerts
+  const alertsQ = trpc.indexer.alertsSearch.useQuery({
+    agentId,
+    from: timeRange,
+    to: "now",
+    size: 100,
+    offset: 0,
+    sortField: "timestamp",
+    sortOrder: "desc",
+  }, { retry: false });
+
+  // Fetch FIM events
+  const fimQ = trpc.wazuh.syscheckFiles.useQuery({
+    agentId,
+    limit: 100,
+    offset: 0,
+  }, { retry: false });
+
+  // Fetch vulnerabilities
+  const vulnQ = trpc.indexer.vulnSearch.useQuery({
+    agentId,
+    size: 100,
+    offset: 0,
+  }, { retry: false });
+
+  const events = useMemo(() => {
+    const items: TimelineEvent[] = [];
+
+    // Alerts
+    const alertHits = (alertsQ.data as any)?.data?.hits?.hits ?? [];
+    for (const hit of alertHits) {
+      const src = hit._source ?? {};
+      const rule = src.rule ?? {};
+      const level = Number(rule.level ?? 0);
+      items.push({
+        id: `alert-${hit._id ?? items.length}`,
+        timestamp: String(src.timestamp ?? ""),
+        source: "alert",
+        title: String(rule.description ?? "Alert"),
+        detail: `Rule ${rule.id ?? "?"} · Level ${level}${rule.mitre?.technique ? ` · ${(rule.mitre.technique as string[]).join(", ")}` : ""}`,
+        severity: level >= 12 ? "critical" : level >= 7 ? "high" : level >= 4 ? "medium" : "low",
+        raw: src,
+      });
+    }
+
+    // FIM events
+    const fimItems = (fimQ.data as any)?.data?.affected_items ?? [];
+    for (const f of fimItems) {
+      items.push({
+        id: `fim-${String(f.file ?? items.length)}`,
+        timestamp: String(f.mtime ?? f.date ?? ""),
+        source: "fim",
+        title: String(f.file ?? "Unknown file"),
+        detail: `Type: ${f.type ?? "?"} · Size: ${f.size ?? "?"} · MD5: ${String(f.md5 ?? f.hash_md5 ?? "?").slice(0, 12)}…`,
+        severity: "info",
+        raw: f,
+      });
+    }
+
+    // Vulnerabilities
+    const vulnHits = (vulnQ.data as any)?.data?.hits?.hits ?? [];
+    for (const hit of vulnHits) {
+      const v = hit._source?.vulnerability ?? {};
+      items.push({
+        id: `vuln-${hit._id ?? items.length}`,
+        timestamp: String(hit._source?.timestamp ?? v.detected_at ?? ""),
+        source: "vulnerability",
+        title: String(v.cve ?? "CVE Unknown"),
+        detail: `${v.severity ?? "?"} · CVSS ${v.cvss?.cvss3?.base_score ?? v.cvss?.cvss2?.base_score ?? "?"} · ${v.package?.name ?? "?"} ${v.package?.version ?? ""}`,
+        severity: String(v.severity ?? "low").toLowerCase(),
+        raw: hit._source,
+      });
+    }
+
+    // Sort by timestamp descending
+    items.sort((a, b) => {
+      const ta = new Date(a.timestamp).getTime() || 0;
+      const tb = new Date(b.timestamp).getTime() || 0;
+      return tb - ta;
+    });
+
+    return items;
+  }, [alertsQ.data, fimQ.data, vulnQ.data]);
+
+  const filtered = sourceFilter === "all" ? events : events.filter(e => e.source === sourceFilter);
+  const isLoading = alertsQ.isLoading || fimQ.isLoading || vulnQ.isLoading;
+
+  // Source counts for filter badges
+  const counts = useMemo(() => {
+    const c = { all: events.length, alert: 0, fim: 0, vulnerability: 0 };
+    events.forEach(e => c[e.source]++);
+    return c;
+  }, [events]);
+
+  return (
+    <div className="space-y-6">
+      {/* Source Filter Bar */}
+      <div className="flex items-center gap-2">
+        {(["all", "alert", "fim", "vulnerability"] as const).map(s => (
+          <button
+            key={s}
+            onClick={() => setSourceFilter(s)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors border ${
+              sourceFilter === s
+                ? s === "all" ? "bg-purple-500/15 text-purple-300 border-purple-500/30" : `${SOURCE_CONFIG[s as keyof typeof SOURCE_CONFIG].bg} ${SOURCE_CONFIG[s as keyof typeof SOURCE_CONFIG].text} ${SOURCE_CONFIG[s as keyof typeof SOURCE_CONFIG].border}`
+                : "text-muted-foreground hover:bg-white/5 border-transparent"
+            }`}
+          >
+            {s === "all" ? "All Events" : SOURCE_CONFIG[s as keyof typeof SOURCE_CONFIG].label}
+            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-white/5 text-[9px] font-mono">{counts[s]}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Timeline */}
+      <GlassPanel className="p-6">
+        <h3 className="text-sm font-display font-bold text-foreground mb-4 flex items-center gap-2">
+          <GitBranch className="w-4 h-4 text-purple-400" /> Activity Timeline (7d)
+        </h3>
+
+        {isLoading ? (
+          <div className="space-y-4">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="flex gap-4 animate-pulse">
+                <div className="w-8 h-8 rounded-full bg-white/5" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-white/5 rounded w-3/4" />
+                  <div className="h-3 bg-white/5 rounded w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-12">
+            <GitBranch className="w-10 h-10 text-muted-foreground/20 mx-auto mb-3" />
+            <p className="text-xs text-muted-foreground">No events found for this agent in the last 7 days.</p>
+          </div>
+        ) : (
+          <div className="relative">
+            {/* Vertical timeline line */}
+            <div className="absolute left-4 top-0 bottom-0 w-px bg-gradient-to-b from-purple-500/30 via-purple-500/10 to-transparent" />
+
+            <div className="space-y-1">
+              {filtered.map((event) => {
+                const cfg = SOURCE_CONFIG[event.source];
+                const Icon = cfg.icon;
+                const isExpanded = expandedId === event.id;
+                return (
+                  <div key={event.id} className="relative pl-10">
+                    {/* Timeline dot */}
+                    <div
+                      className={`absolute left-2 top-3 w-4 h-4 rounded-full border-2 flex items-center justify-center ${cfg.bg} ${cfg.border}`}
+                      style={{ borderColor: cfg.color }}
+                    >
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ background: cfg.color }} />
+                    </div>
+
+                    {/* Event card */}
+                    <div
+                      onClick={() => setExpandedId(isExpanded ? null : event.id)}
+                      className={`p-3 rounded-lg border transition-colors cursor-pointer ${
+                        isExpanded ? "bg-white/[0.04] border-white/10" : "bg-transparent border-transparent hover:bg-white/[0.02] hover:border-white/5"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium border ${cfg.bg} ${cfg.text} ${cfg.border}`}>
+                            <Icon className="w-2.5 h-2.5" />
+                            {cfg.label}
+                          </span>
+                          <span className="text-xs text-foreground truncate">{event.title}</span>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground font-mono whitespace-nowrap ml-2">
+                          {event.timestamp ? new Date(event.timestamp).toLocaleString() : "—"}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-1 truncate">{event.detail}</p>
+
+                      {isExpanded && (
+                        <div className="mt-3 pt-3 border-t border-white/5">
+                          <div className="flex items-center gap-2 mb-2">
+                            <ThreatBadge level={event.severity as any} />
+                            <span className="text-[10px] text-muted-foreground">Source: {event.source}</span>
+                          </div>
+                          <RawJsonViewer data={event.raw} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </GlassPanel>
+    </div>
+  );
+}
+
 // ── Helper ────────────────────────────────────────────────────────────────
 function Row({ label, value, mono, children }: { label: string; value?: string; mono?: boolean; children?: React.ReactNode }) {
   return (
@@ -744,6 +1070,7 @@ export default function AgentDetail() {
             {activeTab === "vulnerabilities" && <VulnerabilitiesTab agentId={agentId} />}
             {activeTab === "fim" && <FIMTab agentId={agentId} />}
             {activeTab === "syscollector" && <SyscollectorTab agentId={agentId} />}
+            {activeTab === "timeline" && <ActivityTimelineTab agentId={agentId} />}
           </>
         )}
       </div>

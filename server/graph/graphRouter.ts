@@ -34,7 +34,7 @@ import {
   investigationSessions,
   investigationNotes,
 } from "../../drizzle/schema";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, like } from "drizzle-orm";
 
 export const graphRouter = router({
   // ── KG Sync Pipeline ──────────────────────────────────────────────────
@@ -340,6 +340,42 @@ export const graphRouter = router({
         .where(and(eq(investigationNotes.id, input.noteId), eq(investigationNotes.userId, ctx.user.id)));
 
       return { success: true };
+    }),
+
+  /** Find investigations related to a specific agent ID (by evidence items or title/description). */
+  investigationsByAgent: protectedProcedure
+    .input(z.object({ agentId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) return { sessions: [] };
+
+      // Fetch all user investigations and filter by evidence containing the agentId
+      const allSessions = await db.select()
+        .from(investigationSessions)
+        .where(eq(investigationSessions.userId, ctx.user.id))
+        .orderBy(desc(investigationSessions.updatedAt))
+        .limit(100);
+
+      const matched = allSessions.filter((s) => {
+        // Check evidence array for agent-related items
+        if (Array.isArray(s.evidence)) {
+          for (const ev of s.evidence) {
+            const data = ev.data ?? {};
+            if (
+              String(data.agentId ?? "") === input.agentId ||
+              String(data.agent_id ?? "") === input.agentId ||
+              String(data.id ?? "") === input.agentId ||
+              String(ev.label ?? "").includes(`Agent ${input.agentId}`) ||
+              String(ev.label ?? "").includes(`agent ${input.agentId}`)
+            ) return true;
+          }
+        }
+        // Check title/description for agent reference
+        if (s.title?.includes(input.agentId) || s.description?.includes(input.agentId)) return true;
+        return false;
+      });
+
+      return { sessions: matched };
     }),
 
   /** Export investigation as Markdown report. */

@@ -20,7 +20,7 @@ import {
 import {
   Users, Activity, AlertTriangle, Wifi, WifiOff, Clock, Search,
   Monitor, Server, Cpu, ChevronLeft, ChevronRight, X,
-  ArrowDownCircle, FolderX,
+  ArrowDownCircle, FolderX, BarChart3,
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import { useLocation } from "wouter";
@@ -186,7 +186,17 @@ export default function AgentHealth() {
   return (
     <WazuhGuard>
       <div className="space-y-6">
-        <PageHeader title="Fleet Command" subtitle="Agent lifecycle management — status, OS distribution, groups, and deep inspection" onRefresh={handleRefresh} isLoading={isLoading} />
+        <div className="flex items-center justify-between">
+          <PageHeader title="Fleet Command" subtitle="Agent lifecycle management — status, OS distribution, groups, and deep inspection" onRefresh={handleRefresh} isLoading={isLoading} />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/fleet-compare")}
+            className="h-8 bg-transparent border-purple-500/30 text-purple-300 hover:bg-purple-500/10 flex-shrink-0"
+          >
+            <BarChart3 className="w-3.5 h-3.5 mr-1.5" /> Compare Agents
+          </Button>
+        </div>
 
         {/* ── Loading State ── */}
         {isLoading && <IndexerLoadingState message="Fetching fleet status from Wazuh…" />}

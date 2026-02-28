@@ -1477,3 +1477,30 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Investigation: Export report as HTML (styled, print-ready) — already built
 - [x] Investigation: Report includes evidence, notes, timeline, metadata — already built
 - [x] Write vitest tests for all new features (477 tests passing across 33 files)
+
+## Fleet Command Agent Detail Enhancements
+
+### Feature 1: Related Investigations Section
+- [x] Add backend procedure to find investigations linked to a specific agent ID (by evidence items)
+- [x] Build RelatedInvestigations component in agent detail Overview tab
+- [x] Show linked investigations with status, title, evidence count, and direct link
+- [x] Allow creating new investigation from agent detail with agent pre-attached as evidence
+
+### Feature 2: Agent Activity Timeline Tab
+- [x] Add new "Timeline" tab to AgentDetail page
+- [x] Build backend procedure to fetch unified event stream (alerts + FIM + vulns) for an agent
+- [x] Build ActivityTimeline component with chronological event display
+- [x] Color-code events by source type (alert=purple, FIM=cyan, vuln=orange)
+- [x] Add time range selector and event type filters
+- [x] Show event details on click with raw JSON viewer
+
+### Feature 3: Agent Comparison View
+- [x] Create /fleet-compare route and AgentCompare page
+- [x] Build agent selector (pick 2-3 agents from fleet)
+- [x] Build side-by-side comparison panels with agent identity cards
+- [x] Compare vulnerability counts by severity
+- [x] Compare alert volumes by level
+- [x] Compare compliance scores (SCA pass/fail)
+- [x] Add visual diff indicators (better/worse/same)
+- [x] Add "Compare Agents" button to Fleet Command page header
+- [x] Write vitest tests for all three features (69 new tests, 546 total passing)
