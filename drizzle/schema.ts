@@ -851,3 +851,258 @@ export const livingCaseState = mysqlTable("living_case_state", {
 
 export type LivingCaseStateRow = typeof livingCaseState.$inferSelect;
 export type InsertLivingCaseStateRow = typeof livingCaseState.$inferInsert;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Response Actions — first-class, structured, queryable, stateful, auditable
+// NOT embedded in LLM output. Every action is its own DB row with its own lifecycle.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Action categories — typed, not free-text.
+ * Each represents a concrete SOC response capability.
+ */
+export const RESPONSE_ACTION_CATEGORIES = [
+  "isolate_host",
+  "disable_account",
+  "block_ioc",
+  "escalate_ir",
+  "suppress_alert",
+  "tune_rule",
+  "add_watchlist",
+  "collect_evidence",
+  "notify_stakeholder",
+  "custom",
+] as const;
+
+/**
+ * State machine:
+ *   proposed → approved → executed
+ *   proposed → rejected
+ *   proposed → deferred → proposed (re-propose)
+ *   approved → executed
+ *   approved → rejected (revoke approval)
+ *
+ * Every transition is logged to response_action_audit.
+ */
+export const RESPONSE_ACTION_STATES = [
+  "proposed",
+  "approved",
+  "rejected",
+  "executed",
+  "deferred",
+] as const;
+
+export const RESPONSE_ACTION_URGENCY = [
+  "immediate",
+  "next",
+  "scheduled",
+  "optional",
+] as const;
+
+export const responseActions = mysqlTable("response_actions", {
+  id: int("id").autoincrement().primaryKey(),
+
+  // ── Identity ───────────────────────────────────────────────────────────────
+  /** Unique action ID (e.g., "ra-abc123") */
+  actionId: varchar("actionId", { length: 64 }).notNull(),
+
+  // ── Classification ─────────────────────────────────────────────────────────
+  /** What kind of response action */
+  category: mysqlEnum("category", [
+    "isolate_host", "disable_account", "block_ioc", "escalate_ir",
+    "suppress_alert", "tune_rule", "add_watchlist", "collect_evidence",
+    "notify_stakeholder", "custom",
+  ]).notNull(),
+
+  /** Human-readable title (e.g., "Block IP 10.0.1.45 at perimeter firewall") */
+  title: varchar("title", { length: 512 }).notNull(),
+
+  /** Detailed description of what this action entails */
+  description: text("description"),
+
+  /** How urgent is this action? */
+  urgency: mysqlEnum("urgency", ["immediate", "next", "scheduled", "optional"]).default("next").notNull(),
+
+  /** Does this action require human approval before execution? */
+  requiresApproval: int("requiresApproval").default(1).notNull(),
+
+  // ── State Machine ──────────────────────────────────────────────────────────
+  /** Current state of this action */
+  state: mysqlEnum("state", ["proposed", "approved", "rejected", "executed", "deferred"]).default("proposed").notNull(),
+
+  // ── Provenance ─────────────────────────────────────────────────────────────
+  /** Who/what proposed this action (e.g., "hypothesis_agent", "analyst:42") */
+  proposedBy: varchar("proposedBy", { length: 128 }).notNull(),
+  /** When proposed */
+  proposedAt: timestamp("proposedAt").defaultNow().notNull(),
+
+  /** Who approved (null if not yet approved) */
+  approvedBy: varchar("approvedBy", { length: 128 }),
+  /** When approved */
+  approvedAt: timestamp("approvedAt"),
+
+  /** Who executed (null if not yet executed) */
+  executedBy: varchar("executedBy", { length: 128 }),
+  /** When executed */
+  executedAt: timestamp("executedAt"),
+
+  /** Who rejected or deferred (null if neither) */
+  decidedBy: varchar("decidedBy", { length: 128 }),
+  /** When the last decision was made */
+  decidedAt: timestamp("decidedAt"),
+  /** Reason for rejection/deferral */
+  decisionReason: text("decisionReason"),
+
+  // ── Evidence Basis ─────────────────────────────────────────────────────────
+  /** JSON array of evidence strings that support this recommendation */
+  evidenceBasis: json("evidenceBasis").$type<string[]>(),
+
+  /** Linked playbook reference, if any */
+  playbookRef: varchar("playbookRef", { length: 256 }),
+
+  // ── Target Details ─────────────────────────────────────────────────────────
+  /** The specific target of this action (e.g., IP, hostname, username, rule ID) */
+  targetValue: varchar("targetValue", { length: 512 }),
+  /** Target type for structured queries */
+  targetType: varchar("targetType", { length: 64 }),
+
+  // ── Linkage ────────────────────────────────────────────────────────────────
+  /** Living case ID this action belongs to (FK to living_case_state.id) */
+  caseId: int("caseId"),
+  /** Correlation ID that generated this action */
+  correlationId: varchar("correlationId", { length: 64 }),
+  /** Triage ID that originated this action chain */
+  triageId: varchar("triageId", { length: 64 }),
+  /** Alert IDs related to this action (JSON array) */
+  linkedAlertIds: json("linkedAlertIds").$type<string[]>(),
+  /** Agent IDs affected by this action (JSON array) */
+  linkedAgentIds: json("linkedAgentIds").$type<string[]>(),
+
+  // ── Execution Result ───────────────────────────────────────────────────────
+  /** Result of execution (success/failure details) */
+  executionResult: text("executionResult"),
+  /** Whether execution succeeded */
+  executionSuccess: int("executionSuccess"),
+
+  // ── Timestamps ─────────────────────────────────────────────────────────────
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ([
+  index("ra_actionId_idx").on(table.actionId),
+  index("ra_state_idx").on(table.state),
+  index("ra_category_idx").on(table.category),
+  index("ra_urgency_idx").on(table.urgency),
+  index("ra_caseId_idx").on(table.caseId),
+  index("ra_triageId_idx").on(table.triageId),
+  index("ra_proposedAt_idx").on(table.proposedAt),
+  index("ra_requiresApproval_state_idx").on(table.requiresApproval, table.state),
+]));
+
+export type ResponseActionRow = typeof responseActions.$inferSelect;
+export type InsertResponseActionRow = typeof responseActions.$inferInsert;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Response Action Audit — immutable log of every state transition
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const responseActionAudit = mysqlTable("response_action_audit", {
+  id: int("id").autoincrement().primaryKey(),
+
+  /** FK to response_actions.id */
+  actionId: int("actionId").notNull(),
+
+  /** The unique action ID string (denormalized for fast queries) */
+  actionIdStr: varchar("actionIdStr", { length: 64 }).notNull(),
+
+  /** State before this transition */
+  fromState: varchar("fromState", { length: 20 }).notNull(),
+
+  /** State after this transition */
+  toState: varchar("toState", { length: 20 }).notNull(),
+
+  /** Who performed this transition (e.g., "user:42", "hypothesis_agent", "system") */
+  performedBy: varchar("performedBy", { length: 128 }).notNull(),
+
+  /** Why this transition was made */
+  reason: text("reason"),
+
+  /** Additional metadata (JSON) */
+  metadata: json("metadata").$type<Record<string, unknown>>(),
+
+  /** When this transition occurred */
+  performedAt: timestamp("performedAt").defaultNow().notNull(),
+}, (table) => ([
+  index("raa_actionId_idx").on(table.actionId),
+  index("raa_actionIdStr_idx").on(table.actionIdStr),
+  index("raa_performedAt_idx").on(table.performedAt),
+  index("raa_toState_idx").on(table.toState),
+]));
+
+export type ResponseActionAuditRow = typeof responseActionAudit.$inferSelect;
+export type InsertResponseActionAuditRow = typeof responseActionAudit.$inferInsert;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Pipeline Runs — track end-to-end pipeline execution state
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const pipelineRuns = mysqlTable("pipeline_runs", {
+  id: int("id").autoincrement().primaryKey(),
+
+  /** Unique run ID (e.g., "run-abc123") */
+  runId: varchar("runId", { length: 64 }).notNull(),
+
+  /** Alert queue item ID that triggered this run */
+  queueItemId: int("queueItemId"),
+
+  /** Alert ID from Wazuh */
+  alertId: varchar("alertId", { length: 128 }),
+
+  /** Current pipeline stage */
+  currentStage: mysqlEnum("currentStage", [
+    "triage", "correlation", "hypothesis", "response_actions", "completed", "failed",
+  ]).default("triage").notNull(),
+
+  /** Overall run status */
+  status: mysqlEnum("status", ["running", "completed", "failed", "partial"]).default("running").notNull(),
+
+  // ── Stage Results ──────────────────────────────────────────────────────────
+  /** Triage ID produced by stage 1 */
+  triageId: varchar("triageId", { length: 64 }),
+  triageStatus: mysqlEnum("triageStatus", ["pending", "running", "completed", "failed", "skipped"]).default("pending").notNull(),
+  triageLatencyMs: int("triageLatencyMs"),
+
+  /** Correlation ID produced by stage 2 */
+  correlationId: varchar("correlationId", { length: 64 }),
+  correlationStatus: mysqlEnum("correlationStatus", ["pending", "running", "completed", "failed", "skipped"]).default("pending").notNull(),
+  correlationLatencyMs: int("correlationLatencyMs"),
+
+  /** Living case ID produced by stage 3 */
+  livingCaseId: int("livingCaseId"),
+  hypothesisStatus: mysqlEnum("hypothesisStatus", ["pending", "running", "completed", "failed", "skipped"]).default("pending").notNull(),
+  hypothesisLatencyMs: int("hypothesisLatencyMs"),
+
+  /** Number of response actions generated by stage 4 */
+  responseActionsCount: int("responseActionsCount").default(0).notNull(),
+  responseActionsStatus: mysqlEnum("responseActionsStatus", ["pending", "running", "completed", "failed", "skipped"]).default("pending").notNull(),
+
+  /** Total pipeline latency */
+  totalLatencyMs: int("totalLatencyMs"),
+
+  /** Error message if failed */
+  error: text("error"),
+
+  /** Who triggered this run */
+  triggeredBy: varchar("triggeredBy", { length: 128 }).notNull(),
+
+  startedAt: timestamp("startedAt").defaultNow().notNull(),
+  completedAt: timestamp("completedAt"),
+}, (table) => ([
+  index("pr_runId_idx").on(table.runId),
+  index("pr_status_idx").on(table.status),
+  index("pr_queueItemId_idx").on(table.queueItemId),
+  index("pr_alertId_idx").on(table.alertId),
+  index("pr_startedAt_idx").on(table.startedAt),
+]));
+
+export type PipelineRunRow = typeof pipelineRuns.$inferSelect;
+export type InsertPipelineRunRow = typeof pipelineRuns.$inferInsert;

@@ -19,6 +19,7 @@ import { splunkRouter } from "./splunk/splunkRouter";
 import { autoQueueRouter } from "./alertQueue/autoQueueRouter";
 import { huntRouter } from "./hunt/huntRouter";
 import { pipelineRouter } from "./agenticPipeline/pipelineRouter";
+import { responseActionsRouter } from "./agenticPipeline/responseActionsRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -85,6 +86,9 @@ export const appRouter = router({
 
   // Agentic SOC Pipeline — structured triage, correlation, case management
   pipeline: pipelineRouter,
+
+  // Response Actions — first-class, structured, queryable, stateful, auditable
+  responseActions: responseActionsRouter,
 });
 
 export type AppRouter = typeof appRouter;

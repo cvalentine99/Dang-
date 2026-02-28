@@ -53,6 +53,7 @@ import {
   Zap,
   Workflow,
   Lightbulb,
+  ShieldAlert,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -150,6 +151,7 @@ const menuItems = [
   { icon: Zap, label: "Auto-Queue Rules", path: "/auto-queue-rules", group: "Intelligence" },
   { icon: Workflow, label: "Triage Pipeline", path: "/triage", group: "Intelligence" },
   { icon: Lightbulb, label: "Living Cases", path: "/living-cases", group: "Intelligence" },
+  { icon: ShieldAlert, label: "Response Actions", path: "/response-actions", group: "Intelligence" },
   { icon: Gauge, label: "Token Usage", path: "/admin/token-usage", group: "Admin" },
   { icon: UserCog, label: "User Management", path: "/admin/users", group: "Admin" },
   { icon: Settings, label: "Connection Settings", path: "/admin/settings", group: "Admin" },

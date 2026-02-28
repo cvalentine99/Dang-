@@ -13,7 +13,7 @@ import { Streamdown } from "streamdown";
 // ── Types ───────────────────────────────────────────────────────────────────
 
 interface AgentStep {
-  agent: "orchestrator" | "graph_retriever" | "indexer_retriever" | "synthesizer" | "safety_validator";
+  agent: "orchestrator" | "graph_retriever" | "indexer_retriever" | "synthesizer" | "safety_validator" | "pipeline_retriever";
   phase: number;
   action: string;
   detail: string;

@@ -22,6 +22,8 @@ import {
   correlationBundles,
   livingCaseState,
   investigationSessions,
+  responseActions,
+  responseActionAudit,
 } from "../../drizzle/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { invokeLLMWithFallback } from "../llm/llmService";
@@ -49,6 +51,8 @@ export interface HypothesisAgentResult {
   latencyMs: number;
   tokensUsed: number;
   isNewSession: boolean;
+  /** IDs of response_actions rows materialized from LLM recommendations */
+  materializedActionIds: string[];
 }
 
 // ── Context Assembly ────────────────────────────────────────────────────────
@@ -794,7 +798,15 @@ export async function runHypothesisAgent(
   // 6. Persist to database
   const caseStateId = await persistLivingCase(sessionId, livingCase, isNew);
 
-  // 7. Calculate metrics
+  // 7. Materialize response actions as first-class DB rows
+  //    The LLM output is the *source*, the DB rows are the *system of record*.
+  const materializedActionIds = await materializeResponseActions(
+    livingCase,
+    caseStateId,
+    ctx
+  );
+
+  // 8. Calculate metrics
   const tokensUsed = extractTokenCount(llmResult);
   const latencyMs = Date.now() - startTime;
 
@@ -805,6 +817,7 @@ export async function runHypothesisAgent(
     latencyMs,
     tokensUsed,
     isNewSession: isNew,
+    materializedActionIds,
   };
 }
 
@@ -892,6 +905,154 @@ export async function getLivingCaseByCorrelationId(correlationId: string) {
   }
 
   return null;
+}
+
+// ── Materialize Response Actions ────────────────────────────────────────────
+
+/**
+ * Convert LLM-generated recommendedActions from the LivingCaseObject into
+ * first-class response_actions DB rows.
+ *
+ * The LLM output is the *source*; the DB rows are the *system of record*.
+ * Each action gets its own row, its own lifecycle, its own audit history.
+ */
+async function materializeResponseActions(
+  livingCase: LivingCaseObject,
+  caseId: number,
+  ctx: HypothesisContext
+): Promise<string[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const actions = livingCase.recommendedActions ?? [];
+  if (actions.length === 0) return [];
+
+  const materializedIds: string[] = [];
+
+  // Map LLM category strings to our typed enum values
+  const CATEGORY_MAP: Record<string, string> = {
+    immediate: "escalate_ir",
+    next: "collect_evidence",
+    optional: "tune_rule",
+    isolate: "isolate_host",
+    isolate_host: "isolate_host",
+    disable_account: "disable_account",
+    block: "block_ioc",
+    block_ioc: "block_ioc",
+    escalate: "escalate_ir",
+    escalate_ir: "escalate_ir",
+    suppress: "suppress_alert",
+    suppress_alert: "suppress_alert",
+    tune: "tune_rule",
+    tune_rule: "tune_rule",
+    watchlist: "add_watchlist",
+    add_watchlist: "add_watchlist",
+    collect: "collect_evidence",
+    collect_evidence: "collect_evidence",
+    notify: "notify_stakeholder",
+    notify_stakeholder: "notify_stakeholder",
+    custom: "custom",
+  };
+
+  const URGENCY_MAP: Record<string, string> = {
+    immediate: "immediate",
+    next: "next",
+    scheduled: "scheduled",
+    optional: "optional",
+    high: "immediate",
+    medium: "next",
+    low: "optional",
+  };
+
+  const VALID_CATEGORIES = [
+    "isolate_host", "disable_account", "block_ioc", "escalate_ir",
+    "suppress_alert", "tune_rule", "add_watchlist", "collect_evidence",
+    "notify_stakeholder", "custom",
+  ];
+  const VALID_URGENCY = ["immediate", "next", "scheduled", "optional"];
+
+  for (const rec of actions) {
+    try {
+      const actionId = `ra-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+      // Resolve category — try direct match, then map, then infer from LLM category field
+      let category = CATEGORY_MAP[rec.category?.toLowerCase() ?? ""] ?? null;
+      if (!category || !VALID_CATEGORIES.includes(category)) {
+        // Try to infer from the action text
+        const actionLower = (rec.action ?? "").toLowerCase();
+        if (actionLower.includes("isolat")) category = "isolate_host";
+        else if (actionLower.includes("disabl") || actionLower.includes("account")) category = "disable_account";
+        else if (actionLower.includes("block") || actionLower.includes("firewall")) category = "block_ioc";
+        else if (actionLower.includes("escalat")) category = "escalate_ir";
+        else if (actionLower.includes("suppress") || actionLower.includes("silence")) category = "suppress_alert";
+        else if (actionLower.includes("tune") || actionLower.includes("rule")) category = "tune_rule";
+        else if (actionLower.includes("watch") || actionLower.includes("monitor")) category = "add_watchlist";
+        else if (actionLower.includes("collect") || actionLower.includes("evidence") || actionLower.includes("investigate")) category = "collect_evidence";
+        else if (actionLower.includes("notify") || actionLower.includes("stakeholder")) category = "notify_stakeholder";
+        else category = "custom";
+      }
+
+      // Resolve urgency
+      let urgency = URGENCY_MAP[rec.category?.toLowerCase() ?? ""] ?? "next";
+      if (!VALID_URGENCY.includes(urgency)) urgency = "next";
+
+      // Extract target from entities if available
+      const entities = ctx.triage.entities ?? [];
+      const primaryTarget = entities.find(e =>
+        ["ip", "hostname", "user", "hash", "domain"].includes(e.type)
+      );
+
+      await db.insert(responseActions).values({
+        actionId,
+        category: category as any,
+        title: (rec.action ?? "Unnamed action").slice(0, 512),
+        description: rec.evidenceBasis?.join("; ") ?? null,
+        urgency: urgency as any,
+        requiresApproval: rec.requiresApproval ? 1 : 0,
+        state: "proposed",
+        proposedBy: "hypothesis_agent",
+        evidenceBasis: rec.evidenceBasis ?? null,
+        targetValue: primaryTarget?.value?.slice(0, 512) ?? null,
+        targetType: primaryTarget?.type ?? null,
+        caseId,
+        correlationId: ctx.bundle.correlationId,
+        triageId: ctx.triage.triageId,
+        linkedAlertIds: ctx.bundle.relatedAlerts?.map(a => a.alertId ?? "").filter(Boolean).slice(0, 20) ?? null,
+        linkedAgentIds: ctx.triage.agent?.id ? [ctx.triage.agent.id] : null,
+      });
+
+      // Log creation audit
+      const [inserted] = await db
+        .select({ id: responseActions.id })
+        .from(responseActions)
+        .where(eq(responseActions.actionId, actionId))
+        .limit(1);
+
+      if (inserted) {
+        await db.insert(responseActionAudit).values({
+          actionId: inserted.id,
+          actionIdStr: actionId,
+          fromState: "none",
+          toState: "proposed",
+          performedBy: "hypothesis_agent",
+          reason: `Auto-generated from hypothesis analysis of correlation ${ctx.bundle.correlationId}`,
+          metadata: {
+            caseId,
+            triageId: ctx.triage.triageId,
+            category,
+            urgency,
+          },
+        });
+      }
+
+      materializedIds.push(actionId);
+    } catch (err) {
+      // Log but don't fail the whole pipeline for one action
+      console.error(`[HypothesisAgent] Failed to materialize action: ${(err as Error).message}`);
+    }
+  }
+
+  return materializedIds;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

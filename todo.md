@@ -1625,3 +1625,44 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Write vitest tests for LLM prompt construction and response parsing
 - [x] Write vitest tests for living case state persistence
 - [x] All 690 tests passing (35 test files), 0 TypeScript errors
+
+## Phase: SOC Maturity Audit — Closing the Gaps
+
+### Gap 1: Approval-Gated Response Workflow (First-Class Structured Action Records)
+- [x] Create response_actions table — dedicated DB rows, NOT embedded in LLM JSON
+- [x] Create response_action_audit table — full audit trail of every state transition
+- [x] Run database migrations for both tables (response_actions, response_action_audit, pipeline_runs)
+- [x] Typed action categories: isolate_host, disable_account, block_ioc, escalate_ir, suppress_alert, tune_rule, add_watchlist, collect_evidence, notify_stakeholder, custom
+- [x] Explicit state machine: proposed → approved → executed | proposed → rejected | proposed → deferred → proposed
+- [x] Every state transition logged to audit table (who, when, reason, from_state, to_state)
+- [x] Build responseActions router with propose, approve, reject, execute, defer, list, getById, getByCase, stats
+- [x] Build ResponseActionsPanel page — queryable, filterable, sortable action queue with stats
+- [x] Build ResponseActionCard component — structured approval workflow with evidence basis, audit trail
+- [x] Wire into pipeline — hypothesis agent creates response_actions rows via materializeResponseActions()
+- [x] Add Response Actions nav item to sidebar
+
+### Gap 2: Full Pipeline Auto-Chain (Alert → Triage → Correlation → Hypothesis → Response Actions)
+- [x] Build runFullPipeline endpoint that chains all 4 stages sequentially
+- [x] Add pipeline_runs table to track end-to-end pipeline execution state
+- [x] Track per-stage status (pending/completed/failed/skipped) with latency
+- [x] Preserve partial results when later stages fail (status: "partial")
+- [x] Add listPipelineRuns and getPipelineRunStats query endpoints
+- [x] Support queueItemId linking for Walter Queue integration
+
+### Gap 3: Unify Dual AI Paths
+- [x] Add retrievePipelineContext() to analyst pipeline — injects active cases, pending actions, recent triages
+- [x] Add pipeline_retriever agent step to activity feed
+- [x] Add "pipeline" retrieval source type alongside graph/indexer/stats
+- [x] Add SOC PIPELINE CONTEXT section to LLM system prompt
+- [x] Pipeline context boosts trust score (+0.1) when available
+- [x] Entity-specific context: queries mentioning specific agents surface their triage history
+- [x] Pipeline source count shown in reasoning string
+- [x] Graceful degradation: returns empty sources if DB unavailable, doesn't block pipeline
+
+### Tests
+- [x] Write vitest tests for response action state machine and audit trail (44 tests)
+- [x] Write vitest tests for full pipeline chain sequencing and run tracking
+- [x] Write vitest tests for pipeline context retrieval and trust score integration
+- [x] Write vitest tests for hypothesis agent → response action materialization
+- [x] Write vitest tests for pipeline run queries and stats
+- [x] All 734 tests passing (36 test files), 0 TypeScript errors

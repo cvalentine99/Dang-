@@ -36,7 +36,7 @@ import {
   getLivingCaseByCorrelationId,
 } from "./hypothesisAgent";
 import { getDb } from "../db";
-import { triageObjects, alertQueue, correlationBundles, livingCaseState } from "../../drizzle/schema";
+import { triageObjects, alertQueue, correlationBundles, livingCaseState, pipelineRuns } from "../../drizzle/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 
 export const pipelineRouter = router({
@@ -747,5 +747,266 @@ export const pipelineRouter = router({
         total: pendingItems.length,
         results,
       };
+    }),
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FULL PIPELINE CHAIN
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Run the full 4-stage pipeline: triage → correlation → hypothesis → response actions.
+   * Tracks progress in the pipeline_runs table. Each stage is independent — if a
+   * later stage fails, earlier results are preserved.
+   */
+  runFullPipeline: protectedProcedure
+    .input(z.object({
+      rawAlert: z.record(z.string(), z.unknown()),
+      queueItemId: z.number().int().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+
+      const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const alertId = String(input.rawAlert.id ?? input.rawAlert.alertId ?? "unknown");
+      const startTime = Date.now();
+
+      // Create pipeline run record
+      const [runRow] = await db.insert(pipelineRuns).values({
+        runId,
+        queueItemId: input.queueItemId ?? null,
+        alertId,
+        currentStage: "triage",
+        status: "running",
+        triggeredBy: `user:${ctx.user.id}`,
+      }).$returningId();
+
+      const result: {
+        runId: string;
+        stages: {
+          triage: { status: string; triageId?: string; latencyMs?: number; error?: string };
+          correlation: { status: string; correlationId?: string; latencyMs?: number; error?: string };
+          hypothesis: { status: string; caseId?: number; sessionId?: number; latencyMs?: number; error?: string };
+          responseActions: { status: string; count?: number; actionIds?: string[]; error?: string };
+        };
+        totalLatencyMs: number;
+        status: string;
+      } = {
+        runId,
+        stages: {
+          triage: { status: "pending" },
+          correlation: { status: "pending" },
+          hypothesis: { status: "pending" },
+          responseActions: { status: "pending" },
+        },
+        totalLatencyMs: 0,
+        status: "running",
+      };
+
+      // ── Stage 1: Triage ──────────────────────────────────────────────────
+      try {
+        await db.update(pipelineRuns)
+          .set({ currentStage: "triage", triageStatus: "running" })
+          .where(eq(pipelineRuns.id, runRow.id));
+
+        const triageResult = await runTriageAgent({
+          rawAlert: input.rawAlert,
+          userId: ctx.user.id,
+          alertQueueItemId: input.queueItemId,
+        });
+
+        if (!triageResult.success || !triageResult.triageId) {
+          throw new Error(triageResult.error ?? "Triage failed");
+        }
+
+        result.stages.triage = {
+          status: "completed",
+          triageId: triageResult.triageId,
+          latencyMs: triageResult.latencyMs,
+        };
+
+        await db.update(pipelineRuns).set({
+          triageId: triageResult.triageId,
+          triageStatus: "completed",
+          triageLatencyMs: triageResult.latencyMs,
+          currentStage: "correlation",
+        }).where(eq(pipelineRuns.id, runRow.id));
+
+        // Update queue item if applicable
+        if (input.queueItemId) {
+          await db.update(alertQueue).set({
+            pipelineTriageId: triageResult.triageId,
+            autoTriageStatus: "completed",
+          }).where(eq(alertQueue.id, input.queueItemId));
+        }
+      } catch (err) {
+        result.stages.triage = { status: "failed", error: (err as Error).message };
+        result.status = "partial";
+        await db.update(pipelineRuns).set({
+          triageStatus: "failed",
+          status: "partial",
+          error: (err as Error).message,
+          totalLatencyMs: Date.now() - startTime,
+          completedAt: new Date(),
+        }).where(eq(pipelineRuns.id, runRow.id));
+        result.totalLatencyMs = Date.now() - startTime;
+        return result;
+      }
+
+      // ── Stage 2: Correlation ─────────────────────────────────────────────
+      try {
+        await db.update(pipelineRuns)
+          .set({ correlationStatus: "running" })
+          .where(eq(pipelineRuns.id, runRow.id));
+
+        const corrResult = await runCorrelationAgent({
+          triageId: result.stages.triage.triageId!,
+        });
+
+        result.stages.correlation = {
+          status: "completed",
+          correlationId: corrResult.correlationId,
+          latencyMs: corrResult.latencyMs,
+        };
+
+        await db.update(pipelineRuns).set({
+          correlationId: corrResult.correlationId,
+          correlationStatus: "completed",
+          correlationLatencyMs: corrResult.latencyMs,
+          currentStage: "hypothesis",
+        }).where(eq(pipelineRuns.id, runRow.id));
+      } catch (err) {
+        result.stages.correlation = { status: "failed", error: (err as Error).message };
+        result.status = "partial";
+        await db.update(pipelineRuns).set({
+          correlationStatus: "failed",
+          status: "partial",
+          error: (err as Error).message,
+          totalLatencyMs: Date.now() - startTime,
+          completedAt: new Date(),
+        }).where(eq(pipelineRuns.id, runRow.id));
+        result.totalLatencyMs = Date.now() - startTime;
+        return result;
+      }
+
+      // ── Stage 3: Hypothesis + Response Actions ───────────────────────────
+      try {
+        await db.update(pipelineRuns)
+          .set({ hypothesisStatus: "running" })
+          .where(eq(pipelineRuns.id, runRow.id));
+
+        const hypoResult = await runHypothesisAgent({
+          correlationId: result.stages.correlation.correlationId!,
+        });
+
+        result.stages.hypothesis = {
+          status: "completed",
+          caseId: hypoResult.caseId,
+          sessionId: hypoResult.sessionId,
+          latencyMs: hypoResult.latencyMs,
+        };
+
+        // Response actions are already materialized by the hypothesis agent
+        const actionIds = hypoResult.materializedActionIds ?? [];
+        result.stages.responseActions = {
+          status: actionIds.length > 0 ? "completed" : "skipped",
+          count: actionIds.length,
+          actionIds,
+        };
+
+        await db.update(pipelineRuns).set({
+          livingCaseId: hypoResult.caseId,
+          hypothesisStatus: "completed",
+          hypothesisLatencyMs: hypoResult.latencyMs,
+          responseActionsCount: actionIds.length,
+          responseActionsStatus: actionIds.length > 0 ? "completed" : "skipped",
+          currentStage: "completed",
+          status: "completed",
+          totalLatencyMs: Date.now() - startTime,
+          completedAt: new Date(),
+        }).where(eq(pipelineRuns.id, runRow.id));
+      } catch (err) {
+        result.stages.hypothesis = { status: "failed", error: (err as Error).message };
+        result.status = "partial";
+        await db.update(pipelineRuns).set({
+          hypothesisStatus: "failed",
+          status: "partial",
+          error: (err as Error).message,
+          totalLatencyMs: Date.now() - startTime,
+          completedAt: new Date(),
+        }).where(eq(pipelineRuns.id, runRow.id));
+        result.totalLatencyMs = Date.now() - startTime;
+        return result;
+      }
+
+      result.totalLatencyMs = Date.now() - startTime;
+      result.status = "completed";
+      return result;
+    }),
+
+  /** Get a pipeline run by runId. */
+  getPipelineRun: protectedProcedure
+    .input(z.object({ runId: z.string() }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return null;
+      const [row] = await db
+        .select()
+        .from(pipelineRuns)
+        .where(eq(pipelineRuns.runId, input.runId))
+        .limit(1);
+      return row ?? null;
+    }),
+
+  /** List recent pipeline runs. */
+  listPipelineRuns: protectedProcedure
+    .input(z.object({
+      limit: z.number().int().min(1).max(100).default(25),
+      offset: z.number().int().min(0).default(0),
+      status: z.enum(["running", "completed", "failed", "partial"]).optional(),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return { runs: [], total: 0 };
+
+      const conditions = input.status
+        ? [eq(pipelineRuns.status, input.status)]
+        : [];
+
+      const [countResult] = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(pipelineRuns)
+        .where(conditions.length ? and(...conditions) : undefined);
+
+      const rows = await db
+        .select()
+        .from(pipelineRuns)
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(desc(pipelineRuns.startedAt))
+        .limit(input.limit)
+        .offset(input.offset);
+
+      return {
+        runs: rows,
+        total: countResult?.count ?? 0,
+      };
+    }),
+
+  /** Pipeline run stats. */
+  pipelineRunStats: protectedProcedure
+    .query(async () => {
+      const db = await getDb();
+      if (!db) return null;
+
+      const [stats] = await db.select({
+        total: sql<number>`COUNT(*)`,
+        completed: sql<number>`SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END)`,
+        partial: sql<number>`SUM(CASE WHEN status = 'partial' THEN 1 ELSE 0 END)`,
+        failed: sql<number>`SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)`,
+        running: sql<number>`SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END)`,
+        avgLatencyMs: sql<number>`AVG(totalLatencyMs)`,
+      }).from(pipelineRuns);
+
+      return stats;
     }),
 });

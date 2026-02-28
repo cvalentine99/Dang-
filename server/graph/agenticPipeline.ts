@@ -25,6 +25,9 @@ import {
   INDEX_PATTERNS,
   boolQuery,
 } from "../indexer/indexerClient";
+import { getDb } from "../db";
+import { livingCaseState, responseActions, triageObjects, pipelineRuns } from "../../drizzle/schema";
+import { eq, desc, sql, and, inArray } from "drizzle-orm";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -34,7 +37,7 @@ export interface AnalystMessage {
 }
 
 export interface RetrievalSource {
-  type: "graph" | "indexer" | "stats";
+  type: "graph" | "indexer" | "stats" | "pipeline";
   label: string;
   data: unknown;
   relevance: string;
@@ -42,7 +45,7 @@ export interface RetrievalSource {
 
 /** Each pipeline step emits an AgentStep for the live activity feed */
 export interface AgentStep {
-  agent: "orchestrator" | "graph_retriever" | "indexer_retriever" | "synthesizer" | "safety_validator";
+  agent: "orchestrator" | "graph_retriever" | "indexer_retriever" | "synthesizer" | "safety_validator" | "pipeline_retriever";
   phase: number;
   action: string;
   detail: string;
@@ -536,6 +539,213 @@ async function retrieveFromIndexer(intent: IntentAnalysis, steps: AgentStep[]): 
   return sources;
 }
 
+// ── Phase 2.5: Pipeline Context Retrieval ──────────────────────────────────
+
+/**
+ * Retrieves active SOC pipeline context — living cases, pending response actions,
+ * recent triage results, and pipeline run status. This makes the analyst chat
+ * pipeline-aware so Walter can reference ongoing investigations, pending approvals,
+ * and recent automated findings without the analyst needing to switch views.
+ */
+async function retrievePipelineContext(
+  intent: IntentAnalysis,
+  steps: AgentStep[]
+): Promise<RetrievalSource[]> {
+  const stepStart = Date.now();
+  steps.push({
+    agent: "pipeline_retriever",
+    phase: 2,
+    action: "Retrieving SOC pipeline context",
+    detail: "Fetching active cases, pending actions, recent triages...",
+    status: "running",
+    timestamp: Date.now(),
+  });
+
+  const sources: RetrievalSource[] = [];
+
+  try {
+    const db = await getDb();
+    if (!db) {
+      steps[steps.length - 1] = {
+        ...steps[steps.length - 1],
+        status: "complete",
+        durationMs: Date.now() - stepStart,
+        detail: "Database unavailable — skipping pipeline context",
+      };
+      return [];
+    }
+
+    // ── Active Living Cases (most recent 5) ──
+    const activeCases = await db
+      .select({
+        id: livingCaseState.id,
+        sessionId: livingCaseState.sessionId,
+        workingTheory: livingCaseState.workingTheory,
+        theoryConfidence: livingCaseState.theoryConfidence,
+        caseData: livingCaseState.caseData,
+        pendingActionCount: livingCaseState.pendingActionCount,
+        createdAt: livingCaseState.createdAt,
+      })
+      .from(livingCaseState)
+      .orderBy(desc(livingCaseState.createdAt))
+      .limit(5);
+
+    if (activeCases.length > 0) {
+      const caseSummaries = activeCases.map(c => {
+        let alertFamily = "";
+        let riskScore = 0;
+        try {
+          const data = c.caseData as unknown as Record<string, unknown>;
+          alertFamily = (data?.alertFamily as string) ?? "";
+          riskScore = (data?.riskScore as number) ?? 0;
+        } catch { /* ignore parse errors */ }
+        return {
+          id: c.id,
+          sessionId: c.sessionId,
+          riskScore,
+          alertFamily,
+          workingTheory: (c.workingTheory ?? "").slice(0, 200),
+          theoryConfidence: c.theoryConfidence,
+          pendingActions: c.pendingActionCount,
+          createdAt: c.createdAt,
+        };
+      });
+
+      sources.push({
+        type: "pipeline",
+        label: `Active Living Cases (${activeCases.length})`,
+        data: caseSummaries,
+        relevance: "context",
+      });
+    }
+
+    // ── Pending Response Actions ──
+    const pendingActions = await db
+      .select({
+        id: responseActions.id,
+        actionId: responseActions.actionId,
+        category: responseActions.category,
+        title: responseActions.title,
+        urgency: responseActions.urgency,
+        targetValue: responseActions.targetValue,
+        targetType: responseActions.targetType,
+        state: responseActions.state,
+        createdAt: responseActions.createdAt,
+      })
+      .from(responseActions)
+      .where(eq(responseActions.state, "proposed"))
+      .orderBy(desc(responseActions.createdAt))
+      .limit(10);
+
+    if (pendingActions.length > 0) {
+      sources.push({
+        type: "pipeline",
+        label: `Pending Response Actions (${pendingActions.length})`,
+        data: pendingActions,
+        relevance: "context",
+      });
+    }
+
+    // ── Recent Triage Results (last 10) ──
+    const recentTriages = await db
+      .select({
+        id: triageObjects.id,
+        triageId: triageObjects.triageId,
+        alertId: triageObjects.alertId,
+        severity: triageObjects.severity,
+        route: triageObjects.route,
+        alertFamily: triageObjects.alertFamily,
+        agentId: triageObjects.agentId,
+        createdAt: triageObjects.createdAt,
+      })
+      .from(triageObjects)
+      .orderBy(desc(triageObjects.createdAt))
+      .limit(10);
+
+    if (recentTriages.length > 0) {
+      sources.push({
+        type: "pipeline",
+        label: `Recent Triage Results (${recentTriages.length})`,
+        data: recentTriages,
+        relevance: "context",
+      });
+    }
+
+    // ── Pipeline Run Stats ──
+    const [runStats] = await db.select({
+      total: sql<number>`COUNT(*)`,
+      completed: sql<number>`SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END)`,
+      partial: sql<number>`SUM(CASE WHEN status = 'partial' THEN 1 ELSE 0 END)`,
+      failed: sql<number>`SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)`,
+      running: sql<number>`SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END)`,
+    }).from(pipelineRuns);
+
+    if (runStats && runStats.total > 0) {
+      sources.push({
+        type: "pipeline",
+        label: "Pipeline Run Statistics",
+        data: runStats,
+        relevance: "context",
+      });
+    }
+
+    // ── Entity-Specific Context ──
+    // If the analyst query mentions specific agents, hosts, or IPs that have
+    // active cases or pending actions, surface those specifically.
+    const mentionedAgents = intent.entities.agentIds;
+    const mentionedHosts = intent.entities.hostnames;
+    const mentionedIPs = intent.entities.ipAddresses;
+
+    if (mentionedAgents.length > 0 || mentionedHosts.length > 0 || mentionedIPs.length > 0) {
+      // Check for triage results matching mentioned entities
+      const entityTriages = await db
+        .select()
+        .from(triageObjects)
+        .where(
+          mentionedAgents.length > 0
+            ? inArray(triageObjects.agentId, mentionedAgents)
+            : sql`1=0`
+        )
+        .orderBy(desc(triageObjects.createdAt))
+        .limit(5);
+
+      if (entityTriages.length > 0) {
+        sources.push({
+          type: "pipeline",
+          label: `Triage History for Mentioned Entities (${entityTriages.length})`,
+          data: entityTriages.map(t => ({
+            triageId: t.triageId,
+            alertId: t.alertId,
+            severity: t.severity,
+            route: t.route,
+            alertFamily: t.alertFamily,
+            agentId: t.agentId,
+            summary: (t.summary ?? "").slice(0, 200),
+          })),
+          relevance: "direct",
+        });
+      }
+    }
+
+    steps[steps.length - 1] = {
+      ...steps[steps.length - 1],
+      status: "complete",
+      durationMs: Date.now() - stepStart,
+      dataPoints: sources.reduce((sum, s) => sum + (Array.isArray(s.data) ? (s.data as unknown[]).length : 1), 0),
+      detail: `Retrieved ${sources.length} pipeline context sources (${activeCases.length} cases, ${pendingActions.length} pending actions, ${recentTriages.length} triages)`,
+    };
+  } catch (err) {
+    steps[steps.length - 1] = {
+      ...steps[steps.length - 1],
+      status: "error",
+      durationMs: Date.now() - stepStart,
+      detail: `Pipeline context retrieval failed: ${(err as Error).message}`,
+    };
+  }
+
+  return sources;
+}
+
 // ── Phase 4: LLM Synthesis with Safety Rails ───────────────────────────────
 
 async function synthesizeResponse(
@@ -606,6 +816,14 @@ The KG contains 4 layers:
 2. Operational Semantics: Use cases, risk classification (SAFE/MUTATING/DESTRUCTIVE)
 3. Schema Lineage: Index patterns, field mappings, data types
 4. Error/Failure: Error codes, causes, mitigations
+
+## SOC PIPELINE CONTEXT
+You have access to the automated SOC pipeline state. This includes:
+- **Active Living Cases**: Ongoing investigations with working theories, risk scores, and pending actions
+- **Pending Response Actions**: Proposed actions (isolate_host, block_ioc, etc.) awaiting analyst approval
+- **Recent Triage Results**: Automated alert classifications with severity, route, and alert family
+- **Pipeline Run Statistics**: Overall pipeline health and throughput
+When pipeline context is available, reference it naturally in your analysis. If the analyst asks about ongoing investigations, pending actions, or recent triages, use this data directly. Cross-reference pipeline findings with graph and indexer data for richer analysis.
 
 The user's detected intent is: ${intent.intent}
 Confidence: ${((intent.confidence ?? 0.5) * 100).toFixed(0)}%
@@ -786,6 +1004,9 @@ export async function runAnalystPipeline(
   if (useGraph) retrievalPromises.push(retrieveFromGraph(intent, steps));
   if (useIndexer) retrievalPromises.push(retrieveFromIndexer(intent, steps));
 
+  // Always inject pipeline context — active cases, pending actions, recent triages
+  retrievalPromises.push(retrievePipelineContext(intent, steps));
+
   // Always get graph stats for context
   if (!useGraph) {
     retrievalPromises.push(
@@ -806,6 +1027,7 @@ export async function runAnalystPipeline(
   // ── Compute Trust Score ──
   const graphSources = allSources.filter(s => s.type === "graph" || s.type === "stats");
   const indexerSources = allSources.filter(s => s.type === "indexer");
+  const pipelineSources = allSources.filter(s => s.type === "pipeline");
   const errorSources = allSources.filter(s => s.relevance === "error");
   const totalDataPoints = allSources.reduce((sum, s) => {
     if (Array.isArray(s.data)) return sum + s.data.length;
@@ -817,6 +1039,7 @@ export async function runAnalystPipeline(
   let trustScore = 0.3; // base
   if (graphSources.length > 0) trustScore += 0.2;
   if (indexerSources.length > 0) trustScore += 0.2;
+  if (pipelineSources.length > 0) trustScore += 0.1; // pipeline context boosts trust
   if (totalDataPoints > 10) trustScore += 0.15;
   if (totalDataPoints > 50) trustScore += 0.1;
   if (errorSources.length > 0) trustScore -= 0.15;
@@ -839,7 +1062,7 @@ export async function runAnalystPipeline(
 
   return {
     answer,
-    reasoning: `Intent: ${intent.intent} | Confidence: ${((intent.confidence ?? 0.5) * 100).toFixed(0)}% | Strategy: ${intent.retrievalStrategy.join(", ")} | Sources: ${allSources.length} | Trust: ${(trustScore * 100).toFixed(0)}%`,
+    reasoning: `Intent: ${intent.intent} | Confidence: ${((intent.confidence ?? 0.5) * 100).toFixed(0)}% | Strategy: ${intent.retrievalStrategy.join(", ")} | Sources: ${allSources.length} (${pipelineSources.length} pipeline) | Trust: ${(trustScore * 100).toFixed(0)}%`,
     sources: allSources,
     suggestedFollowUps,
     trustScore,

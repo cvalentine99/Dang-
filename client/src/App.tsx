@@ -36,6 +36,7 @@ import AgentCompare from "./pages/AgentCompare";
 import AutoQueueRules from "./pages/AutoQueueRules";
 import TriagePipeline from "./pages/TriagePipeline";
 import LivingCaseView from "./pages/LivingCaseView";
+import ResponseActions from "./pages/ResponseActions";
 
 function Router() {
   return (
@@ -79,6 +80,7 @@ function Router() {
               <Route path="/triage" component={TriagePipeline} />
               <Route path="/living-cases" component={LivingCaseView} />
               <Route path="/living-cases/:id" component={LivingCaseView} />
+              <Route path="/response-actions" component={ResponseActions} />
               <Route path="/404" component={NotFound} />
               <Route component={NotFound} />
             </Switch>
