@@ -1666,3 +1666,14 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Write vitest tests for hypothesis agent → response action materialization
 - [x] Write vitest tests for pipeline run queries and stats
 - [x] All 734 tests passing (36 test files), 0 TypeScript errors
+
+## Phase: SOC Workflow Compliance Checklist — Remediation
+
+### Remaining Gaps to Close
+- [x] Verified alert-driven entry point — runFullPipeline accepts rawAlert object, autoTriageQueueItem triggers on intake
+- [x] Built livingCaseReportService.ts — 5 report types (full, executive, handoff, escalation, tuning) from structured LivingCaseObject
+- [x] Added generateCaseReport endpoint to pipeline router
+- [x] Added ReportGeneratorButton component to LivingCaseView UI
+- [x] Wrote end-to-end handoff chain test (server/pipelineHandoff.test.ts — 46 tests)
+- [x] Produced SOC_COMPLIANCE_EVIDENCE.md — claim-by-claim evidence with file paths
+- [x] All 780 tests passing (37 test files), 0 TypeScript errors

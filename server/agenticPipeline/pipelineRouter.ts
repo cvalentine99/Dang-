@@ -35,6 +35,11 @@ import {
   listLivingCases,
   getLivingCaseByCorrelationId,
 } from "./hypothesisAgent";
+import {
+  assembleLivingCaseReportData,
+  generateReport,
+  type ReportType,
+} from "./livingCaseReportService";
 import { getDb } from "../db";
 import { triageObjects, alertQueue, correlationBundles, livingCaseState, pipelineRuns } from "../../drizzle/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
@@ -1008,5 +1013,42 @@ export const pipelineRouter = router({
       }).from(pipelineRuns);
 
       return stats;
+    }),
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // REPORT GENERATION
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** Generate a structured report from a Living Case. */
+  generateCaseReport: protectedProcedure
+    .input(z.object({
+      caseId: z.number().int(),
+      reportType: z.enum(["full", "executive", "handoff", "escalation", "tuning"]).default("full"),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const data = await assembleLivingCaseReportData(
+        input.caseId,
+        ctx.user.id,
+        input.reportType as ReportType,
+      );
+
+      if (!data) {
+        return {
+          success: false as const,
+          error: "Living case not found or no data available",
+          markdown: null,
+          reportType: input.reportType,
+        };
+      }
+
+      const markdown = generateReport(data);
+
+      return {
+        success: true as const,
+        markdown,
+        reportType: input.reportType,
+        caseId: input.caseId,
+        generatedAt: data.generatedAt,
+      };
     }),
 });

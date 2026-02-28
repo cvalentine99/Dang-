@@ -48,6 +48,8 @@ import {
   Layers,
   ArrowUpRight,
   CircleDot,
+  Download,
+  ClipboardCopy,
 } from "lucide-react";
 
 // ── Severity & Priority Colors ──────────────────────────────────────────────
@@ -610,6 +612,121 @@ function CompletedPivotsCard({
 
 // ── Draft Documentation Card ────────────────────────────────────────────────
 
+// ── Report Generator Button ─────────────────────────────────────────────────
+
+function ReportGeneratorButton({ caseId }: { caseId: number }) {
+  const [reportType, setReportType] = useState<string>("full");
+  const [showReport, setShowReport] = useState(false);
+  const [reportMarkdown, setReportMarkdown] = useState<string | null>(null);
+  const [showMenu, setShowMenu] = useState(false);
+
+  const generateReport = trpc.pipeline.generateCaseReport.useMutation({
+    onSuccess: (data) => {
+      if (data.success && data.markdown) {
+        setReportMarkdown(data.markdown);
+        setShowReport(true);
+        toast.success(`${data.reportType} report generated`);
+      } else {
+        toast.error(data.error ?? "Failed to generate report");
+      }
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const reportTypes = [
+    { value: "full", label: "Full Investigation Report", icon: FileText, color: "text-violet-400" },
+    { value: "executive", label: "Executive Summary", icon: BarChart3, color: "text-blue-400" },
+    { value: "handoff", label: "Shift Handoff", icon: ScrollText, color: "text-emerald-400" },
+    { value: "escalation", label: "Escalation Brief", icon: AlertTriangle, color: "text-red-400" },
+    { value: "tuning", label: "Detection Tuning", icon: Target, color: "text-yellow-400" },
+  ];
+
+  const copyToClipboard = () => {
+    if (reportMarkdown) {
+      navigator.clipboard.writeText(reportMarkdown);
+      toast.success("Report copied to clipboard");
+    }
+  };
+
+  return (
+    <>
+      <div className="relative">
+        <button
+          onClick={() => setShowMenu(!showMenu)}
+          disabled={generateReport.isPending}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 text-xs transition-colors disabled:opacity-50"
+        >
+          {generateReport.isPending ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <Download className="w-3 h-3" />
+          )}
+          Generate Report
+        </button>
+
+        {showMenu && (
+          <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-lg border border-white/10 bg-slate-900/95 backdrop-blur-xl shadow-2xl p-1">
+            {reportTypes.map((rt) => {
+              const Icon = rt.icon;
+              return (
+                <button
+                  key={rt.value}
+                  onClick={() => {
+                    setReportType(rt.value);
+                    setShowMenu(false);
+                    generateReport.mutate({ caseId, reportType: rt.value as any });
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-xs text-foreground/80 hover:bg-white/[0.06] transition-colors"
+                >
+                  <Icon className={`w-3.5 h-3.5 ${rt.color}`} />
+                  {rt.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Report Modal */}
+      {showReport && reportMarkdown && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-4xl max-h-[85vh] rounded-xl border border-white/10 bg-slate-900/95 backdrop-blur-xl shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-violet-400" />
+                <span className="text-sm font-semibold text-foreground/90 font-[Space_Grotesk]">
+                  {reportTypes.find((r) => r.value === reportType)?.label ?? "Report"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={copyToClipboard}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-violet-500/10 hover:bg-violet-500/20 text-violet-300 text-xs transition-colors"
+                >
+                  <ClipboardCopy className="w-3 h-3" />
+                  Copy
+                </button>
+                <button
+                  onClick={() => setShowReport(false)}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded bg-white/[0.06] hover:bg-white/10 text-foreground/60 text-xs transition-colors"
+                >
+                  <XCircle className="w-3 h-3" />
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="overflow-y-auto p-6">
+              <pre className="text-xs text-foreground/80 font-mono whitespace-pre-wrap leading-relaxed">{reportMarkdown}</pre>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Draft Documentation Card ────────────────────────────────────────────────
+
 function DraftDocumentationCard({ docs }: { docs: any }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -870,14 +987,17 @@ function LivingCaseDetailView({ caseId }: { caseId: number }) {
             subtitle={`Session #${row.sessionId} — Last updated by ${row.lastUpdatedBy} at ${row.updatedAt ? new Date(row.updatedAt).toLocaleString() : "unknown"}`}
           />
         </div>
-        <button
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-violet-500/10 hover:bg-violet-500/20 text-violet-300 text-xs transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={`w-3 h-3 ${isFetching ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <ReportGeneratorButton caseId={row.id} />
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-violet-500/10 hover:bg-violet-500/20 text-violet-300 text-xs transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3 h-3 ${isFetching ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Summary Stats */}
