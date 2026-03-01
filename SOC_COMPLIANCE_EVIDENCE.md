@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-01 (truth-aligned revision)
 **Evaluator:** Manual truth remediation against live `shared/agenticSchemas.ts` contracts
-**Test Suite:** 1098 tests passing across 46 test files, 0 TypeScript errors
+**Test Suite:** 1153 tests passing across 48 test files, 0 TypeScript errors
 
 ---
 
@@ -442,8 +442,8 @@ The original audit asked for concrete proof of each claim. Here are the answers:
 | `server/agenticPipeline.test.ts` | 45 | Triage, Correlation, Hypothesis agent contracts |
 | `server/responseActions.test.ts` | 44 | Response action state machine, audit trail, CRUD |
 | `server/pipelineHandoff.test.ts` | 56 | Truth-aligned contract tests: TriageObject, CorrelationBundle, LivingCaseObject, state machine, pipeline chain |
-| All other test files (44) | 1042 | Wazuh API, indexer, graph, investigations, auth, drift analytics, anomaly detection, etc. |
-| **Total** | **1098** | **46 test files, 0 TypeScript errors** |
+| All other test files (44) | 1008 | Wazuh API, indexer, graph, investigations, auth, drift analytics, anomaly detection, etc. |
+| **Total** | **1153** | **48 test files, 0 TypeScript errors** |
 
 ---
 

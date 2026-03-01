@@ -2186,3 +2186,32 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Generate test output to a file that can be included in the zip — test-output/ directory
 - [x] Include raw tsc --noEmit output file in the zip — test-output/tsc-check.txt
 - [x] Evidence package references these files by name, not pasted text — Section 7 table
+
+## Hard API Truth Audit (Pre-Deploy)
+
+### Phase 1 — Route Inventory Truth
+- [x] Enumerate every mounted router and procedure from server/routers.ts — 27 routers, 277 procedures
+- [x] Classify each: Live / Simulated / Defined but inactive / Dead/orphaned — ~220 LIVE, ~30 LIVE-CONDITIONAL, ~5 SCAFFOLDED, ~5 STATIC
+- [x] Detect orphaned or misleading API surfaces — 1 dead ref (trpc.ai.chat), 0 orphaned routers
+
+### Phase 2 — Contract Truth
+- [x] Audit request/response contract alignment for critical routers (graph, hybridrag, pipeline, responseActions, enhancedLLM)
+- [x] Verify schema enforcement is real (runtime validation vs TypeScript-only) — all user-facing mutations use Zod
+
+### Phase 3 — Runtime Behavior Truth
+- [x] Audit success-path behavior for critical routes
+- [x] Audit failure-path behavior for critical routes
+- [x] Audit mock/demo/simulated behavior across all routes — 2 hardcoded defaults found (DGX health, priorityCounts)
+
+### Phase 4 — Security and Safety Truth
+- [x] Audit auth/authz coverage for all mounted routes — 29 public, 269 protected, 12 admin
+- [x] Audit input handling and unsafe execution paths — 1 SSRF surface (admin-only testConnection)
+- [x] Audit secret and debug leakage risks — stripSensitiveFields, AES-256-GCM, bcrypt all confirmed
+
+### Phase 5 — Evidence Truth
+- [x] Audit documentation claims against actual code — stale test count fixed (1098→1153)
+- [x] Produce final API truth declaration (every endpoint classified)
+
+### Deliverable
+- [x] Write 8-section API Truth Audit report (HARD_API_TRUTH_AUDIT.md)
+- [x] Run full test suite and save checkpoint — 48 files, 1153 tests, 0 TS errors
