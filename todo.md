@@ -331,9 +331,8 @@
 - [x] Write vitest tests for baseline CRUD (14 tests, 62 total passing)
 - [x] Save checkpoint
 
-## Phase 31: Scheduled Baseline Auto-Capture — STATUS: PARTIAL (backend-complete, frontend-pending)
-> Backend is fully implemented: schema, CRUD router, scheduler service, startup wiring, and tests.
-> Frontend schedule management UI has not been built yet.
+## Phase 31: Scheduled Baseline Auto-Capture — STATUS: COMPLETE
+> Backend and frontend are both fully implemented. Schedule management tab in DriftComparison with full CRUD, toggle, triggerNow, history timeline, and KPI cards.
 
 ### Backend — COMPLETE
 - [x] Database table: `baseline_schedules` in `drizzle/schema.ts` + SQL applied. `scheduleId` column added to `config_baselines`.
@@ -343,7 +342,7 @@
 - [x] Router wiring: `baselineSchedules` added to `server/routers.ts`
 - [x] Tests: 30 tests in `server/baselines/baselineSchedules.test.ts` — utilities, schema exports, router structure, service exports, frequency coverage, edge cases
 
-### Frontend — OPEN
+### Frontend — COMPLETE
 - [x] Frontend: Schedules tab in DriftComparison with schedule list — Added as third view mode tab
 - [x] Frontend: Create schedule dialog (name, frequency, retention, agent selection) — Full dialog with agent checkbox grid, frequency dropdown, retention slider
 - [x] Frontend: Toggle schedule on/off, delete, trigger now — Switch toggles, delete with confirmation, Zap icon for triggerNow
@@ -354,12 +353,12 @@
 
 | Field | Status |
 |-------|--------|
-| **Status** | Partial — backend-complete, frontend-pending |
-| **Code Evidence** | `drizzle/schema.ts`, `server/baselines/baselineSchedulesRouter.ts` (278 lines), `server/baselines/baselineSchedulerService.ts` (278 lines), `server/baselines/scheduleUtils.ts` (48 lines), `server/_core/index.ts`, `server/routers.ts` |
+| **Status** | **COMPLETE** — backend + frontend |
+| **Code Evidence** | `drizzle/schema.ts`, `server/baselines/baselineSchedulesRouter.ts` (278 lines), `server/baselines/baselineSchedulerService.ts` (278 lines), `server/baselines/scheduleUtils.ts` (48 lines), `server/_core/index.ts`, `server/routers.ts`, `client/src/components/DriftComparison.tsx` (1882 lines, 142 schedule refs — KPI cards, schedule list, Create/Edit dialog, toggle, Capture Now, history timeline) |
 | **Test Evidence** | `server/baselines/baselineSchedules.test.ts` (278 lines, 30 tests) |
 | **Type-Check** | 0 errors — fresh `npx tsc --noEmit` at 2026-02-28T19:30Z |
 | **Runtime Validation** | Not validated. Scheduler tick requires live Wazuh syscollector endpoints. Sandbox cannot reach private IPs. |
-| **Remaining Caveats** | Frontend schedule management UI (5 items). E2E scheduler execution not validated. |
+| **Remaining Caveats** | E2E scheduler execution not validated against live Wazuh (requires private network). |
 
 ## Phase 32: Wazuh Indexer API Integration (Critical Gap)
 
@@ -1860,7 +1859,7 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 
 ## Phase 31 Implementation Notes (cross-reference)
 > Canonical status is at **Phase 31** above (line ~333). This section is retained for implementation log history only.
-> Status: **PARTIAL** — backend-complete, frontend-pending. See Phase 31 header for authoritative checklist.
+> Status: **COMPLETE** — backend + frontend. See Phase 31 header for authoritative checklist.
 
 ## Phase: Verification Discipline (Project Rule)
 
@@ -1914,3 +1913,39 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Write api-contract-review.md — COMPLETE. 254 procedures audited across 19 routers. Deploy gate: PASS. 6 observations documented (O-1 through O-6).
 - [x] Fixed DriftComparison.tsx TypeScript error (scheduleFrequency type narrowed from `string` to union type) — `tsc --noEmit` EXIT: 0
 - [x] Confirmed baseline_schedules tick errors stopped after table recreation + server restart (no new errors after 13:19 restart)
+
+## Deploy Honesty Gate — Response
+
+### Caveat 1: Phase 31 scheduled baseline auto-capture
+- [x] Verify schedule management UI is complete — CONFIRMED. 142 schedule refs in DriftComparison.tsx. Full UI: KPI cards (4), schedule list with toggle/status/frequency/agents/captures/timestamps, Create/Edit dialog with name/frequency(6 options)/retention/agent checkboxes, action buttons (Capture Now/Edit/Delete), expandable baseline history timeline with "View Drift" links, empty state with CTA, loading spinners.
+- [x] Verify all schedule tRPC mutations are wired — CONFIRMED. All 6 mutations wired: create, update, toggle, delete, triggerNow, history query. Each has onSuccess invalidation and error handling.
+- [x] Document Phase 31 UI completeness — Phase 31 is COMPLETE (both backend and frontend). Not partial, not backend-only.
+
+### Caveat 2: Phase 32 fallback language
+- [x] Re-audit all docs for any remaining "mock data support" claims — CONFIRMED. No false claims found. VALIDATION_CONTRACT.md documents mock **elimination** (correct). RECONCILIATION_NOTE.md, status-truth-table.md, verification-status.md updated to reflect indexerClient.test.ts completion and reclassify mock fixture files as optional enhancement.
+- [x] Ensure FALLBACK_TRUTH_TABLE.md is accurate and referenced — CONFIRMED. 14 pages audited, 0 mock datasets, 0 user-visible "Mock" labels.
+- [x] Verify no UI implies mock-data capability that doesn't exist — CONFIRMED. SourceBadge only shows "Indexer" and "Server API". No "Mock" or "Demo" labels anywhere in the UI.
+
+### Caveat 3: Test/type-check freshness
+- [x] Rerun `pnpm test` with fresh timestamp — 966/966 tests passed across 42 files (2026-03-01T14:11:17Z, duration 17.60s)
+- [x] Rerun `npx tsc --noEmit` with fresh timestamp — EXIT: 0, 0 errors (2026-03-01T14:07:35Z). Platform health check still shows stale "70 errors" from cached Feb 28 tsc --watch output (timestamp frozen at 7:41:27 PM). This is a display cache artifact, not actual code errors.
+- [x] Document exact counts and timestamps in gate response — Documented above with UTC timestamps
+
+### Caveat 4: API contract review caveats
+- [x] Review all 6 observations (O-1 through O-6) for production-critical issues — O-1 and O-2 were medium/low severity, O-3 through O-6 are info-level and acceptable
+- [x] Fix O-1: hybridRAG mutations gated behind `protectedProcedure` — 5 mutations (chat, clearSession, notes.create/update/delete) now require auth. 3 auth-rejection tests added. 969 total tests pass.
+- [x] Fix O-2: hunt.execute gated behind `protectedProcedure` — Prevents unauthenticated Wazuh query load
+- [x] Updated api-contract-review.md with FIXED status for O-1 and O-2, updated auth distributio### Caveat 5: Release language
+- [x] Audit all .md docs for overstated claims — Found 5 docs with stale "partial" / "backend-only" / "frontend not built" language for Phase 31
+- [x] Correct language in todo.md (Phase 31 header, frontend section, verification table, implementation notes)
+- [x] Correct language in RECONCILIATION_NOTE.md (Phase 31 section updated to COMPLETE)
+- [x] Correct language in high-risk-reconciliation.md (caveats updated, test count updated to 969)
+- [x] Correct language in verification-status.md (frontend caveat struck through and marked COMPLETE)
+- [x] Correct language in status-truth-table.md (already correct from prior update)
+- [x] Ensure Phase 31 status is honest — All docs now say COMPLETE with accurate evidenceock 2: UI/backend capability split
+- [x] Verify UI does not imply capabilities the backend doesn't support — CONFIRMED. Response action "Execute" button writes to DB only (no Wazuh execution). UI labels match backend behavior. SourceBadge shows "Indexer" / "Server API" accurately.
+- [x] Check response-action approval semantics match UI presentation — CONFIRMED. State machine enforces proposed→approved→executed flow. UI shows correct transition buttons per state. Terminal states (rejected, executed) disable further actions.
+- [x] Check baseline scheduling UI matches backend capability — CONFIRMED. All 6 frequency options match backend `BASELINE_FREQUENCIES`. Retention slider range matches schema constraints. Agent selection uses live agent list from Wazuh API.
+
+### Deliverable
+- [x] Write deploy-honesty-gate-response.md with per-item evidence — COMPLETE. 6 sections with verification commands, document update tables, and deploy gate verdict: SAFE TO DEPLOY.

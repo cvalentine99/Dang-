@@ -117,8 +117,8 @@ Server: `server/hunt/huntRouter.ts`, `server/graph/`, `server/alertQueue/`, `ser
 **Runtime Validation:** Backend not independently re-run against live Wazuh in this review. Scheduler tick requires live Wazuh syscollector endpoints to produce real baseline captures.
 
 **Remaining Caveats:**
-1. Frontend schedule management UI not built (5 items: schedule list tab, create dialog, toggle/delete, status badges, history timeline)
-2. End-to-end scheduler execution against live Wazuh not validated
+1. ~~Frontend schedule management UI not built~~ — **COMPLETE** (2026-03-01). "Schedules" tab in DriftComparison.tsx (142 schedule refs) with KPI cards, schedule list, Create/Edit dialog, toggle, Capture Now, history timeline.
+2. End-to-end scheduler execution against live Wazuh not validated (requires private network)
 
 ---
 
@@ -133,13 +133,15 @@ Server: `server/hunt/huntRouter.ts`, `server/graph/`, `server/alertQueue/`, `ser
 **Test Evidence:**
 `server/indexer/indexerRouter.test.ts` (12 tests)
 
-**Type-Check:** 0 errors (2026-02-28T19:30Z)
+**Type-Check:** 0 errors (2026-03-01, `npx tsc --noEmit` EXIT: 0)
 
 **Runtime Validation:** Not independently re-run. Requires live Wazuh Indexer (OpenSearch) instance.
 
 **Remaining Caveats:**
-1. No dedicated mock indexer data files for offline/demo mode (graceful fallback behavior exists in several UI paths, but standalone fixture files do not)
-2. No dedicated `indexerClient.test.ts` unit tests (only router-level tests exist in `indexerRouter.test.ts`)
+1. No dedicated mock indexer data files for offline/demo mode — Optional enhancement only. Pages show empty states when Indexer is unreachable. No UI claims mock-data support.
+
+**Completed (updated 2026-03-01):**
+- `indexerClient.test.ts` — 37 unit tests across 8 describe blocks (config, query builders, INDEX_PATTERNS, search/health/exists, field stripping, errors). Total tests: 966 across 42 files.
 
 **No Longer Open (corrected 2026-03-01):**
 - ~~Compliance alert trend charts~~ — Implemented: `Compliance.tsx` calls `alertsComplianceAgg`, parses `aggregations.timeline.buckets`, renders AreaChart (line 356)

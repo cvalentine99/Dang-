@@ -133,7 +133,7 @@ export const hybridragRouter = router({
   }),
 
   // ── Chat ────────────────────────────────────────────────────────────────────
-  chat: publicProcedure
+  chat: protectedProcedure
     .input(
       z.object({
         sessionId: z.string().default(() => nanoid()),
@@ -218,7 +218,7 @@ export const hybridragRouter = router({
         .orderBy(ragSessions.createdAt);
     }),
 
-  clearSession: publicProcedure
+  clearSession: protectedProcedure
     .input(z.object({ sessionId: z.string() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -267,7 +267,7 @@ export const hybridragRouter = router({
         return { notes };
       }),
 
-    create: publicProcedure
+    create: protectedProcedure
       .input(
         z.object({
           title: z.string().min(1).max(512),
@@ -297,7 +297,7 @@ export const hybridragRouter = router({
         return { id: Number(result[0].insertId), success: true };
       }),
 
-    update: publicProcedure
+    update: protectedProcedure
       .input(
         z.object({
           id: z.number().int(),
@@ -323,7 +323,7 @@ export const hybridragRouter = router({
         return { success: true };
       }),
 
-    delete: publicProcedure
+    delete: protectedProcedure
       .input(z.object({ id: z.number().int() }))
       .mutation(async ({ input }) => {
         const db = await getDb();

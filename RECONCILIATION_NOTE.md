@@ -61,33 +61,29 @@ All four documents now tell the same story:
 
 ## Clean Remaining-Work Summary
 
-### Phase 31: Scheduled Baseline Auto-Capture — PARTIAL
+### Phase 31: Scheduled Baseline Auto-Capture — COMPLETE
 
-**Implemented (backend):**
-- `baseline_schedules` table in `drizzle/schema.ts` + SQL applied
+**Implemented (backend + frontend):**
+- `baseline_schedules` table in `drizzle/schema.ts` + SQL applied (dropped and recreated with correct 14-column schema on 2026-03-01)
 - 8-procedure CRUD router: list, get, create, update, toggle, delete, triggerNow, history
 - BaselineSchedulerService: 5-min interval tick, per-agent syscollector capture, auto-pruning, fail-closed error handling
 - Server startup wiring with 30s warmup delay
 - 30 vitest tests passing
-
-**Remaining (frontend):**
-1. Schedules tab in DriftComparison with schedule list
-2. Create schedule dialog (name, frequency, retention, agent selection)
-3. Toggle schedule on/off, delete, trigger now buttons
-4. Schedule status badges (active/paused/overdue/errored)
-5. Baseline history timeline showing auto-captured snapshots
+- **Frontend:** "Schedules" tab in DriftComparison (142 schedule refs) — KPI cards (4), schedule list with toggle/status/frequency/agents/captures/timestamps, Create/Edit dialog with name/frequency(6 options)/retention/agent checkboxes, action buttons (Capture Now/Edit/Delete), expandable baseline history timeline with "View Drift" links, empty state with CTA, loading spinners
 
 **Verification status:**
-- Code exists: ✅
-- Tests pass: ✅ (929/929 as of checkpoint 51aa03d9)
-- TypeScript clean: ✅ (0 errors from fresh `npx tsc --noEmit`)
-- Runtime validated against live Wazuh: Not freshly performed in this snapshot
+- Code exists: ✅ (backend + frontend)
+- Tests pass: ✅ (969/969 as of 2026-03-01T14:13Z)
+- TypeScript clean: ✅ (0 errors from fresh `npx tsc --noEmit` at 2026-03-01T14:07Z)
+- Runtime validated against live Wazuh: Not freshly performed (requires private network)
 
-### Phase 32: Indexer Integration — MOSTLY COMPLETE
+### Phase 32: Indexer Integration — COMPLETE (1 optional item remains)
 
-**Remaining (2 specific items):**
-1. Dedicated mock indexer data files for offline/demo mode (3 fixture files)
-2. Dedicated `indexerClient.test.ts` unit tests
+**Remaining (1 optional item — not a deploy blocker):**
+1. Dedicated mock indexer data files for offline/demo mode (3 fixture files) — This is an **enhancement**, not a gap. The app works correctly without mock data: pages show empty states when Indexer is unreachable. No UI claims mock-data support.
+
+**Completed (updated 2026-03-01):**
+- `indexerClient.test.ts` — 37 unit tests across 8 describe blocks (config, query builders, INDEX_PATTERNS, search/health/exists, field stripping, errors)
 
 **No longer open (corrected 2026-03-01):**
 - ~~Compliance alert trend charts~~ — Implemented in `Compliance.tsx` (AreaChart from `alertsComplianceAgg` timeline buckets)

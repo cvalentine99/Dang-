@@ -25,8 +25,8 @@
 | **Phase 15: IT Hygiene** | Unchecked | **Complete** ✅ Code ✅ Tests ✅ Types | `client/src/pages/ITHygiene.tsx` (1555 lines). Packages, ports, processes, extensions, services, users/groups tables all implemented. | None |
 | **Phase 16: Alerts Timeline** | Unchecked | **Complete** ✅ Code ✅ Tests ✅ Types | `client/src/pages/AlertsTimeline.tsx` (730 lines). Dense table, heatmap, rule distribution, detail panel, time range selector. | None |
 | **Phase 17–30: Features** | Complete | **Complete** ✅ Code ✅ Tests ✅ Types | Threat Hunting, Investigations, Knowledge Graph, Agent Detail, Fleet Compare, etc. | None |
-| **Phase 31: Scheduled Baseline Auto-Capture** | Was unchecked | **Partial** ✅ Code ✅ Tests (backend) | `drizzle/schema.ts` (baselineSchedules table), `server/baselines/baselineSchedulesRouter.ts` (8 procedures), `server/baselines/baselineSchedulerService.ts` (scheduler), `server/baselines/scheduleUtils.ts`, `server/_core/index.ts` (startup wiring), `server/routers.ts` (router wiring), `server/baselines/baselineSchedules.test.ts` (30 tests). | **Open:** Frontend schedule management UI (5 items: schedule list tab, create dialog, toggle/delete, status badges, history timeline). |
-| **Phase 32: Indexer Integration** | Partially unchecked | **Mostly Complete** ✅ Code ✅ Tests (partial) | Backend: `server/indexer/indexerClient.ts`, `server/indexer/indexerRouter.ts` (all 16 endpoints). Frontend: `Home.tsx` (54 indexer refs), `AlertsTimeline.tsx` (20+ indexer refs), `Vulnerabilities.tsx` (17 refs), `SiemEvents.tsx` (16 refs), `Compliance.tsx` (alertsComplianceAgg + timeline AreaChart), `MitreAttack.tsx` (alertsAggByMitre + Tactic Progression Timeline AreaChart). Tests: `indexerRouter.test.ts` (12 tests). | **Open:** Dedicated mock indexer data files for offline/demo mode, dedicated `indexerClient.test.ts` unit tests. Compliance trend charts and MITRE time-series chart are now confirmed implemented. |
+| **Phase 31: Scheduled Baseline Auto-Capture** | Was unchecked | **Complete** ✅ Code ✅ Tests ✅ Frontend | Backend: `baselineSchedulesRouter.ts` (8 procedures), `baselineSchedulerService.ts`, `scheduleUtils.ts`, `baselineSchedules.test.ts` (30 tests). Frontend: `DriftComparison.tsx` "Schedules" tab (142 schedule refs) — KPI cards, schedule list with toggle/status/frequency/agents, Create/Edit dialog, Capture Now, history timeline, View Drift links. DB: `baseline_schedules` table recreated with correct 14-column schema. | None. Phase 31 is fully complete. |
+| **Phase 32: Indexer Integration** | Was partially unchecked | **Complete** ✅ Code ✅ Tests ✅ Frontend | Backend: `indexerClient.ts`, `indexerRouter.ts` (18 endpoints). Frontend: `Home.tsx` (54 refs), `AlertsTimeline.tsx` (20+ refs), `Vulnerabilities.tsx` (17 refs), `SiemEvents.tsx` (16 refs), `Compliance.tsx` (alertsComplianceAgg + timeline AreaChart), `MitreAttack.tsx` (alertsAggByMitre + Tactic Progression Timeline AreaChart). Tests: `indexerRouter.test.ts` (12 tests) + `indexerClient.test.ts` (37 tests). | **Optional enhancement:** Dedicated mock indexer fixture files for offline/demo mode. Not a deploy blocker — pages show empty states when Indexer is unreachable. No UI claims mock-data support. |
 | **Phase 33–47: OTX, Splunk, LLM, KG, Agent Detail** | Complete | **Complete** ✅ Code ✅ Tests ✅ Types | All features implemented and tested. | None |
 | **Phase 48: Dependabot Fixes** | Complete | **Complete** ✅ Code ✅ Tests | `package.json` updated, 0 vulnerabilities. | None |
 | **Phase 49–51: KG Multi-Select, Lasso, Agent Drilldown** | Complete | **Complete** ✅ Code ✅ Tests ✅ Types | All features implemented. KG tests: 29 tests across 3 files. | None |
@@ -46,29 +46,23 @@
 
 | Metric | Value | Verified |
 |--------|-------|----------|
-| Total vitest tests | 929 | ✅ All pass (2026-02-28, checkpoint 51aa03d9) |
-| Test files | 41 | ✅ All pass |
-| TypeScript errors | 0 | ✅ `npx tsc --noEmit` clean (2026-02-28) |
+| Total vitest tests | 966 | ✅ All pass (2026-03-01, checkpoint 0a853575) |
+| Test files | 42 | ✅ All pass |
+| TypeScript errors | 0 | ✅ `npx tsc --noEmit` clean (2026-03-01, EXIT: 0) |
 | Runtime validation | Partial | ⚠️ Requires live Wazuh 4.14.x instance |
 
 ---
 
 ## Actual Remaining Work (Narrowed)
 
-### Genuinely Open — New Feature Work
+### All Major Phases Complete
 
-1. **Phase 31: Scheduled Baseline Auto-Capture** — Backend complete, frontend pending.
-   - Backend: schema, CRUD router (8 procedures), scheduler service, startup wiring, 30 tests — all implemented.
-   - **Remaining:** Frontend schedule management UI (schedule list tab in DriftComparison, create dialog, toggle/delete, status badges, history timeline).
-   - Estimated remaining scope: ~400 lines frontend.
+1. **Phase 31: Scheduled Baseline Auto-Capture** — **COMPLETE** (backend + frontend). Schedule management tab in DriftComparison with full CRUD, toggle, triggerNow, history timeline, KPI cards.
+2. **Phase 32: Indexer Integration** — **COMPLETE**. `indexerClient.test.ts` (37 tests) written. All trend charts confirmed implemented.
 
-### Partially Open — Specific Gaps
+### Optional Enhancements (Not Deploy Blockers)
 
-2. **Phase 32: Indexer — Remaining Items**
-   - Dedicated mock indexer data files for offline/demo mode (3 items)
-   - Dedicated `indexerClient.test.ts` unit tests (1 item)
-   - ~~Compliance alert trend charts~~ — **Now confirmed implemented** (`Compliance.tsx` line 356, AreaChart from `alertsComplianceAgg` timeline buckets)
-   - ~~MITRE time-series tactic progression chart~~ — **Now confirmed implemented** (`MitreAttack.tsx` line 476, "Tactic Progression Timeline" AreaChart from `alertsAggByMitre` timeline aggregations)
+1. Dedicated mock indexer fixture files for offline/demo mode — Enhancement only. Pages show empty states when Indexer is unreachable. No UI claims mock-data support.
 
 ### Environment-Blocked — Not Code Gaps
 

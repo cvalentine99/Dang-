@@ -34,6 +34,19 @@ function createPublicContext(): TrpcContext {
   };
 }
 
+function createAuthContext(): TrpcContext {
+  return {
+    user: { id: 1, name: "Test User", openId: "test-open-id", avatarUrl: null, role: "admin" },
+    req: {
+      protocol: "https",
+      headers: {},
+    } as TrpcContext["req"],
+    res: {
+      clearCookie: vi.fn(),
+    } as unknown as TrpcContext["res"],
+  };
+}
+
 describe("hybridrag router", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -50,7 +63,7 @@ describe("hybridrag router", () => {
     mockDb.delete.mockReturnThis();
   });
 
-  it("modelStatus returns model info", async () => {
+  it("modelStatus returns model info (public)", async () => {
     const ctx = createPublicContext();
     const caller = appRouter.createCaller(ctx);
     const result = await caller.hybridrag.modelStatus();
@@ -63,7 +76,7 @@ describe("hybridrag router", () => {
     expect(typeof result.nemotron.endpoint).toBe("string");
   });
 
-  it("notes.list returns notes array", async () => {
+  it("notes.list returns notes array (public)", async () => {
     const mockNotes = [
       { id: 1, title: "Test", content: "", severity: "medium", tags: [], resolved: 0, createdAt: new Date(), updatedAt: new Date() },
     ];
@@ -76,10 +89,10 @@ describe("hybridrag router", () => {
     expect(Array.isArray(result.notes)).toBe(true);
   });
 
-  it("notes.create returns success with id", async () => {
+  it("notes.create returns success with id (requires auth)", async () => {
     mockDb.values.mockResolvedValue([{ insertId: 42 }]);
 
-    const ctx = createPublicContext();
+    const ctx = createAuthContext();
     const caller = appRouter.createCaller(ctx);
     const created = await caller.hybridrag.notes.create({
       title: "Test Note from Vitest",
@@ -91,5 +104,33 @@ describe("hybridrag router", () => {
     expect(created.id).toBe(42);
     expect(created.success).toBe(true);
     expect(mockDb.insert).toHaveBeenCalled();
+  });
+
+  it("notes.create rejects unauthenticated users", async () => {
+    const ctx = createPublicContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(
+      caller.hybridrag.notes.create({
+        title: "Should fail",
+        severity: "info",
+        tags: [],
+      })
+    ).rejects.toThrow();
+  });
+
+  it("notes.delete rejects unauthenticated users", async () => {
+    const ctx = createPublicContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(
+      caller.hybridrag.notes.delete({ id: 1 })
+    ).rejects.toThrow();
+  });
+
+  it("clearSession rejects unauthenticated users", async () => {
+    const ctx = createPublicContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(
+      caller.hybridrag.clearSession({ sessionId: "test-session" })
+    ).rejects.toThrow();
   });
 });

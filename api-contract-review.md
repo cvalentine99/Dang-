@@ -296,14 +296,14 @@ The application is strictly read-only with respect to Wazuh Manager and Wazuh In
 |------------|----------------|-------|
 | `protectedProcedure` (authenticated user) | ~170 | Standard auth gate |
 | `adminProcedure` (admin role) | ~8 | Connection settings, user management, Splunk batch |
-| `publicProcedure` (no auth) | ~76 | Wazuh proxy, Indexer, OTX, LLM stats, hybridRAG, hunt.execute |
+| `publicProcedure` (no auth) | ~70 | Wazuh proxy, Indexer, OTX, LLM stats, hybridRAG reads |
 
 ### Observations Requiring Attention
 
 | ID | Severity | Route | Issue | Recommendation |
 |----|----------|-------|-------|----------------|
-| O-1 | **Medium** | `hybridrag.*` | All 10 procedures (including 5 mutations) are `publicProcedure` | Consider gating mutations (create/update/delete insight, clearSession) behind `protectedProcedure` |
-| O-2 | **Low** | `hunt.execute` | The execute query is `publicProcedure` | This runs live Wazuh queries. Consider `protectedProcedure` to prevent unauthenticated query load |
+| O-1 | ~~Medium~~ **FIXED** | `hybridrag.*` | 5 mutations (chat, clearSession, notes.create/update/delete) gated behind `protectedProcedure` (2026-03-01). Reads remain public. 3 auth-rejection tests added. |
+| O-2 | ~~Low~~ **FIXED** | `hunt.execute` | Gated behind `protectedProcedure` (2026-03-01). Prevents unauthenticated Wazuh query load. |
 | O-3 | **Info** | `wazuhRouter.*` | All 81 Wazuh proxy endpoints are `publicProcedure` | Acceptable if the app is behind network-level auth. Consider `protectedProcedure` for production hardening |
 | O-4 | **Info** | `indexerRouter.*` | All 18 Indexer endpoints are `publicProcedure` | Same as O-3 |
 | O-5 | **Info** | `otxRouter.*` | All 7 OTX endpoints are `publicProcedure` | OTX data is public threat intel — low risk |
@@ -345,7 +345,7 @@ The application is strictly read-only with respect to Wazuh Manager and Wazuh In
 >
 > The application is strictly read-only with respect to all external security infrastructure (Wazuh Manager, Wazuh Indexer). All 66 mutations operate exclusively on the local application database, LLM services, or Splunk HEC (admin-gated). No write-back to Wazuh exists in any code path. Token handling follows server-side-only patterns with no browser exposure.
 >
-> **Recommended hardening before production:** Gate hybridRAG mutations behind `protectedProcedure` (O-1) and consider the same for `hunt.execute` (O-2).
+> **Hardening applied (2026-03-01):** O-1 and O-2 fixed — hybridRAG mutations and hunt.execute now require authentication. Remaining observations (O-3 through O-6) are info-level and acceptable for production.
 
 ---
 

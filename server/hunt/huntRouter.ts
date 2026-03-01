@@ -405,7 +405,7 @@ export const huntRouter = router({
       return { success: true };
     }),
 
-  execute: publicProcedure
+  execute: protectedProcedure
     .input(huntInputSchema)
     .query(async ({ input }) => {
       const startTime = Date.now();

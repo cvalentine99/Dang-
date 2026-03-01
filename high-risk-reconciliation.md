@@ -12,9 +12,9 @@
 | Startup wired? | **Yes** | `server/_core/index.ts` has 2 `startBaselineScheduler` refs |
 | Router wired? | **Yes** | `server/routers.ts` has 2 `baselineSchedules` refs |
 | Tests present? | **Yes** | `server/baselines/baselineSchedules.test.ts` (278 lines) |
-| Tests passed? | **Yes** | 929/929 passed at 2026-02-28T19:30Z (fresh `pnpm test -- --run`) |
+| Tests passed? | **Yes** | 969/969 passed at 2026-03-01T14:13Z (fresh `pnpm test`) |
 | Runtime validated? | **No** | Scheduler tick requires live Wazuh syscollector endpoints. Sandbox cannot reach private Wazuh IPs. |
-| Caveats | Frontend schedule management UI not built (5 items). End-to-end scheduler execution not validated against live Wazuh. |
+| Caveats | Frontend is COMPLETE (142 schedule refs in DriftComparison.tsx). E2E scheduler execution not validated against live Wazuh (requires private network). |
 
 ---
 
