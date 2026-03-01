@@ -1156,3 +1156,4 @@ export const pipelineRuns = mysqlTable("pipeline_runs", {
 
 export type PipelineRunRow = typeof pipelineRuns.$inferSelect;
 export type InsertPipelineRunRow = typeof pipelineRuns.$inferInsert;
+

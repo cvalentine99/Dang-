@@ -1878,3 +1878,14 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 | **Type-Check** | 0 errors — fresh `npx tsc --noEmit` at 2026-02-28T19:30Z |
 | **Runtime Validation** | N/A (documentation phase) |
 | **Remaining Caveats** | None. Verification discipline is now established as a project rule. |
+
+## Fix: 70 TypeScript Watch-Mode Errors
+- [x] Diagnose all 70 TS errors from watch-mode LSP — Root cause: stale incremental tsBuildInfo cache from a `tsc --watch` process running since Feb 28. Fresh `tsc --noEmit` always returned 0 errors.
+- [x] Fix stale schema exports — All exports (`BaselineFrequency`, `responseActions`, `pipelineRuns`, `scheduleId`) confirmed present in `drizzle/schema.ts`. No code changes needed.
+- [x] Fix import mismatches — No actual import mismatches found. All imports resolve correctly.
+- [x] Disabled incremental compilation in `tsconfig.json` (`"incremental": false`) to prevent stale tsBuildInfo cache from causing phantom errors.
+- [x] Deleted stale tsBuildInfo files from `node_modules/typescript/` and `node_modules/.pnpm/typescript@5.9.3/`.
+- [x] Killed stale `tsc --watch` process (PID 168845, running since Feb 28). Fresh `tsc --watch` confirms 0 errors.
+- [x] Verify 0 TypeScript errors via fresh `npx tsc --noEmit` — EXIT: 0 (confirmed 2026-03-01)
+- [x] Verify all tests still pass — 929/929 passed across 41 test files (confirmed 2026-03-01)
+- Note: Platform health check UI still shows cached "70 errors" from the old stale process output. This is a display cache issue, not an actual code error. Fresh `tsc --noEmit` and `pnpm check` both return 0 errors.
