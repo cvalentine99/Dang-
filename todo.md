@@ -2161,3 +2161,28 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Full test suite: 47 files, 1150 tests, all passing
 - [x] tsc --noEmit: 0 errors (stale watcher cache confirmed as false positive)
 - [x] All transcripts included in TRUTH_REMEDIATION_EVIDENCE.md
+
+## Agentic Truth Remediation Pass 3 — Proof Rigor
+
+### Failure 1 — Real provenance persistence test (not rehearsal)
+- [x] Write test that actually calls recordProvenance() against a real DB connection
+- [x] Verify the row is persisted by reading it back with a SELECT query
+- [x] No "simulate" or "build payload" — must prove write + read roundtrip
+
+### Failure 2 — Real stage-output validation (not handcrafted fixtures)
+- [x] Import and call triageAgent (or its core function) with realistic input
+- [x] Import and call correlationAgent (or its core function) with realistic input
+- [x] Import and call hypothesisAgent (or its core function) with realistic input
+- [x] Validate each output conforms to the declared schema (TriageObject, CorrelationBundle, LivingCaseObject)
+- [x] Tests must exercise actual stage logic, not just validate handcrafted objects
+
+### Failure 3 — Evidence package overclaims
+- [x] Remove "All resolved" / "No claim is aspirational" from TRUTH_REMEDIATION_EVIDENCE.md
+- [x] Downgrade provenance persistence claims to match actual proof level
+- [x] Add honest "What We Did Not Prove" section — Section 8 "Honest Assessment of Proof Level"
+- [x] Tone must be factual, not triumphant
+
+### Failure 4 — Test transcripts independently verifiable
+- [x] Generate test output to a file that can be included in the zip — test-output/ directory
+- [x] Include raw tsc --noEmit output file in the zip — test-output/tsc-check.txt
+- [x] Evidence package references these files by name, not pasted text — Section 7 table

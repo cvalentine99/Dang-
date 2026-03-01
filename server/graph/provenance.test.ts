@@ -1,20 +1,18 @@
 /**
- * Provenance Integration Tests
+ * Provenance Tests
  *
- * These tests prove that:
- * 1. extractProvenanceIds correctly extracts real numeric IDs from retrieval sources
- * 2. recordProvenance persists a row with the expected payload
- * 3. The provenance pipeline works end-to-end: retrieval → extraction → persistence
- *
- * Note: recordProvenance requires a live DB connection. Tests that call it
- * directly are guarded by DB availability. The extractProvenanceIds tests
- * are pure functions and always run.
+ * Section 1: extractProvenanceIds — pure function tests (always run)
+ * Section 2: recordProvenance — REAL DB persistence test
+ *   - Calls recordProvenance() against the live database
+ *   - Reads the row back with a SELECT query
+ *   - Proves write → read roundtrip
+ *   - Skipped if DATABASE_URL is not set (CI without DB)
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, afterAll } from "vitest";
 import { extractProvenanceIds, type RetrievalSource } from "./agenticPipeline";
 
-// ── extractProvenanceIds: Pure function tests ──────────────────────────────
+// ── Section 1: extractProvenanceIds (pure function, no DB) ──────────────────
 
 describe("extractProvenanceIds", () => {
 
@@ -102,9 +100,7 @@ describe("extractProvenanceIds", () => {
       },
     ];
     const result = extractProvenanceIds(sources);
-    // Parameter IDs: 30, 31, 32
     expect(result.parameterIds).toEqual([30, 31, 32]);
-    // Endpoint IDs: 10, 20 (from parent endpointId linkage)
     expect(result.endpointIds).toEqual([10, 20]);
   });
 
@@ -129,7 +125,6 @@ describe("extractProvenanceIds", () => {
       },
     ];
     const result = extractProvenanceIds(sources);
-    // endpoint-42 and id:42 should deduplicate to one entry
     expect(result.endpointIds).toEqual([42, 43]);
   });
 
@@ -150,7 +145,6 @@ describe("extractProvenanceIds", () => {
   });
 
   it("handles mixed source types in a realistic pipeline output", () => {
-    // Simulates what a real pipeline run produces
     const sources: RetrievalSource[] = [
       { type: "stats", label: "Knowledge Graph Statistics", data: { totalEndpoints: 81 }, relevance: "context" },
       {
@@ -190,14 +184,10 @@ describe("extractProvenanceIds", () => {
     ];
 
     const result = extractProvenanceIds(sources);
-
-    // Endpoint IDs: 55 (risk), 12 (search), 13 (search)
     expect(result.endpointIds).toContain(12);
     expect(result.endpointIds).toContain(13);
     expect(result.endpointIds).toContain(55);
     expect(result.endpointIds.length).toBeGreaterThanOrEqual(3);
-
-    // Parameter IDs: 7 (search)
     expect(result.parameterIds).toContain(7);
   });
 
@@ -224,128 +214,163 @@ describe("extractProvenanceIds", () => {
       },
     ];
     const result = extractProvenanceIds(sources);
-    // "abc" and "xyz" are not numeric, so they should be ignored
     expect(result.endpointIds).toEqual([]);
     expect(result.parameterIds).toEqual([]);
   });
 });
 
-// ── recordProvenance: DB-dependent tests ───────────────────────────────────
+// ── Section 2: recordProvenance — REAL DB persistence roundtrip ─────────────
+//
+// This test actually calls recordProvenance() against the live database,
+// then reads the row back with a raw SQL SELECT to prove the write persisted.
+//
+// If DATABASE_URL is not set, the test is skipped (not faked).
 
-describe("recordProvenance (DB integration)", () => {
-  it("recordProvenance function is exported and callable", async () => {
-    const { recordProvenance } = await import("./graphQueryService");
-    expect(typeof recordProvenance).toBe("function");
-  });
+const HAS_DB = !!process.env.DATABASE_URL;
 
-  it("recordProvenance accepts the full payload shape without throwing type errors", async () => {
-    // This test validates the TypeScript contract — that the function accepts
-    // all the fields we pass from the pipeline. It does NOT call the DB.
-    const { recordProvenance } = await import("./graphQueryService");
+describe("recordProvenance (real DB persistence)", () => {
+  // Unique marker so we can find our test row and clean it up
+  const TEST_SESSION_ID = `provenance-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    // Type-check: this would fail at compile time if the shape was wrong
-    const payload = {
-      sessionId: "test-session-123",
-      question: "What agents are vulnerable?",
-      answer: "Based on the analysis...",
-      confidence: "0.850",
-      endpointIds: [12, 13, 55],
-      parameterIds: [7],
-      docChunkIds: [] as number[], // genuinely empty — no doc chunk layer
-      warnings: ["retrieval_errors: 1"],
-    };
-
-    // Verify the payload matches the expected interface
-    expect(payload.sessionId).toBeDefined();
-    expect(payload.question).toBeDefined();
-    expect(payload.answer).toBeDefined();
-    expect(payload.confidence).toBeDefined();
-    expect(Array.isArray(payload.endpointIds)).toBe(true);
-    expect(Array.isArray(payload.parameterIds)).toBe(true);
-    expect(Array.isArray(payload.docChunkIds)).toBe(true);
-    expect(Array.isArray(payload.warnings)).toBe(true);
-
-    // Verify the IDs are real numbers, not strings or placeholders
-    for (const id of payload.endpointIds) {
-      expect(typeof id).toBe("number");
-      expect(Number.isInteger(id)).toBe(true);
-      expect(id).toBeGreaterThan(0);
-    }
-    for (const id of payload.parameterIds) {
-      expect(typeof id).toBe("number");
-      expect(Number.isInteger(id)).toBe(true);
-      expect(id).toBeGreaterThan(0);
+  afterAll(async () => {
+    // Clean up the test row
+    if (!HAS_DB) return;
+    try {
+      const { getDb } = await import("../db");
+      const db = await getDb();
+      if (db) {
+        const { kgAnswerProvenance } = await import("../../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        await db.delete(kgAnswerProvenance).where(eq(kgAnswerProvenance.sessionId, TEST_SESSION_ID));
+      }
+    } catch {
+      // Best-effort cleanup
     }
   });
-});
 
-// ── End-to-end provenance pipeline test ────────────────────────────────────
+  it.skipIf(!HAS_DB)(
+    "writes a provenance row to the database and reads it back",
+    async () => {
+      // ── Step 1: Build a realistic provenance payload ──────────────────
+      // These IDs come from extractProvenanceIds in a real pipeline run.
+      const payload = {
+        sessionId: TEST_SESSION_ID,
+        question: "Which agents have critical vulnerabilities?",
+        answer: "Based on the Wazuh vulnerability data, agents 001 and 003 have critical CVEs.",
+        confidence: "0.850",
+        endpointIds: [12, 13, 55],
+        parameterIds: [7],
+        docChunkIds: [] as number[],
+        warnings: ["indexer_timeout: 1 source timed out"],
+      };
 
-describe("Provenance pipeline: extraction → payload → persistence contract", () => {
-  it("proves the full provenance flow from retrieval sources to DB payload", () => {
-    // Step 1: Simulate realistic retrieval sources from a pipeline run
-    const sources: RetrievalSource[] = [
-      {
-        type: "graph",
-        label: 'KG search: "agents"',
-        data: [
-          { id: "endpoint-42", type: "endpoint", label: "GET /agents", properties: {} },
-          { id: "endpoint-17", type: "endpoint", label: "GET /agents/summary", properties: {} },
-          { id: "param-5", type: "parameter", label: "agent_id", properties: {} },
-        ],
-        relevance: "supporting",
-      },
-      {
-        type: "graph",
-        label: "API Endpoints (SAFE only)",
-        data: [
-          { id: 42, method: "GET", path: "/agents", summary: "List agents", riskLevel: "safe" },
-          { id: 60, method: "GET", path: "/vulnerability", summary: "List vulns", riskLevel: "safe" },
-        ],
-        relevance: "primary",
-      },
-    ];
+      // ── Step 2: Call the real recordProvenance function ────────────────
+      const { recordProvenance } = await import("./graphQueryService");
+      await recordProvenance(payload);
 
-    // Step 2: Extract IDs (this is what the pipeline does)
-    const provenanceIds = extractProvenanceIds(sources);
+      // ── Step 3: Read the row back from the database ───────────────────
+      const { getDb } = await import("../db");
+      const db = await getDb();
+      expect(db).not.toBeNull();
 
-    // Step 3: Verify extraction produced real, non-empty arrays
-    expect(provenanceIds.endpointIds.length).toBeGreaterThan(0);
-    expect(provenanceIds.endpointIds).toContain(42); // from both GraphNode and direct row
-    expect(provenanceIds.endpointIds).toContain(17); // from GraphNode
-    expect(provenanceIds.endpointIds).toContain(60); // from direct row
-    expect(provenanceIds.parameterIds).toContain(5); // from GraphNode
+      const { kgAnswerProvenance } = await import("../../drizzle/schema");
+      const { eq } = await import("drizzle-orm");
 
-    // Step 4: Build the provenance payload (this is what recordProvenance receives)
-    const payload = {
-      sessionId: "0abcdef0",
-      question: "Show me vulnerable agents",
-      answer: "Based on the Wazuh API analysis, the following agents...",
-      confidence: "0.850",
-      endpointIds: provenanceIds.endpointIds,
-      parameterIds: provenanceIds.parameterIds,
-      docChunkIds: [] as number[], // No doc chunk layer — truthfully empty
-      warnings: [] as string[],
-    };
+      const rows = await db!.select()
+        .from(kgAnswerProvenance)
+        .where(eq(kgAnswerProvenance.sessionId, TEST_SESSION_ID))
+        .limit(1);
 
-    // Step 5: Verify the payload is meaningful, not shallow
-    expect(payload.endpointIds.length).toBeGreaterThanOrEqual(3);
-    expect(payload.parameterIds.length).toBeGreaterThanOrEqual(1);
-    expect(payload.docChunkIds).toEqual([]); // Truthfully empty — no doc chunk layer
+      // ── Step 4: Assert the row exists and contains our data ───────────
+      expect(rows.length).toBe(1);
+      const row = rows[0];
 
-    // Step 6: Verify every ID is a real positive integer
-    for (const id of [...payload.endpointIds, ...payload.parameterIds]) {
-      expect(Number.isInteger(id)).toBe(true);
-      expect(id).toBeGreaterThan(0);
+      expect(row.sessionId).toBe(TEST_SESSION_ID);
+      expect(row.question).toBe("Which agents have critical vulnerabilities?");
+      expect(row.answer).toContain("agents 001 and 003");
+      expect(row.confidence).toBe("0.850");
+
+      // Verify the JSON arrays persisted correctly
+      expect(row.endpointIds).toEqual([12, 13, 55]);
+      expect(row.parameterIds).toEqual([7]);
+      expect(row.docChunkIds).toEqual([]);
+      expect(row.warnings).toEqual(["indexer_timeout: 1 source timed out"]);
+
+      // Verify the row has a real auto-generated ID and timestamp
+      expect(row.id).toBeGreaterThan(0);
+      expect(row.createdAt).toBeInstanceOf(Date);
     }
+  );
 
-    // Step 7: Verify the IDs trace back to specific retrieval sources
-    // endpoint-42 came from searchGraph AND getEndpoints (deduplicated)
-    // endpoint-17 came from searchGraph
-    // endpoint-60 came from getEndpoints
-    // param-5 came from searchGraph
-    // This proves provenance reflects actual retrieval, not fabricated data
-    expect(payload.endpointIds).toEqual([17, 42, 60]); // sorted, deduplicated
-    expect(payload.parameterIds).toEqual([5]);
-  });
+  it.skipIf(!HAS_DB)(
+    "extraction → persistence roundtrip: extractProvenanceIds output persists correctly",
+    async () => {
+      // This test proves the FULL pipeline path:
+      // retrieval sources → extractProvenanceIds() → recordProvenance() → DB row → read back
+
+      // ── Step 1: Realistic retrieval sources ───────────────────────────
+      const sources: RetrievalSource[] = [
+        {
+          type: "graph",
+          label: 'KG search: "syscheck"',
+          data: [
+            { id: "endpoint-30", type: "endpoint", label: "GET /syscheck/{agent_id}", properties: {} },
+            { id: "param-15", type: "parameter", label: "agent_id", properties: {} },
+          ],
+          relevance: "supporting",
+        },
+        {
+          type: "graph",
+          label: "API Endpoints (SAFE only)",
+          data: [
+            { id: 30, method: "GET", path: "/syscheck/{agent_id}", summary: "FIM results", riskLevel: "safe" },
+            { id: 31, method: "GET", path: "/syscheck/{agent_id}/last_scan", summary: "Last scan", riskLevel: "safe" },
+          ],
+          relevance: "primary",
+        },
+      ];
+
+      // ── Step 2: Extract IDs (pure function) ───────────────────────────
+      const ids = extractProvenanceIds(sources);
+      expect(ids.endpointIds.length).toBeGreaterThan(0);
+      expect(ids.parameterIds.length).toBeGreaterThan(0);
+
+      // ── Step 3: Persist via recordProvenance ──────────────────────────
+      const roundtripSessionId = `${TEST_SESSION_ID}-roundtrip`;
+      const { recordProvenance } = await import("./graphQueryService");
+      await recordProvenance({
+        sessionId: roundtripSessionId,
+        question: "Show FIM changes for agent 001",
+        answer: "The following file integrity changes were detected...",
+        confidence: "0.920",
+        endpointIds: ids.endpointIds,
+        parameterIds: ids.parameterIds,
+        docChunkIds: [],
+        warnings: [],
+      });
+
+      // ── Step 4: Read back and verify ──────────────────────────────────
+      const { getDb } = await import("../db");
+      const db = await getDb();
+      const { kgAnswerProvenance } = await import("../../drizzle/schema");
+      const { eq } = await import("drizzle-orm");
+
+      const rows = await db!.select()
+        .from(kgAnswerProvenance)
+        .where(eq(kgAnswerProvenance.sessionId, roundtripSessionId))
+        .limit(1);
+
+      expect(rows.length).toBe(1);
+      const row = rows[0];
+
+      // The persisted IDs must match what extractProvenanceIds produced
+      expect(row.endpointIds).toEqual(ids.endpointIds);
+      expect(row.parameterIds).toEqual(ids.parameterIds);
+      expect(row.endpointIds!.length).toBeGreaterThan(0);
+      expect(row.parameterIds!.length).toBeGreaterThan(0);
+
+      // Clean up the roundtrip row
+      await db!.delete(kgAnswerProvenance).where(eq(kgAnswerProvenance.sessionId, roundtripSessionId));
+    }
+  );
 });
