@@ -1889,3 +1889,10 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Verify 0 TypeScript errors via fresh `npx tsc --noEmit` — EXIT: 0 (confirmed 2026-03-01)
 - [x] Verify all tests still pass — 929/929 passed across 41 test files (confirmed 2026-03-01)
 - Note: Platform health check UI still shows cached "70 errors" from the old stale process output. This is a display cache issue, not an actual code error. Fresh `tsc --noEmit` and `pnpm check` both return 0 errors.
+
+## Fix: Tighten Mock Fallback Truthfulness
+- [x] Audit all "mock fallback" wording across docs, UI code, and comments — Found 5 stale comments in UI code, ~30 in docs
+- [x] Correct overstated wording where graceful fallback is described as mock-data support — Fixed all 5 UI code comments (ThreatMap, Home, AlertsTimeline, Compliance, MitreAttack, Vulnerabilities, DriftComparison)
+- [x] Update Phase 32 language to distinguish graceful fallback from actual mock datasets — Already done in prior task
+- [x] Create fallback-truth note documenting per-page: live dependency, graceful fallback, actual mock support — Created `FALLBACK_TRUTH_TABLE.md` (14 pages audited, 0 mock datasets, 0 user-visible "Mock" labels)
+- [x] Review UI labels for fallback states — Confirmed: SourceBadge only shows "Indexer" and "Server API". No "Mock" label exists anywhere in the UI.

@@ -341,7 +341,7 @@ export default function Home() {
 
   const topTalkersSource: "indexer" | "server" = isIndexerConnected && alertsAggByAgentQ.data?.data ? "indexer" : "server";
 
-  /** Geographic distribution — prefer GeoIP-enriched endpoint, fallback to basic agg, then mock */
+  /** Geographic distribution — prefer GeoIP-enriched endpoint, fallback to basic agg, then empty */
   const geoData = useMemo(() => {
     // Try enriched GeoIP data first (includes coordinates, cities, IPs)
     if (isIndexerConnected && alertsGeoEnrichedQ.data?.data) {

@@ -187,7 +187,7 @@ export default function MitreAttack() {
     return { techniques: Array.from(techMap.values()), tacticCounts, totalTechniques: techMap.size, totalRulesWithMitre: rulesWithMitre };
   }, [rulesQ.data, isConnected]);
 
-  // ── Indexer MITRE data (real or mock) ─────────────────────────────────
+  // ── Indexer MITRE data (real or empty fallback) ─────────────────────────────
   const mitreSource: "indexer" | "server" = indexerHealthy && mitreAggQ.data ? "indexer" : "server";
   const { indexerTacticAlerts, indexerTimeline, indexerTopTechniques, totalMitreAlerts } = useMemo(() => {
     if (indexerHealthy && mitreAggQ.data) {

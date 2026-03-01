@@ -209,7 +209,7 @@ export default function AlertsTimeline() {
     utils.indexer.invalidate();
   }, [utils]);
 
-  // ── Alerts (Indexer or mock) ───────────────────────────────────────────
+  // ── Alerts (Indexer or empty fallback) ─────────────────────────────────
   const { alerts, totalAlerts } = useMemo(() => {
     if (isIndexerConnected && alertsSearchQ.data?.data) {
       const resp = alertsSearchQ.data.data as unknown as Record<string, unknown>;
@@ -223,8 +223,7 @@ export default function AlertsTimeline() {
   }, [alertsSearchQ.data, isIndexerConnected, levelFilter, agentFilter, searchQuery, page]);
 
   const alertsSource: "indexer" | "server" = isIndexerConnected && alertsSearchQ.data?.data ? "indexer" : "server";
-
-  // ── Severity Timeline (Indexer or mock) ────────────────────────────────
+  // ── Severity Timeline (Indexer or empty fallback) ──────────────────────────────
   const severityTimeline = useMemo(() => {
     if (isIndexerConnected && alertsAggByLevelQ.data?.data) {
       const resp = alertsAggByLevelQ.data.data as unknown as Record<string, unknown>;
@@ -253,7 +252,7 @@ export default function AlertsTimeline() {
 
   const timelineSource: "indexer" | "server" = isIndexerConnected && alertsAggByLevelQ.data?.data ? "indexer" : "server";
 
-  // ── Rule Distribution (Indexer or mock) ────────────────────────────────
+  // ── Rule Distribution (Indexer or empty fallback) ──────────────────────────────
   const ruleDistribution = useMemo(() => {
     if (isIndexerConnected && alertsAggByRuleQ.data?.data) {
       const resp = alertsAggByRuleQ.data.data as unknown as Record<string, unknown>;
@@ -284,7 +283,7 @@ export default function AlertsTimeline() {
     return [];
   }, [alertsAggByAgentQ.data, isIndexerConnected]);
 
-  // ── Weekly heatmap (Server API or mock) ────────────────────────────────
+  // ── Weekly heatmap (Server API or zeroed grid) ────────────────────────────────
   const weeklyHeatmap = useMemo(() => {
     if (isConnected && statsWeeklyQ.data) {
       const items = extractItems(statsWeeklyQ.data);

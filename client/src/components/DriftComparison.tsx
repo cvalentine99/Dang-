@@ -74,7 +74,7 @@ interface BaselineDriftItem {
   category: "packages" | "services" | "users";
 }
 
-// ── Drift detection helpers (pure functions, no mock data) ──────────────
+// ── Drift detection helpers (pure functions, live data only) ──────────────
 
 function computePackageDrift(
   agentIds: string[],

@@ -156,7 +156,7 @@ export default function Vulnerabilities() {
     return { items: mapped, total };
   }, [viewMode, isIndexerConnected, vulnsQ.data]);
 
-  // ── Fleet severity distribution (Indexer or mock) ─────────────────────────
+  // ── Fleet severity distribution (Indexer or empty fallback) ──────────────────
   const { fleetSevDist, fleetTotal, fleetAvgCvss, fleetSource } = useMemo(() => {
     if (isIndexerConnected && vulnSevQ.data?.data) {
       const aggs = parseAggs(vulnSevQ.data.data);
@@ -178,7 +178,7 @@ export default function Vulnerabilities() {
     };
   }, [isIndexerConnected, vulnSevQ.data]);
 
-  // ── Top vulnerable agents (Indexer or mock) ───────────────────────────────
+  // ── Top vulnerable agents (Indexer or empty fallback) ────────────────────────
   const { topAgents, agentSource } = useMemo(() => {
     if (isIndexerConnected && vulnAgentQ.data?.data) {
       const aggs = parseAggs(vulnAgentQ.data.data);
@@ -203,7 +203,7 @@ export default function Vulnerabilities() {
     };
   }, [isIndexerConnected, vulnAgentQ.data]);
 
-  // ── Top packages (Indexer or mock) ────────────────────────────────────────
+  // ── Top packages (Indexer or empty fallback) ─────────────────────────────────
   const { topPackages, pkgSource } = useMemo(() => {
     if (isIndexerConnected && vulnPkgQ.data?.data) {
       const aggs = parseAggs(vulnPkgQ.data.data);
@@ -224,7 +224,7 @@ export default function Vulnerabilities() {
     };
   }, [isIndexerConnected, vulnPkgQ.data]);
 
-  // ── Top CVEs (Indexer or mock) ────────────────────────────────────────────
+  // ── Top CVEs (Indexer or empty fallback) ─────────────────────────────────────
   const { topCves, cveSource } = useMemo(() => {
     if (isIndexerConnected && vulnCveQ.data?.data) {
       const aggs = parseAggs(vulnCveQ.data.data);

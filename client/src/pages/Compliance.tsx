@@ -182,7 +182,7 @@ export default function Compliance() {
   const totalPages = Math.ceil(totalChecks / pageSize);
   const pagedChecks = filteredChecks.slice(page * pageSize, (page + 1) * pageSize);
 
-  // ── Indexer compliance data (real or mock fallback) ────────────────────
+  // ── Indexer compliance data (real or empty fallback) ────────────────────
   const complianceSource: "indexer" | "server" = indexerHealthy && complianceQ.data ? "indexer" : "server";
   const complianceData = useMemo(() => {
     if (indexerHealthy && complianceQ.data) {
