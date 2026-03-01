@@ -229,6 +229,72 @@ export type DriftSnapshot = typeof driftSnapshots.$inferSelect;
 export type InsertDriftSnapshot = typeof driftSnapshots.$inferInsert;
 
 /**
+ * Drift anomalies — Statistical outliers detected by the anomaly engine.
+ *
+ * When a drift snapshot's driftPercent exceeds 2 standard deviations from
+ * the rolling average for that schedule, an anomaly record is created.
+ * Anomalies are surfaced in the SOC Console and Drift Analytics dashboard.
+ */
+export const driftAnomalies = mysqlTable("drift_anomalies", {
+  id: int("id").autoincrement().primaryKey(),
+  /** The drift snapshot that triggered this anomaly */
+  snapshotId: int("snapshotId").notNull(),
+  /** Schedule that produced the anomalous drift */
+  scheduleId: int("scheduleId").notNull(),
+  /** User who owns the schedule */
+  userId: int("userId").notNull(),
+  /** The observed drift percentage that triggered the anomaly */
+  driftPercent: float("driftPercent").notNull(),
+  /** Rolling average drift % at the time of detection (window of N previous snapshots) */
+  rollingAvg: float("rollingAvg").notNull(),
+  /** Rolling standard deviation at the time of detection */
+  rollingStdDev: float("rollingStdDev").notNull(),
+  /** Z-score: (driftPercent - rollingAvg) / rollingStdDev */
+  zScore: float("zScore").notNull(),
+  /** Sigma threshold used for detection (default 2.0) */
+  sigmaThreshold: float("sigmaThreshold").default(2).notNull(),
+  /** Computed severity: critical (z>=4), high (z>=3), medium (z>=2) */
+  severity: mysqlEnum("severity", ["critical", "high", "medium"]).notNull(),
+  /** Whether the anomaly has been acknowledged by an analyst */
+  acknowledged: boolean("acknowledged").default(false).notNull(),
+  /** Optional analyst note when acknowledging */
+  acknowledgeNote: text("acknowledgeNote"),
+  /** Timestamp when acknowledged */
+  acknowledgedAt: timestamp("acknowledgedAt"),
+  /** Whether a notification was sent for this anomaly */
+  notificationSent: boolean("notificationSent").default(false).notNull(),
+  /** Schedule name at time of detection (denormalized for fast display) */
+  scheduleName: varchar("scheduleName", { length: 256 }).default("").notNull(),
+  /** Agent IDs involved in this anomaly */
+  agentIds: json("agentIds").$type<string[]>().notNull(),
+  /** Per-category breakdown at time of anomaly */
+  byCategory: json("byCategory").$type<{
+    packages: { added: number; removed: number; changed: number };
+    services: { added: number; removed: number; changed: number };
+    users: { added: number; removed: number; changed: number };
+  }>(),
+  /** Top drift items for quick display */
+  topDriftItems: json("topDriftItems").$type<Array<{
+    category: string;
+    agentId: string;
+    name: string;
+    changeType: string;
+    previousValue?: string;
+    currentValue?: string;
+  }>>(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  index("anomalies_userId_idx").on(table.userId),
+  index("anomalies_scheduleId_idx").on(table.scheduleId),
+  index("anomalies_severity_idx").on(table.severity),
+  index("anomalies_acknowledged_idx").on(table.acknowledged),
+  index("anomalies_createdAt_idx").on(table.createdAt),
+]));
+
+export type DriftAnomaly = typeof driftAnomalies.$inferSelect;
+export type InsertDriftAnomaly = typeof driftAnomalies.$inferInsert;
+
+/**
  * Analyst Notes v2 — Enhanced note-taking system with entity linking.
  * Supports annotating alerts, agents, CVEs, rules, and free-form notes.
  * Local-only: never written back to Wazuh.

@@ -24,6 +24,7 @@ import {
 import { computeNextRunAt } from "./scheduleUtils";
 import { wazuhGet, getEffectiveWazuhConfig } from "../wazuh/wazuhClient";
 import { checkDriftAndNotify, compareBaselines } from "./driftDetection";
+import { detectAndRecordAnomaly } from "./anomalyDetection";
 
 /** Check interval in milliseconds (5 minutes) */
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;
@@ -211,6 +212,41 @@ export async function executeScheduledCapture(
         console.log(
           `[BaselineScheduler] Drift snapshot saved for "${schedule.name}": ${driftResult.driftPercent}% (${driftResult.driftCount}/${driftResult.totalItems})`
         );
+
+        // ── Anomaly detection ─────────────────────────────────────────
+        // Run statistical anomaly detection on the newly persisted snapshot.
+        // Requires the snapshot to have an ID, so we fetch it back.
+        try {
+          const [savedSnapshot] = await db
+            .select()
+            .from(driftSnapshots)
+            .where(
+              and(
+                eq(driftSnapshots.scheduleId, schedule.id),
+                eq(driftSnapshots.userId, schedule.userId)
+              )
+            )
+            .orderBy(desc(driftSnapshots.createdAt))
+            .limit(1);
+
+          if (savedSnapshot) {
+            const anomalyResult = await detectAndRecordAnomaly(
+              savedSnapshot,
+              schedule.name
+            );
+            if (anomalyResult.isAnomaly) {
+              console.log(
+                `[BaselineScheduler] ⚠️ Anomaly detected for "${schedule.name}": ` +
+                  `z-score=${anomalyResult.result?.zScore}, severity=${anomalyResult.result?.severity}`
+              );
+            }
+          }
+        } catch (anomalyErr) {
+          // Anomaly detection is best-effort — never block the capture
+          console.warn(
+            `[BaselineScheduler] Anomaly detection failed for schedule ${schedule.id}: ${(anomalyErr as Error).message}`
+          );
+        }
       }
     } catch (driftErr) {
       // Drift detection is best-effort — never block the capture

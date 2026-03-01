@@ -48,6 +48,7 @@ import {
   FolderSearch,
   Database,
   Settings,
+  TriangleAlert,
   Gauge,
   ScanSearch,
   Inbox,
@@ -91,6 +92,44 @@ function AlertQueueBadge() {
       title={`${count} alert${count !== 1 ? "s" : ""} queued for Walter`}
     >
       <Inbox className="h-2.5 w-2.5" />
+      <span>{count}</span>
+    </button>
+  );
+}
+
+/**
+ * Anomaly Badge — shows unacknowledged drift anomaly count.
+ * Polls every 30s. Color matches highest severity.
+ */
+function AnomalyBadge() {
+  const statsQ = trpc.anomalies.stats.useQuery(undefined, {
+    refetchInterval: 30_000,
+    staleTime: 25_000,
+    retry: false,
+  });
+  const [, navigate] = useLocation();
+
+  const count = statsQ.data?.unacknowledged ?? 0;
+  if (count === 0) return null;
+
+  const hasCritical = (statsQ.data?.critical ?? 0) > 0;
+  const hasHigh = (statsQ.data?.high ?? 0) > 0;
+  const colorClass = hasCritical
+    ? "bg-red-500/20 border-red-500/30 text-red-300"
+    : hasHigh
+    ? "bg-orange-500/20 border-orange-500/30 text-orange-300"
+    : "bg-yellow-500/20 border-yellow-500/30 text-yellow-300";
+
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        navigate("/drift-analytics");
+      }}
+      className={`ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-mono hover:opacity-80 transition-all ${colorClass}`}
+      title={`${count} unacknowledged drift anomal${count !== 1 ? "ies" : "y"}`}
+    >
+      <TriangleAlert className="h-2.5 w-2.5" />
       <span>{count}</span>
     </button>
   );
@@ -144,7 +183,7 @@ const menuItems = [
   { icon: ShieldCheck, label: "Compliance", path: "/compliance", group: "Posture" },
   { icon: FileSearch, label: "File Integrity", path: "/fim", group: "Posture" },
   { icon: Monitor, label: "IT Hygiene", path: "/hygiene", group: "Posture" },
-  { icon: GitCompare, label: "Drift Analytics", path: "/drift-analytics", group: "Posture" },
+  { icon: GitCompare, label: "Drift Analytics", path: "/drift-analytics", group: "Posture", hasAnomalyBadge: true },
   { icon: Server, label: "Cluster Health", path: "/cluster", group: "System" },
   { icon: HeartPulse, label: "System Status", path: "/status", group: "System" },
   { icon: Brain, label: "Security Analyst", path: "/analyst", group: "Intelligence", hasQueueBadge: true },
@@ -365,6 +404,9 @@ function DashboardLayoutContent({
                           <span className="text-sm">{item.label}</span>
                           {(item as typeof menuItems[number] & { hasQueueBadge?: boolean }).hasQueueBadge && (
                             <AlertQueueBadge />
+                          )}
+                          {(item as typeof menuItems[number] & { hasAnomalyBadge?: boolean }).hasAnomalyBadge && (
+                            <AnomalyBadge />
                           )}
                           {(item.path === "/analyst" || item.path === "/assistant") && (
                             <LLMHealthDot />

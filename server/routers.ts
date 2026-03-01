@@ -22,6 +22,7 @@ import { huntRouter } from "./hunt/huntRouter";
 import { pipelineRouter } from "./agenticPipeline/pipelineRouter";
 import { responseActionsRouter } from "./agenticPipeline/responseActionsRouter";
 import { driftAnalyticsRouter } from "./baselines/driftAnalyticsRouter";
+import { anomalyRouter } from "./baselines/anomalyRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -97,6 +98,9 @@ export const appRouter = router({
 
   // Drift Analytics — read-only aggregated drift trend data
   driftAnalytics: driftAnalyticsRouter,
+
+  // Drift Anomaly Detection — statistical outlier flagging
+  anomalies: anomalyRouter,
 });
 
 export type AppRouter = typeof appRouter;

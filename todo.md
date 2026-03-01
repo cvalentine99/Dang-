@@ -1994,3 +1994,30 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Write vitest tests for drift analytics backend endpoints — 15 tests in driftAnalytics.test.ts, 1006 total tests pass
 - [x] Verify 0 TypeScript errors — Confirmed 0 errors
 - [x] Save checkpoint
+
+## Drift Anomaly Detection
+
+### Backend — Anomaly Detection Engine
+- [x] Create drift_anomalies table — Schema with snapshotId, scheduleId, driftPercent, rollingAvg, rollingStdDev, zScore, sigmaThreshold, severity, scheduleName, agentIds, byCategory, topDriftItems, notificationSent, acknowledged, acknowledgeNote, acknowledgedAt, userId, createdAt
+- [x] Run migration SQL for drift_anomalies table — Applied via webdev_execute_sql with indexes on userId, scheduleId, severity, acknowledged, createdAt
+- [x] Build anomaly detection module — anomalyDetection.ts with computeRollingStats(), calculateZScore(), zScoreToSeverity(), checkForAnomaly(), detectAndRecordAnomaly(). MIN_WINDOW=5, DEFAULT_WINDOW=20, DEFAULT_SIGMA=2.0
+- [x] Wire anomaly detection into BaselineScheduler — detectAndRecordAnomaly() called after every drift snapshot persistence in executeScheduledCapture()
+- [x] Fire notifyOwner when anomaly detected — Detailed notification with severity emoji, schedule name, drift %, z-score, rolling stats, category breakdown, agent list
+- [x] Add anomaly query endpoints — anomalyRouter with 5 endpoints: stats, list (filtered/paginated), detail, acknowledge, acknowledgeAll
+
+### Frontend — SOC Console Integration
+- [x] Add anomaly alert banner to SOC Console — Dismissible banner with severity coloring, unacknowledged count, severity badges, recent anomaly items, view all / acknowledge all buttons
+- [x] Show anomaly count badge in sidebar navigation — AnomalyBadge component on Drift Analytics nav item, polls every 30s, color-coded by highest severity
+- [x] Add anomaly event cards with severity coloring — Banner shows up to 3 recent anomalies with schedule name, drift %, z-score, severity badge, individual ack buttons
+
+### Frontend — Drift Analytics Integration
+- [x] Add anomaly detection panel in Drift Analytics page — Full panel with KPI strip (total/critical/high/medium), severity filter, acknowledged toggle, bulk ack
+- [x] Add anomaly timeline/table panel — Sortable table with time, schedule, severity, drift %, z-score, rolling avg ± stddev, sigma threshold, status, ack actions
+- [x] Add anomaly detail slide-over — Full detail panel with severity badge, statistical summary (drift/z-score/threshold), rolling stats context with visual deviation bar, category breakdown, top changes, metadata, raw JSON
+- [x] Add acknowledge/dismiss action for anomalies — Individual ack button per anomaly + bulk "Ack All" button, both in SOC Console and Drift Analytics
+
+### Testing & QA
+- [x] Write vitest tests for anomaly detection statistical engine — 22 tests: computeRollingStats (8), calculateZScore (5), zScoreToSeverity (4), constants (2), integration scenarios (5)
+- [x] Write vitest tests for anomaly router endpoints — 2 tests: router shape validation, endpoint enumeration
+- [x] Verify 0 TypeScript errors — Confirmed 0 errors (fresh tsc --noEmit)
+- [x] Save checkpoint — 1034 total tests pass
