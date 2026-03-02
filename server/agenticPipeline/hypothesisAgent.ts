@@ -920,6 +920,8 @@ export async function listLivingCases(opts: {
       evidenceGapCount: livingCaseState.evidenceGapCount,
       pendingActionCount: livingCaseState.pendingActionCount,
       approvalRequiredCount: livingCaseState.approvalRequiredCount,
+      sourceTriageId: livingCaseState.sourceTriageId,
+      sourceCorrelationId: livingCaseState.sourceCorrelationId,
       linkedTriageIds: livingCaseState.linkedTriageIds,
       linkedCorrelationIds: livingCaseState.linkedCorrelationIds,
       lastUpdatedBy: livingCaseState.lastUpdatedBy,

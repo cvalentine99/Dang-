@@ -2341,3 +2341,11 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Add "View in Triage" link on completed queue items with pipelineTriageId
 - [x] Deep-link navigates to /triage?highlight=<triageId> with auto-scroll and ring highlight
 - [x] Updated GlassPanel to support ref forwarding for scroll-into-view
+
+## Living Cases → Triage Deep-Link
+
+- [x] Add deep-link from Living Cases back to source triage assessment on /triage
+- [x] Trace living case data model — sourceTriageId + linkedTriageIds on living_case_state
+- [x] Add "Source Triage" badge in list view (clickable, navigates to /triage?highlight=)
+- [x] Convert detail view Linked Artifacts triage IDs from plain text to clickable deep-links
+- [x] Added sourceTriageId and sourceCorrelationId to listLivingCases query
