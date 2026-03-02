@@ -43,7 +43,7 @@ function checkRateLimit(group: string): void {
 
 // ── Sensitive fields to strip ────────────────────────────────────────────────
 const STRIP_FIELDS = new Set([
-  "password", "token", "secret", "api_key", "key", "auth", "credential",
+  "password", "token", "secret", "api_key", "auth", "credential",
 ]);
 
 function stripSensitiveFields(obj: unknown): unknown {

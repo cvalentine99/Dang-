@@ -738,7 +738,7 @@ export default function RulesetExplorer() {
                             {Object.entries(rule.details || {}).map(([key, val]) => (
                               <div key={key} className="flex justify-between gap-2">
                                 <span className="text-slate-500 flex-shrink-0">{key}</span>
-                                <span className="font-mono text-slate-200 text-right break-all">{val}</span>
+                                <span className="font-mono text-slate-200 text-right break-all">{typeof val === "object" && val !== null ? JSON.stringify(val) : String(val)}</span>
                               </div>
                             ))}
                           </div>
@@ -908,7 +908,11 @@ export default function RulesetExplorer() {
                     {/* Pattern */}
                     <div className="flex items-center min-w-0">
                       <span className="text-xs text-slate-300 font-mono truncate">
-                        {decoder.details?.prematch || decoder.details?.regex || decoder.details?.plugin_decoder || "—"}
+                        {(() => {
+                          const v = decoder.details?.prematch || decoder.details?.regex || decoder.details?.plugin_decoder;
+                          if (!v) return "—";
+                          return typeof v === "object" && v !== null ? JSON.stringify(v) : String(v);
+                        })()}
                       </span>
                     </div>
 
@@ -981,7 +985,7 @@ export default function RulesetExplorer() {
                               <div key={key}>
                                 <span className="text-slate-500 block mb-0.5">{key}</span>
                                 <pre className="text-[11px] text-slate-200 bg-black/30 rounded px-2 py-1 font-mono overflow-x-auto whitespace-pre-wrap break-all border border-white/5">
-                                  {val}
+                                  {typeof val === "object" && val !== null ? JSON.stringify(val) : String(val)}
                                 </pre>
                               </div>
                             ))}
@@ -995,7 +999,7 @@ export default function RulesetExplorer() {
                           <h4 className="text-xs font-semibold text-violet-300 mb-2">Decoder Chain</h4>
                           <div className="flex items-center gap-2 text-xs">
                             <span className="px-2 py-1 bg-indigo-500/20 text-indigo-300 rounded font-mono">
-                              {decoder.details.parent}
+                              {typeof decoder.details.parent === "object" && decoder.details.parent !== null ? JSON.stringify(decoder.details.parent) : String(decoder.details.parent)}
                             </span>
                             <span className="text-slate-500">→</span>
                             <span className="px-2 py-1 bg-violet-500/20 text-violet-300 rounded font-mono">

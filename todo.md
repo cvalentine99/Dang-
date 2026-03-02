@@ -2349,3 +2349,16 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Add "Source Triage" badge in list view (clickable, navigates to /triage?highlight=)
 - [x] Convert detail view Linked Artifacts triage IDs from plain text to clickable deep-links
 - [x] Added sourceTriageId and sourceCorrelationId to listLivingCases query
+
+## User Bugfix Audit — 2026-03-02 (8 fixes)
+
+- [x] Fix 1 — SIEM Events: safeSearch envelope mismatch (already applied in earlier checkpoint)
+- [x] Fix 2 — Ruleset Explorer: React error #31 on Decoders tab (stringify nested objects at 4 sites)
+- [x] Fix 3a — Compliance: safeSearch envelope (already applied in earlier checkpoint)
+- [x] Fix 3b — Compliance: add missing `levels` top-level aggregation to server
+- [x] Fix 4a — MITRE ATT&CK: safeSearch envelope (already applied in earlier checkpoint)
+- [x] Fix 4b — MITRE ATT&CK: rename `techniques_total` to `techniques`, add `timeline` agg with tactic sub-aggs
+- [x] Fix 5 — Indexer: remove `"key"` from STRIP_FIELDS in indexerClient.ts
+- [x] Fix 6 — Wazuh Client: remove `"key"` from STRIP_FIELDS in wazuhClient.ts
+- [x] Fix 7 — IT Hygiene: flatten nested Wazuh fields for Extensions & Services + ServiceStateBadge systemd states
+- [x] Fix 8 — IT Hygiene: flatten nested Wazuh fields for Users & Groups (colon-separated users → array)

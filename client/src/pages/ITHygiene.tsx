@@ -74,18 +74,19 @@ function extractItems(data: unknown): {
 // ── State badge helper ─────────────────────────────────────────────────────────
 function ServiceStateBadge({ state }: { state: string }) {
   const s = state.toLowerCase();
-  const color =
-    s === "running"
-      ? "bg-[oklch(0.765_0.177_163.223)]/15 text-[oklch(0.765_0.177_163.223)] border-[oklch(0.765_0.177_163.223)]/30"
-      : s === "stopped"
-        ? "bg-[oklch(0.637_0.237_25.331)]/15 text-[oklch(0.637_0.237_25.331)] border-[oklch(0.637_0.237_25.331)]/30"
-        : "bg-secondary/50 text-muted-foreground border-border";
+  const isRunning = s === "running";
+  const isStopped = ["stopped", "dead", "inactive", "exited"].includes(s);
+  const color = isRunning
+    ? "bg-[oklch(0.765_0.177_163.223)]/15 text-[oklch(0.765_0.177_163.223)] border-[oklch(0.765_0.177_163.223)]/30"
+    : isStopped
+      ? "bg-[oklch(0.637_0.237_25.331)]/15 text-[oklch(0.637_0.237_25.331)] border-[oklch(0.637_0.237_25.331)]/30"
+      : "bg-secondary/50 text-muted-foreground border-border";
   return (
     <span
       className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${color}`}
     >
       <span
-        className={`h-1.5 w-1.5 rounded-full mr-1.5 ${s === "running" ? "bg-[oklch(0.765_0.177_163.223)]" : s === "stopped" ? "bg-[oklch(0.637_0.237_25.331)]" : "bg-muted-foreground"}`}
+        className={`h-1.5 w-1.5 rounded-full mr-1.5 ${isRunning ? "bg-[oklch(0.765_0.177_163.223)]" : isStopped ? "bg-[oklch(0.637_0.237_25.331)]" : "bg-muted-foreground"}`}
       />
       {state}
     </span>
@@ -258,22 +259,75 @@ export default function ITHygiene() {
   }, [hotfixesQ.data, isConnected]);
 
   const extensionsData = useMemo(() => {
-    if (isConnected && extensionsQ.data) return extractItems(extensionsQ.data);
+    if (isConnected && extensionsQ.data) {
+      const raw = extractItems(extensionsQ.data);
+      return {
+        ...raw,
+        items: raw.items.map((ext: Record<string, unknown>) => ({
+          ...ext,
+          name: (ext as any).package?.name ?? ext.name ?? "—",
+          version: (ext as any).package?.version ?? ext.version ?? "—",
+          description: (ext as any).package?.description ?? ext.description ?? "—",
+          browser: (ext as any).browser?.name ?? ext.browser ?? "—",
+        })),
+      };
+    }
     return { items: [] as Array<Record<string, unknown>>, total: 0 };
   }, [extensionsQ.data, isConnected]);
 
   const servicesData = useMemo(() => {
-    if (isConnected && servicesQ.data) return extractItems(servicesQ.data);
+    if (isConnected && servicesQ.data) {
+      const raw = extractItems(servicesQ.data);
+      return {
+        ...raw,
+        items: raw.items.map((svc: Record<string, unknown>) => ({
+          ...svc,
+          name: (svc as any).service?.name ?? svc.name ?? "—",
+          state: (svc as any).service?.state ?? (svc as any).service?.sub_state ?? svc.state ?? "—",
+          enabled: (svc as any).service?.enabled ?? svc.enabled ?? "—",
+          pid: (svc as any).process?.pid ?? svc.pid ?? "—",
+        })),
+      };
+    }
     return { items: [] as Array<Record<string, unknown>>, total: 0 };
   }, [servicesQ.data, isConnected, search, tab]);
 
   const usersData = useMemo(() => {
-    if (isConnected && usersQ.data) return extractItems(usersQ.data);
+    if (isConnected && usersQ.data) {
+      const raw = extractItems(usersQ.data);
+      return {
+        ...raw,
+        items: raw.items.map((item: Record<string, unknown>) => ({
+          ...item,
+          name: (item as any).user?.name ?? item.name ?? "—",
+          uid: (item as any).user?.id ?? item.uid ?? "—",
+          gid: (item as any).user?.group_id ?? item.gid ?? "—",
+          home: (item as any).user?.home ?? item.home ?? "—",
+          shell: (item as any).user?.shell ?? item.shell ?? "—",
+        })),
+      };
+    }
     return { items: [] as Array<Record<string, unknown>>, total: 0 };
   }, [usersQ.data, isConnected]);
 
   const groupsData = useMemo(() => {
-    if (isConnected && groupsQ.data) return extractItems(groupsQ.data);
+    if (isConnected && groupsQ.data) {
+      const raw = extractItems(groupsQ.data);
+      return {
+        ...raw,
+        items: raw.items.map((item: Record<string, unknown>) => {
+          const usersStr = (item as any).group?.users ?? "";
+          return {
+            ...item,
+            name: (item as any).group?.name ?? item.name ?? "—",
+            gid: (item as any).group?.id ?? item.gid ?? "—",
+            members: typeof usersStr === "string" && usersStr
+              ? usersStr.split(":").filter(Boolean)
+              : Array.isArray(item.members) ? item.members : [],
+          };
+        }),
+      };
+    }
     return { items: [] as Array<Record<string, unknown>>, total: 0 };
   }, [groupsQ.data, isConnected]);
 

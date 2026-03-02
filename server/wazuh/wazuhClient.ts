@@ -156,7 +156,6 @@ const STRIP_FIELDS = new Set([
   "token",
   "secret",
   "api_key",
-  "key",
   "auth",
   "credential",
 ]);
