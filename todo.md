@@ -2381,3 +2381,8 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Auto-expand triage card, auto-show correlation bundle, scroll into view with cyan glow ring
 - [x] Added correlationBundleId to listTriages via LEFT JOIN with correlation_bundles
 - [x] All 1,216 tests passing
+
+## Migration 0011 Fix — Statement Breakpoints
+
+- [x] Fix migration 0011 (0011_missing_tables.sql) — add `--> statement-breakpoint` markers between all SQL statements
+- [ ] Push fix to GitHub dev branch
