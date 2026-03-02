@@ -2304,7 +2304,8 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 
 ## GitHub Actions CI Workflow
 
-- [ ] Create .github/workflows/ci.yml with pnpm test and tsc --noEmit
-- [ ] Configure proper Node.js and pnpm versions
-- [ ] Add database service container for test suite
-- [ ] Push workflow to GitHub repository
+- [x] Create .github/workflows/ci.yml with pnpm test and tsc --noEmit
+- [x] Configure proper Node.js and pnpm versions (Node 22, pnpm via action-setup)
+- [x] Add database service container for test suite (MySQL 8.0 with migrations)
+- [x] Add contract-audit job with 5 automated security checks
+- [ ] Push workflow to GitHub — requires user action (GitHub App lacks `workflows` permission)
