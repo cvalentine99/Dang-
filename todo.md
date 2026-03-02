@@ -2249,3 +2249,13 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Return real priorityCounts in getQueueStats()
 - [x] Remove hardcoded zero values — replaced with priorityQueue.priorityCounts getter
 - [x] Write tests for priority tracking accuracy — priorityQueue.test.ts (4 tests)
+
+## TSC Watcher Error Cleanup
+
+- [x] Identify all dead imports causing the 70 tsc watcher errors — only 1 real error: missing sdk import in index.ts; 70-error report was stale watcher cache
+- [x] Fix dead import: BaselineFrequency in scheduleUtils.ts — NOT dead, export exists at schema.ts:146; stale cache
+- [x] Fix dead import: responseActions in agenticPipeline.ts — NOT dead, export exists at schema.ts:1166; stale cache
+- [x] Fix dead import: pipelineRuns in agenticPipeline.ts — NOT dead, export exists at schema.ts:1316; stale cache
+- [x] Fix all other dead imports across the codebase — only real fix: added `import { sdk } from "./sdk"` to server/_core/index.ts
+- [x] Verify tsc --noEmit shows 0 errors after fixes — EXIT 0, confirmed twice
+- [x] Run full test suite to confirm nothing is broken — 51 files, 1195 tests passing
