@@ -21,6 +21,7 @@ import axios from "axios";
 import https from "https";
 import { testLLMConnection } from "../llm/llmService";
 import { testSplunkConnection } from "../splunk/splunkService";
+import { validateHost } from "./hostValidation";
 
 const categorySchema = z.enum(["wazuh_manager", "wazuh_indexer", "llm", "splunk"]);
 
@@ -130,6 +131,16 @@ export const connectionSettingsRouter = router({
         return {
           success: false,
           message: "Host, username, and password are required",
+          latencyMs: 0,
+        };
+      }
+
+      // SSRF defense: validate host against RFC 1918 allowlist
+      const hostCheck = await validateHost(host);
+      if (!hostCheck.allowed) {
+        return {
+          success: false,
+          message: `Host validation failed: ${hostCheck.reason}`,
           latencyMs: 0,
         };
       }

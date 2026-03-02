@@ -6,6 +6,7 @@ import { wazuhRouter } from "./wazuh/wazuhRouter";
 import { hybridragRouter } from "./hybridrag/hybridragRouter";
 import { savedSearchesRouter } from "./savedSearches/savedSearchesRouter";
 import { baselinesRouter } from "./baselines/baselinesRouter";
+import { baselineSchedulesRouter } from "./baselines/baselineSchedulesRouter";
 import { indexerRouter } from "./indexer/indexerRouter";
 import { otxRouter } from "./otx/otxRouter";
 import { notesRouter } from "./notes/notesRouter";
@@ -17,6 +18,15 @@ import { llmRouter } from "./llm/llmRouter";
 import { alertQueueRouter } from "./alertQueue/alertQueueRouter";
 import { splunkRouter } from "./splunk/splunkRouter";
 import { autoQueueRouter } from "./alertQueue/autoQueueRouter";
+import { huntRouter } from "./hunt/huntRouter";
+import { pipelineRouter } from "./agenticPipeline/pipelineRouter";
+import { responseActionsRouter } from "./agenticPipeline/responseActionsRouter";
+import { driftAnalyticsRouter } from "./baselines/driftAnalyticsRouter";
+import { anomalyRouter } from "./baselines/anomalyRouter";
+import { notificationHistoryRouter } from "./baselines/notificationHistoryRouter";
+import { suppressionRouter } from "./baselines/suppressionRouter";
+import { exportRouter } from "./baselines/exportRouter";
+import { enhancedLLMRouter } from "./enhancedLLM/enhancedLLMRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -45,6 +55,9 @@ export const appRouter = router({
 
   // Configuration baselines for drift detection
   baselines: baselinesRouter,
+
+  // Scheduled baseline auto-capture
+  baselineSchedules: baselineSchedulesRouter,
 
   // Wazuh Indexer (OpenSearch/Elasticsearch) — read-only queries
   indexer: indexerRouter,
@@ -77,6 +90,33 @@ export const appRouter = router({
 
   // Auto-queue rules — automatic alert-to-Walter routing
   autoQueue: autoQueueRouter,
+
+  // Threat Hunting — server-side multi-source IOC correlation
+  hunt: huntRouter,
+
+  // Agentic SOC Pipeline — structured triage, correlation, case management
+  pipeline: pipelineRouter,
+
+  // Response Actions — first-class, structured, queryable, stateful, auditable
+  responseActions: responseActionsRouter,
+
+  // Drift Analytics — read-only aggregated drift trend data
+  driftAnalytics: driftAnalyticsRouter,
+
+  // Drift Anomaly Detection — statistical outlier flagging
+  anomalies: anomalyRouter,
+
+  // Drift Notification History — audit trail for all drift/anomaly notifications
+  notificationHistory: notificationHistoryRouter,
+
+  // Anomaly Suppression Rules — maintenance window alert muting
+  suppression: suppressionRouter,
+
+  // Drift Report Export — CSV/PDF export for compliance reporting
+  export: exportRouter,
+
+  // Enhanced LLM — Nemotron-3 Nano session-type-aware chat, alert classification, DGX health
+  enhancedLLM: enhancedLLMRouter,
 });
 
 export type AppRouter = typeof appRouter;

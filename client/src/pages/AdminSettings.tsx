@@ -376,7 +376,7 @@ export default function AdminSettings() {
         description="REST API connection for agent management, alerts, and system data"
         icon={<Shield className="h-5 w-5 text-primary" />}
         fields={[
-          { key: "host", label: "Host", placeholder: "192.168.1.100" },
+          { key: "host", label: "Host", placeholder: "localhost" },
           { key: "port", label: "Port", placeholder: "55000", type: "number" },
           { key: "user", label: "Username", placeholder: "wazuh-wui" },
           { key: "pass", label: "Password", placeholder: "Enter password", type: "password" },
@@ -390,7 +390,7 @@ export default function AdminSettings() {
         description="OpenSearch/Elasticsearch connection for alert search, aggregations, and analytics"
         icon={<Database className="h-5 w-5 text-primary" />}
         fields={[
-          { key: "host", label: "Host", placeholder: "192.168.1.100" },
+          { key: "host", label: "Host", placeholder: "localhost" },
           { key: "port", label: "Port", placeholder: "9200", type: "number" },
           { key: "user", label: "Username", placeholder: "admin" },
           { key: "pass", label: "Password", placeholder: "Enter password", type: "password" },
@@ -416,7 +416,7 @@ export default function AdminSettings() {
           toggleField="enabled"
           fields={[
             { key: "enabled", label: "Enabled", placeholder: "true", description: "Toggle managed by the header switch" },
-            { key: "host", label: "Host", placeholder: "192.168.50.110", description: "IP or hostname of your LLM server" },
+            { key: "host", label: "Host", placeholder: "localhost", description: "Hostname of your LLM server (localhost if co-located)" },
             { key: "port", label: "Port", placeholder: "30000", type: "number", description: "Port the LLM server listens on" },
             { key: "model", label: "Model Name", placeholder: "unsloth/Nemotron-3-Nano-30B-A3B-GGUF", fullWidth: true, description: "Model identifier passed to the /v1/chat/completions endpoint" },
             { key: "protocol", label: "Protocol", placeholder: "http", description: "http or https — most local servers use http" },
@@ -443,7 +443,7 @@ export default function AdminSettings() {
           toggleField="enabled"
           fields={[
             { key: "enabled", label: "Enabled", placeholder: "true", description: "Toggle managed by the header switch" },
-            { key: "host", label: "Splunk Host", placeholder: "192.168.50.213", description: "IP or hostname of your Splunk ES instance" },
+            { key: "host", label: "Splunk Host", placeholder: "localhost", description: "Hostname of your Splunk ES instance (localhost if co-located)" },
             { key: "port", label: "Web UI Port", placeholder: "8000", type: "number", description: "Splunk web interface port" },
             { key: "hec_port", label: "HEC Port", placeholder: "8088", type: "number", description: "HTTP Event Collector listener port" },
             { key: "hec_token", label: "HEC Token", placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", type: "password", description: "HEC authentication token (UUID format)" },

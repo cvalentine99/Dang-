@@ -1,6 +1,9 @@
 import { trpc } from "@/lib/trpc";
 import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
+import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared/IndexerStates";
+import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
+import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
@@ -14,7 +17,7 @@ import {
 } from "@/components/ui/tabs";
 import {
   Crosshair, Shield, Layers, Grid3X3, Target, ExternalLink,
-  Database, Activity, TrendingUp, Flame, Clock,
+  Database, Activity, TrendingUp, Flame, Clock, Loader2,
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import {
@@ -117,8 +120,12 @@ export default function MitreAttack() {
   const rulesQ = trpc.wazuh.rules.useQuery({ limit: 500, offset: 0, sort: "-level" }, { retry: 1, staleTime: 60_000, enabled: isConnected });
 
   // Indexer MITRE aggregation
+  const mitreTimeWindow = useMemo(() => ({
+    from: new Date(Date.now() - trMs).toISOString(),
+    to: new Date().toISOString(),
+  }), [timeRange]); // eslint-disable-line react-hooks/exhaustive-deps
   const mitreAggQ = trpc.indexer.alertsAggByMitre.useQuery(
-    { from: new Date(Date.now() - trMs).toISOString(), to: new Date().toISOString() },
+    { from: mitreTimeWindow.from, to: mitreTimeWindow.to },
     { retry: 1, staleTime: 60_000, enabled: indexerHealthy }
   );
 
@@ -180,7 +187,7 @@ export default function MitreAttack() {
     return { techniques: Array.from(techMap.values()), tacticCounts, totalTechniques: techMap.size, totalRulesWithMitre: rulesWithMitre };
   }, [rulesQ.data, isConnected]);
 
-  // ── Indexer MITRE data (real or mock) ─────────────────────────────────
+  // ── Indexer MITRE data (real or empty fallback) ─────────────────────────────
   const mitreSource: "indexer" | "server" = indexerHealthy && mitreAggQ.data ? "indexer" : "server";
   const { indexerTacticAlerts, indexerTimeline, indexerTopTechniques, totalMitreAlerts } = useMemo(() => {
     if (indexerHealthy && mitreAggQ.data) {
@@ -301,14 +308,27 @@ export default function MitreAttack() {
       <div className="space-y-6">
         <PageHeader title="MITRE ATT&CK" subtitle="Adversary technique mapping — detection coverage, tactic progression, and alert correlation" onRefresh={handleRefresh} isLoading={isLoading} />
 
+        {/* ── Loading State ── */}
+        {mitreAggQ.isLoading && <IndexerLoadingState message="Fetching MITRE ATT&CK data…" />}
+        {/* ── Error State ── */}
+        {mitreAggQ.isError && (
+          <IndexerErrorState
+            message="Failed to fetch MITRE ATT&CK data from indexer"
+            detail={mitreAggQ.error?.message}
+            onRetry={() => mitreAggQ.refetch()}
+          />
+        )}
+
         {/* KPIs */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+          {mitreAggQ.isLoading ? <StatCardSkeleton count={6} /> : (<>
           <StatCard label="Techniques Detected" value={mitreTechniques.length || totalTechniques} icon={Crosshair} colorClass="text-primary" />
           <StatCard label="Rules with MITRE" value={totalRulesWithMitre} icon={Shield} colorClass="text-threat-medium" />
           <StatCard label="Tactics Covered" value={activeTactics.length} icon={Grid3X3} colorClass="text-info-cyan" />
           <StatCard label="Threat Groups" value={threatGroups.length} icon={Target} colorClass="text-threat-high" />
           <StatCard label="MITRE Alerts" value={totalMitreAlerts.toLocaleString()} icon={Activity} colorClass="text-threat-critical" />
           <StatCard label="Coverage" value={`${Math.round((activeTactics.length / 14) * 100)}%`} icon={Layers} colorClass="text-primary" />
+          </>)}
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -321,6 +341,9 @@ export default function MitreAttack() {
 
           {/* ── ATT&CK Matrix Tab ──────────────────────────────────────── */}
           <TabsContent value="matrix" className="space-y-4 mt-4">
+            {isLoading ? (
+              <ChartSkeleton variant="bar" height={240} title="Tactic Distribution" />
+            ) : (
             <GlassPanel>
               <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Target className="h-4 w-4 text-primary" /> Tactic Distribution <SourceBadge source={"server"} /></h3>
               <ResponsiveContainer width="100%" height={240}>
@@ -333,6 +356,7 @@ export default function MitreAttack() {
                 </BarChart>
               </ResponsiveContainer>
             </GlassPanel>
+            )}
 
             <GlassPanel>
               <div className="flex items-center justify-between mb-4">
@@ -502,6 +526,9 @@ export default function MitreAttack() {
               {/* Top Techniques by Alert Count */}
               <GlassPanel className="lg:col-span-7">
                 <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Crosshair className="h-4 w-4 text-primary" /> Top Techniques by Alert Volume</h3>
+                {mitreAggQ.isLoading ? (
+                  <TableSkeleton columns={5} rows={10} columnWidths={[1, 3, 2, 1, 3]} />
+                ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
@@ -540,6 +567,7 @@ export default function MitreAttack() {
                     </tbody>
                   </table>
                 </div>
+                )}
               </GlassPanel>
             </div>
           </TabsContent>

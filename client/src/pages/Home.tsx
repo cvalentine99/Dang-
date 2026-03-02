@@ -7,6 +7,8 @@ import { ThreatBadge, threatLevelFromNumber } from "@/components/shared/ThreatBa
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { ExportButton } from "@/components/shared/ExportButton";
 import { ThreatMap } from "@/components/shared/ThreatMap";
+import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
+import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { EXPORT_COLUMNS } from "@/lib/exportUtils";
 
 import {
@@ -14,7 +16,7 @@ import {
   Cpu, Zap, Users, Clock, Target, BarChart3, Wifi, WifiOff,
   ArrowUpRight, ArrowDownRight, Eye, FileSearch, Monitor,
   Database, Lock, Globe, TrendingUp, Layers, Radio, Radar,
-  MapPin, Flame, Hash,
+  MapPin, Flame, Hash, TriangleAlert, GitCompare, CheckCircle2, X,
 } from "lucide-react";
 import { useMemo, useCallback, useState } from "react";
 import {
@@ -195,9 +197,30 @@ export default function Home() {
     { retry: false, staleTime: 60_000, enabled: isIndexerConnected }
   );
 
+  // ── Anomaly detection query ─────────────────────────────────────────────
+  const anomalyStatsQ = trpc.anomalies.stats.useQuery(undefined, { retry: false, staleTime: 30_000 });
+  const anomalyListQ = trpc.anomalies.list.useQuery(
+    { days: 7, acknowledged: false, limit: 5 },
+    { retry: false, staleTime: 30_000 }
+  );
+  const ackMutation = trpc.anomalies.acknowledge.useMutation({
+    onSuccess: () => {
+      utils.anomalies.stats.invalidate();
+      utils.anomalies.list.invalidate();
+    },
+  });
+  const ackAllMutation = trpc.anomalies.acknowledgeAll.useMutation({
+    onSuccess: () => {
+      utils.anomalies.stats.invalidate();
+      utils.anomalies.list.invalidate();
+    },
+  });
+  const [anomalyBannerDismissed, setAnomalyBannerDismissed] = useState(false);
+
   const handleRefresh = useCallback(() => {
     utils.wazuh.invalidate();
     utils.indexer.invalidate();
+    utils.anomalies.invalidate();
   }, [utils]);
 
   // ── Agent summary (real or fallback) ──────────────────────────────────────
@@ -339,7 +362,7 @@ export default function Home() {
 
   const topTalkersSource: "indexer" | "server" = isIndexerConnected && alertsAggByAgentQ.data?.data ? "indexer" : "server";
 
-  /** Geographic distribution — prefer GeoIP-enriched endpoint, fallback to basic agg, then mock */
+  /** Geographic distribution — prefer GeoIP-enriched endpoint, fallback to basic agg, then empty */
   const geoData = useMemo(() => {
     // Try enriched GeoIP data first (includes coordinates, cities, IPs)
     if (isIndexerConnected && alertsGeoEnrichedQ.data?.data) {
@@ -421,6 +444,106 @@ export default function Home() {
       <div className="space-y-5">
         <PageHeader title="SOC Console" subtitle="Security Operations Center — Real-time threat intelligence and fleet telemetry" onRefresh={handleRefresh} isLoading={isLoading} />
 
+        {/* ── Drift Anomaly Alert Banner ──────────────────────────────── */}
+        {!anomalyBannerDismissed && anomalyStatsQ.data && anomalyStatsQ.data.unacknowledged > 0 && (
+          <div className={`relative rounded-xl border p-4 backdrop-blur-md ${
+            anomalyStatsQ.data.critical > 0
+              ? "border-threat-critical/40 bg-threat-critical/5"
+              : anomalyStatsQ.data.high > 0
+              ? "border-threat-high/40 bg-threat-high/5"
+              : "border-yellow-500/40 bg-yellow-500/5"
+          }`}>
+            <button
+              onClick={() => setAnomalyBannerDismissed(true)}
+              className="absolute top-3 right-3 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <div className="flex items-start gap-4">
+              <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 ${
+                anomalyStatsQ.data.critical > 0
+                  ? "bg-threat-critical/20 border border-threat-critical/30"
+                  : anomalyStatsQ.data.high > 0
+                  ? "bg-threat-high/20 border border-threat-high/30"
+                  : "bg-yellow-500/20 border border-yellow-500/30"
+              }`}>
+                <TriangleAlert className={`h-5 w-5 ${
+                  anomalyStatsQ.data.critical > 0 ? "text-threat-critical" : anomalyStatsQ.data.high > 0 ? "text-threat-high" : "text-yellow-400"
+                }`} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3 mb-1">
+                  <h3 className="text-sm font-display font-semibold text-foreground">
+                    {anomalyStatsQ.data.unacknowledged} Drift Anomal{anomalyStatsQ.data.unacknowledged === 1 ? "y" : "ies"} Detected
+                  </h3>
+                  <div className="flex items-center gap-1.5">
+                    {anomalyStatsQ.data.critical > 0 && (
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full border border-threat-critical/30 bg-threat-critical/10 text-threat-critical">
+                        {anomalyStatsQ.data.critical} Critical
+                      </span>
+                    )}
+                    {anomalyStatsQ.data.high > 0 && (
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full border border-threat-high/30 bg-threat-high/10 text-threat-high">
+                        {anomalyStatsQ.data.high} High
+                      </span>
+                    )}
+                    {anomalyStatsQ.data.medium > 0 && (
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full border border-yellow-500/30 bg-yellow-500/10 text-yellow-400">
+                        {anomalyStatsQ.data.medium} Medium
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Statistical drift anomalies exceed the rolling average by 2+ standard deviations. Review and acknowledge to clear.
+                </p>
+                {/* Recent anomaly items */}
+                {anomalyListQ.data && anomalyListQ.data.anomalies.length > 0 && (
+                  <div className="space-y-1.5 mb-3">
+                    {anomalyListQ.data.anomalies.slice(0, 3).map((a) => (
+                      <div key={a.id} className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-secondary/30 border border-border/20">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <GitCompare className={`h-3.5 w-3.5 shrink-0 ${
+                            a.severity === "critical" ? "text-threat-critical" : a.severity === "high" ? "text-threat-high" : "text-yellow-400"
+                          }`} />
+                          <span className="text-[11px] text-foreground truncate">{a.scheduleName || `Schedule #${a.scheduleId}`}</span>
+                          <span className="text-[10px] font-mono text-muted-foreground">{a.driftPercent.toFixed(1)}%</span>
+                          <span className="text-[10px] text-muted-foreground">({a.zScore.toFixed(1)}σ)</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px] text-muted-foreground">{new Date(a.timestamp).toLocaleString()}</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); ackMutation.mutate({ id: a.id }); }}
+                            className="text-[10px] px-2 py-0.5 rounded border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                            disabled={ackMutation.isPending}
+                          >
+                            <CheckCircle2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setLocation("/drift-analytics")}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium"
+                  >
+                    View Drift Analytics
+                  </button>
+                  <button
+                    onClick={() => ackAllMutation.mutate({})}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-border/30 bg-secondary/20 text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors"
+                    disabled={ackAllMutation.isPending}
+                  >
+                    Acknowledge All
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── KPI Row ───────────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
           <StatCard label="Total Agents" value={agentData.total} icon={Users} colorClass="text-primary" trend={agentData.active > 0 ? `${agentData.active} active` : undefined} trendUp={true} />
@@ -432,6 +555,13 @@ export default function Home() {
         </div>
 
         {/* ── Row 2: EPS Gauge + Threat Trends (Indexer) + Fleet Status ──── */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <ChartSkeleton variant="bar" height={210} title="Events Per Second" className="lg:col-span-3" />
+            <ChartSkeleton variant="area" height={210} title="Threat Trends — Last 24h" className="lg:col-span-6" />
+            <ChartSkeleton variant="pie" height={210} title="Fleet Status" className="lg:col-span-3" />
+          </div>
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <GlassPanel className="lg:col-span-3 flex flex-col items-center justify-center py-6">
             <div className="flex items-center gap-2 mb-2">
@@ -492,8 +622,16 @@ export default function Home() {
             </ResponsiveContainer>
           </GlassPanel>
         </div>
+        )}
 
         {/* ── Row 3: Top Talkers + Geographic Heatmap + Top Firing Rules ─── */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <ChartSkeleton variant="pie" height={220} title="Top Talkers" className="lg:col-span-4" />
+            <ChartSkeleton variant="area" height={340} title="Geographic Threat Distribution" className="lg:col-span-4" />
+            <ChartSkeleton variant="bar" height={340} title="Top Firing Rules" className="lg:col-span-4" />
+          </div>
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <GlassPanel className="lg:col-span-4">
             <div className="flex items-center justify-between mb-3">
@@ -571,6 +709,7 @@ export default function Home() {
             </div>
           </GlassPanel>
         </div>
+        )}
 
         {/* ── Row 4: Quick Actions + MITRE Trends (Indexer) + API Connectivity */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -636,6 +775,12 @@ export default function Home() {
         </div>
 
         {/* ── Row 5: Event Ingestion + Fleet Agents ───────────────────────── */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartSkeleton variant="area" height={210} title="Event Ingestion — Last 24h" />
+            <ChartSkeleton variant="bar" height={210} title="Fleet Agents" />
+          </div>
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <GlassPanel>
             <div className="flex items-center justify-between mb-3">
@@ -670,6 +815,9 @@ export default function Home() {
                 {(isConnected && agentsQ.data) ? <RawJsonViewer data={agentsQ.data as Record<string, unknown>} title="Agents Data" /> : null}
               </div>
             </div>
+            {isLoading ? (
+              <TableSkeleton columns={5} rows={6} columnWidths={[1, 2, 2, 2, 1]} />
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead><tr className="border-b border-border/30">
@@ -700,8 +848,10 @@ export default function Home() {
                 </tbody>
               </table>
             </div>
+            )}
           </GlassPanel>
         </div>
+        )}
       </div>
     </WazuhGuard>
   );

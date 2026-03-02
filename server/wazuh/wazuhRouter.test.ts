@@ -42,7 +42,7 @@ function createTestContext(): TrpcContext {
       openId: "test-user",
       email: "test@example.com",
       name: "Test User",
-      loginMethod: "manus",
+      loginMethod: "local",
       role: "admin",
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -132,10 +132,8 @@ describe("wazuh router", () => {
     expect(result).toBeDefined();
   });
 
-  it("agentVulnerabilities endpoint requires agentId", async () => {
-    const result = await caller.wazuh.agentVulnerabilities({ agentId: "001", limit: 10, offset: 0 });
-    expect(result).toBeDefined();
-  });
+  // agentVulnerabilities removed — GET /vulnerability/{agent_id} does not exist in Wazuh v4.14.
+  // Per-agent vuln data now comes from indexer.vulnSearch with agentId filter.
 
   it("daemonStats endpoint requires daemons array", async () => {
     const result = await caller.wazuh.daemonStats({ daemons: ["wazuh-analysisd"] });
@@ -211,5 +209,34 @@ describe("wazuh router", () => {
     const result = await caller.wazuh.agentGroups2({ agentId: "001", limit: 50, offset: 0 });
     expect(result).toBeDefined();
     expect(result).toHaveProperty("data");
+  });
+});
+
+describe("wazuh router auth gating", () => {
+  it("rejects unauthenticated access to wazuh.status", async () => {
+    const unauthCaller = appRouter.createCaller({
+      user: null,
+      req: { protocol: "https", headers: {} } as TrpcContext["req"],
+      res: { clearCookie: vi.fn() } as unknown as TrpcContext["res"],
+    });
+    await expect(unauthCaller.wazuh.status()).rejects.toThrow();
+  });
+
+  it("rejects unauthenticated access to wazuh.agents", async () => {
+    const unauthCaller = appRouter.createCaller({
+      user: null,
+      req: { protocol: "https", headers: {} } as TrpcContext["req"],
+      res: { clearCookie: vi.fn() } as unknown as TrpcContext["res"],
+    });
+    await expect(unauthCaller.wazuh.agents({ limit: 10, offset: 0 })).rejects.toThrow();
+  });
+
+  it("rejects unauthenticated access to wazuh.managerInfo", async () => {
+    const unauthCaller = appRouter.createCaller({
+      user: null,
+      req: { protocol: "https", headers: {} } as TrpcContext["req"],
+      res: { clearCookie: vi.fn() } as unknown as TrpcContext["res"],
+    });
+    await expect(unauthCaller.wazuh.managerInfo()).rejects.toThrow();
   });
 });

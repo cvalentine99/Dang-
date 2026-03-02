@@ -287,7 +287,7 @@ Example startup output:
   │  ✅ JWT_SECRET = a1b2****
   └─
   ┌─ Wazuh Manager API
-  │  ✅ WAZUH_HOST = 192.168.50.213
+  │  ✅ WAZUH_HOST = localhost
   │  ✅ WAZUH_USER = wazu****
   │  ✅ WAZUH_PASS = MyS3****
   └─

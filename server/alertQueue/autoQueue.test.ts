@@ -212,8 +212,8 @@ describe("Splunk Deep Links", () => {
   }
 
   it("should construct a valid Splunk ES deep link", () => {
-    const url = buildSplunkDeepLink("192.168.50.213", "8089", "DANG-1709123456-abc123");
-    expect(url).toContain("192.168.50.213:8000");
+    const url = buildSplunkDeepLink("localhost", "8089", "DANG-1709123456-abc123");
+    expect(url).toContain("localhost:8000");
     expect(url).toContain("incident_review");
     expect(url).toContain("DANG-1709123456-abc123");
   });

@@ -1,6 +1,9 @@
 import { trpc } from "@/lib/trpc";
 import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
+import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared/IndexerStates";
+import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
+import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
@@ -20,7 +23,7 @@ import {
 import {
   Bug, Shield, Search, ChevronLeft, ChevronRight,
   ExternalLink, AlertTriangle, TrendingDown, Layers,
-  Database, Globe, Package, Server,
+  Database, Globe, Package, Server, Loader2,
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import {
@@ -105,7 +108,7 @@ export default function Vulnerabilities() {
   // ── Agent list ────────────────────────────────────────────────────────────
   const agentsQ = trpc.wazuh.agents.useQuery({ limit: 100, offset: 0, status: "active" }, { retry: 1, staleTime: 30_000, enabled: isWazuhConnected });
   const agentList = useMemo(() => {
-    if (isWazuhConnected && agentsQ.data) return extractItems(agentsQ.data);
+    if (isWazuhConnected && agentsQ.data) return extractItems(agentsQ.data).filter(a => String(a.id ?? "") !== "");
     return [];
   }, [agentsQ.data, isWazuhConnected]);
 
@@ -119,15 +122,41 @@ export default function Vulnerabilities() {
     { retry: 1, staleTime: 15_000, enabled: isIndexerConnected && viewMode === "fleet" }
   );
 
-  // ── Server API: Per-agent vulnerabilities ─────────────────────────────────
-  const vulnsQ = trpc.wazuh.agentVulnerabilities.useQuery({
-    agentId, limit: pageSize, offset: page * pageSize,
-    severity: sevFilter !== "all" ? sevFilter as "critical" | "high" | "medium" | "low" : undefined,
-  }, { retry: 1, staleTime: 15_000, enabled: isWazuhConnected && viewMode === "agent" });
+  // ── Indexer: Per-agent vulnerabilities (replaces removed GET /vulnerability/{id}) ──
+  const vulnsQ = trpc.indexer.vulnSearch.useQuery({
+    agentId, size: pageSize, offset: page * pageSize,
+    severity: sevFilter !== "all" ? (sevFilter.charAt(0).toUpperCase() + sevFilter.slice(1)) as "Critical" | "High" | "Medium" | "Low" : undefined,
+  }, { retry: 1, staleTime: 15_000, enabled: isIndexerConnected && viewMode === "agent" });
 
   const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); utils.indexer.invalidate(); }, [utils]);
 
-  // ── Fleet severity distribution (Indexer or mock) ─────────────────────────
+  // ── Per-agent vulns from indexer (same shape as fleet search) ──────────────
+  const agentVulnsParsed = useMemo(() => {
+    if (viewMode !== "agent" || !isIndexerConnected || !vulnsQ.data?.data) return { items: [] as Array<Record<string, unknown>>, total: 0 };
+    const resp = vulnsQ.data.data as unknown as Record<string, unknown>;
+    const hits = (resp.hits as Record<string, unknown>) ?? {};
+    const hitArr = ((hits.hits as Array<Record<string, unknown>>) ?? []);
+    const total = typeof hits.total === "object" ? Number((hits.total as Record<string, unknown>).value ?? 0) : Number(hits.total ?? 0);
+    const mapped = hitArr.map(h => {
+      const src = (h._source as Record<string, unknown>) ?? {};
+      const vuln = (src.vulnerability as Record<string, unknown>) ?? {};
+      const pkg = (src.package as Record<string, unknown>) ?? {};
+      const agent = (src.agent as Record<string, unknown>) ?? {};
+      return {
+        _id: String(h._id ?? ""),
+        cve: vuln.id, severity: vuln.severity, title: vuln.title,
+        cvss3_score: (vuln.score as Record<string, unknown>)?.base,
+        name: pkg.name, version: pkg.version, architecture: pkg.architecture,
+        status: vuln.status ?? vuln.condition,
+        published: vuln.published, updated: vuln.updated,
+        agent_id: agent.id, agent_name: agent.name,
+        _raw: src,
+      } as Record<string, unknown>;
+    });
+    return { items: mapped, total };
+  }, [viewMode, isIndexerConnected, vulnsQ.data]);
+
+  // ── Fleet severity distribution (Indexer or empty fallback) ──────────────────
   const { fleetSevDist, fleetTotal, fleetAvgCvss, fleetSource } = useMemo(() => {
     if (isIndexerConnected && vulnSevQ.data?.data) {
       const aggs = parseAggs(vulnSevQ.data.data);
@@ -149,7 +178,7 @@ export default function Vulnerabilities() {
     };
   }, [isIndexerConnected, vulnSevQ.data]);
 
-  // ── Top vulnerable agents (Indexer or mock) ───────────────────────────────
+  // ── Top vulnerable agents (Indexer or empty fallback) ────────────────────────
   const { topAgents, agentSource } = useMemo(() => {
     if (isIndexerConnected && vulnAgentQ.data?.data) {
       const aggs = parseAggs(vulnAgentQ.data.data);
@@ -174,7 +203,7 @@ export default function Vulnerabilities() {
     };
   }, [isIndexerConnected, vulnAgentQ.data]);
 
-  // ── Top packages (Indexer or mock) ────────────────────────────────────────
+  // ── Top packages (Indexer or empty fallback) ─────────────────────────────────
   const { topPackages, pkgSource } = useMemo(() => {
     if (isIndexerConnected && vulnPkgQ.data?.data) {
       const aggs = parseAggs(vulnPkgQ.data.data);
@@ -195,7 +224,7 @@ export default function Vulnerabilities() {
     };
   }, [isIndexerConnected, vulnPkgQ.data]);
 
-  // ── Top CVEs (Indexer or mock) ────────────────────────────────────────────
+  // ── Top CVEs (Indexer or empty fallback) ─────────────────────────────────────
   const { topCves, cveSource } = useMemo(() => {
     if (isIndexerConnected && vulnCveQ.data?.data) {
       const aggs = parseAggs(vulnCveQ.data.data);
@@ -221,15 +250,13 @@ export default function Vulnerabilities() {
     };
   }, [isIndexerConnected, vulnCveQ.data]);
 
-  // ── Per-agent vulns (Server API or mock) ──────────────────────────────────
+  // ── Per-agent vulns (Indexer-powered) ──────────────────────────────────────
   const { agentVulns, agentTotal, agentVulnSource } = useMemo(() => {
-    if (isWazuhConnected && vulnsQ.data) {
-      const items = extractItems(vulnsQ.data);
-      const d = (vulnsQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
-      return { agentVulns: items, agentTotal: Number(d?.total_affected_items ?? items.length), agentVulnSource: "server" as const };
+    if (agentVulnsParsed.items.length > 0) {
+      return { agentVulns: agentVulnsParsed.items, agentTotal: agentVulnsParsed.total, agentVulnSource: "indexer" as const };
     }
-    return { agentVulns: [] as Array<Record<string, unknown>>, agentTotal: 0, agentVulnSource: "server" as const };
-  }, [vulnsQ.data, isWazuhConnected, sevFilter]);
+    return { agentVulns: [] as Array<Record<string, unknown>>, agentTotal: 0, agentVulnSource: "indexer" as const };
+  }, [agentVulnsParsed]);
 
   // ── Indexer fleet-wide search results ─────────────────────────────────────
   const { fleetVulns, fleetSearchTotal, fleetSearchSource } = useMemo(() => {
@@ -310,19 +337,38 @@ export default function Vulnerabilities() {
           )}
         </GlassPanel>
 
+        {/* ── Loading State ── */}
+        {vulnSearchQ.isLoading && <IndexerLoadingState message="Fetching vulnerability data from indexer…" />}
+        {/* ── Error State ── */}
+        {vulnSearchQ.isError && (
+          <IndexerErrorState
+            message="Failed to fetch vulnerability data from indexer"
+            detail={vulnSearchQ.error?.message}
+            onRetry={() => vulnSearchQ.refetch()}
+          />
+        )}
+
         {/* KPI Row */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {vulnSearchQ.isLoading ? <StatCardSkeleton count={5} /> : (<>
           <StatCard label="Total CVEs" value={viewMode === "fleet" ? fleetTotal : agentTotal} icon={Bug} colorClass="text-primary" />
           <StatCard label="Critical" value={criticalCount} icon={AlertTriangle} colorClass="text-threat-critical" />
           <StatCard label="High" value={highCount} icon={Shield} colorClass="text-threat-high" />
           <StatCard label="Medium" value={mediumCount} icon={TrendingDown} colorClass="text-threat-medium" />
           <StatCard label="Avg CVSS" value={fleetAvgCvss} icon={Bug} colorClass="text-primary" />
+          </>)}
         </div>
 
         {/* Fleet-Wide Dashboard (Indexer-powered) */}
         {viewMode === "fleet" && (
           <div className="space-y-4">
             {/* Row 1: Severity Pie + Top CVEs */}
+            {vulnSearchQ.isLoading ? (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                <ChartSkeleton variant="pie" height={220} title="Severity Distribution" className="lg:col-span-4" />
+                <ChartSkeleton variant="bar" height={220} title="Top CVEs Across Fleet" className="lg:col-span-8" />
+              </div>
+            ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
               <GlassPanel className="lg:col-span-4">
                 <div className="flex items-center justify-between mb-4">
@@ -373,8 +419,15 @@ export default function Vulnerabilities() {
                 </div>
               </GlassPanel>
             </div>
+            )}
 
             {/* Row 2: Top Vulnerable Agents + Top Packages Treemap */}
+            {vulnSearchQ.isLoading ? (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                <ChartSkeleton variant="bar" height={240} title="Top Vulnerable Agents" className="lg:col-span-6" />
+                <ChartSkeleton variant="bar" height={240} title="Most Affected Packages" className="lg:col-span-6" />
+              </div>
+            ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
               <GlassPanel className="lg:col-span-6">
                 <div className="flex items-center justify-between mb-4">
@@ -456,6 +509,7 @@ export default function Vulnerabilities() {
                 )}
               </GlassPanel>
             </div>
+            )}
           </div>
         )}
 
@@ -492,6 +546,9 @@ export default function Vulnerabilities() {
             </div>
           </div>
 
+          {vulnSearchQ.isLoading ? (
+            <TableSkeleton columns={9} rows={12} columnWidths={[2, 1, 1, 2, 1, 2, 1, 1, 1]} />
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead><tr className="border-b border-border/30">
@@ -533,6 +590,7 @@ export default function Vulnerabilities() {
               </tbody>
             </table>
           </div>
+          )}
 
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-4 pt-4 border-t border-border/30">

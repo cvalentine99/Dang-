@@ -72,13 +72,13 @@ describe("LLM Service", () => {
 
     it("should use defaults for missing fields", async () => {
       mockGetEffectiveSettings.mockResolvedValue({
-        values: { host: "192.168.1.1", enabled: "true" },
+        values: { host: "localhost", enabled: "true" },
         sources: { host: "env", enabled: "env" },
       });
 
       const config = await getEffectiveLLMConfig();
 
-      expect(config.host).toBe("192.168.1.1");
+      expect(config.host).toBe("localhost");
       expect(config.port).toBe(parseInt(process.env.LLM_PORT || "30000", 10));
       expect(config.model).toBe(process.env.LLM_MODEL || "unsloth/Nemotron-3-Nano-30B-A3B-GGUF");
       expect(config.protocol).toBe("http");
@@ -88,7 +88,7 @@ describe("LLM Service", () => {
   describe("isCustomLLMEnabled", () => {
     it("should return true when enabled and host is set", async () => {
       mockGetEffectiveSettings.mockResolvedValue({
-        values: { host: "10.0.0.5", enabled: "true" },
+        values: { host: "localhost", enabled: "true" },
         sources: { host: "env", enabled: "env" },
       });
 
@@ -188,7 +188,7 @@ describe("LLM Service", () => {
 
     it("should handle unreachable endpoints gracefully", async () => {
       const result = await testLLMConnection({
-        host: "192.168.99.99",
+        host: "unreachable.invalid",
         port: "12345",
         protocol: "http",
       });

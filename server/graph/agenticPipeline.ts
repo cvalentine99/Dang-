@@ -18,13 +18,16 @@
  */
 
 import { invokeLLMWithFallback as invokeLLM } from "../llm/llmService";
-import { searchGraph, getGraphStats, getRiskAnalysis, getEndpoints, getResourceOverview, getUseCases, getErrorPatterns } from "./graphQueryService";
+import { searchGraph, getGraphStats, getRiskAnalysis, getEndpoints, getResourceOverview, getUseCases, getErrorPatterns, recordProvenance } from "./graphQueryService";
 import {
   getEffectiveIndexerConfig,
   indexerSearch,
   INDEX_PATTERNS,
   boolQuery,
 } from "../indexer/indexerClient";
+import { getDb } from "../db";
+import { livingCaseState, responseActions, triageObjects, pipelineRuns } from "../../drizzle/schema";
+import { eq, desc, sql, and, inArray } from "drizzle-orm";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -34,7 +37,7 @@ export interface AnalystMessage {
 }
 
 export interface RetrievalSource {
-  type: "graph" | "indexer" | "stats";
+  type: "graph" | "indexer" | "stats" | "pipeline";
   label: string;
   data: unknown;
   relevance: string;
@@ -42,7 +45,7 @@ export interface RetrievalSource {
 
 /** Each pipeline step emits an AgentStep for the live activity feed */
 export interface AgentStep {
-  agent: "orchestrator" | "graph_retriever" | "indexer_retriever" | "synthesizer" | "safety_validator";
+  agent: "orchestrator" | "graph_retriever" | "indexer_retriever" | "synthesizer" | "safety_validator" | "pipeline_retriever";
   phase: number;
   action: string;
   detail: string;
@@ -151,6 +154,82 @@ function hashQuery(q: string): string {
     hash |= 0;
   }
   return Math.abs(hash).toString(36).padStart(8, "0");
+}
+
+/**
+ * Extract real KG node IDs from retrieval sources for provenance recording.
+ *
+ * Scans all graph-type RetrievalSource entries and extracts numeric IDs from:
+ * - GraphNode.id strings like "endpoint-42" → endpointId 42
+ * - GraphNode.id strings like "param-17" → parameterId 17
+ * - Direct endpoint rows from getEndpoints() which have .id (numeric)
+ * - Risk analysis rows from getRiskAnalysis() which have .id (numeric)
+ *
+ * Returns deduplicated arrays of real numeric IDs that were actually used
+ * in the retrieval path for this query. Empty arrays are truthful — they
+ * mean no nodes of that type were retrieved for this particular query.
+ */
+export function extractProvenanceIds(sources: RetrievalSource[]): {
+  endpointIds: number[];
+  parameterIds: number[];
+} {
+  const endpointIdSet = new Set<number>();
+  const parameterIdSet = new Set<number>();
+
+  for (const source of sources) {
+    if (source.type !== "graph" && source.type !== "stats") continue;
+    const data = source.data;
+    if (!data) continue;
+
+    // Handle arrays of GraphNode objects (from searchGraph, getEndpoints, etc.)
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        if (typeof item !== "object" || item === null) continue;
+        const record = item as Record<string, unknown>;
+
+        // GraphNode format: id is "endpoint-42", "param-17", etc.
+        if (typeof record.id === "string") {
+          const parts = record.id.split("-");
+          const numericId = parseInt(parts[parts.length - 1], 10);
+          if (!isNaN(numericId)) {
+            if (record.id.startsWith("endpoint-") || record.type === "endpoint") {
+              endpointIdSet.add(numericId);
+            } else if (record.id.startsWith("param-") || record.type === "parameter") {
+              parameterIdSet.add(numericId);
+            }
+          }
+        }
+
+        // Direct endpoint row format: { id: number, method: string, path: string, ... }
+        if (typeof record.id === "number" && ("method" in record || "path" in record || "riskLevel" in record)) {
+          endpointIdSet.add(record.id);
+        }
+
+        // Parameter rows with endpointId linkage
+        if (typeof record.id === "number" && "endpointId" in record && typeof record.endpointId === "number") {
+          parameterIdSet.add(record.id);
+          endpointIdSet.add(record.endpointId);
+        }
+      }
+    }
+
+    // Handle risk analysis object: { dangerousEndpoints: [{ id, ... }] }
+    if (typeof data === "object" && !Array.isArray(data)) {
+      const obj = data as Record<string, unknown>;
+      if (Array.isArray(obj.dangerousEndpoints)) {
+        for (const ep of obj.dangerousEndpoints) {
+          if (typeof ep === "object" && ep !== null && typeof (ep as Record<string, unknown>).id === "number") {
+            endpointIdSet.add((ep as Record<string, unknown>).id as number);
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    endpointIds: Array.from(endpointIdSet).sort((a, b) => a - b),
+    parameterIds: Array.from(parameterIdSet).sort((a, b) => a - b),
+  };
 }
 
 // ── Phase 1: Intent Analysis ────────────────────────────────────────────────
@@ -536,6 +615,213 @@ async function retrieveFromIndexer(intent: IntentAnalysis, steps: AgentStep[]): 
   return sources;
 }
 
+// ── Phase 2.5: Pipeline Context Retrieval ──────────────────────────────────
+
+/**
+ * Retrieves active SOC pipeline context — living cases, pending response actions,
+ * recent triage results, and pipeline run status. This makes the analyst chat
+ * pipeline-aware so Walter can reference ongoing investigations, pending approvals,
+ * and recent automated findings without the analyst needing to switch views.
+ */
+async function retrievePipelineContext(
+  intent: IntentAnalysis,
+  steps: AgentStep[]
+): Promise<RetrievalSource[]> {
+  const stepStart = Date.now();
+  steps.push({
+    agent: "pipeline_retriever",
+    phase: 2,
+    action: "Retrieving SOC pipeline context",
+    detail: "Fetching active cases, pending actions, recent triages...",
+    status: "running",
+    timestamp: Date.now(),
+  });
+
+  const sources: RetrievalSource[] = [];
+
+  try {
+    const db = await getDb();
+    if (!db) {
+      steps[steps.length - 1] = {
+        ...steps[steps.length - 1],
+        status: "complete",
+        durationMs: Date.now() - stepStart,
+        detail: "Database unavailable — skipping pipeline context",
+      };
+      return [];
+    }
+
+    // ── Active Living Cases (most recent 5) ──
+    const activeCases = await db
+      .select({
+        id: livingCaseState.id,
+        sessionId: livingCaseState.sessionId,
+        workingTheory: livingCaseState.workingTheory,
+        theoryConfidence: livingCaseState.theoryConfidence,
+        caseData: livingCaseState.caseData,
+        pendingActionCount: livingCaseState.pendingActionCount,
+        createdAt: livingCaseState.createdAt,
+      })
+      .from(livingCaseState)
+      .orderBy(desc(livingCaseState.createdAt))
+      .limit(5);
+
+    if (activeCases.length > 0) {
+      const caseSummaries = activeCases.map(c => {
+        let alertFamily = "";
+        let riskScore = 0;
+        try {
+          const data = c.caseData as unknown as Record<string, unknown>;
+          alertFamily = (data?.alertFamily as string) ?? "";
+          riskScore = (data?.riskScore as number) ?? 0;
+        } catch { /* ignore parse errors */ }
+        return {
+          id: c.id,
+          sessionId: c.sessionId,
+          riskScore,
+          alertFamily,
+          workingTheory: (c.workingTheory ?? "").slice(0, 200),
+          theoryConfidence: c.theoryConfidence,
+          pendingActions: c.pendingActionCount,
+          createdAt: c.createdAt,
+        };
+      });
+
+      sources.push({
+        type: "pipeline",
+        label: `Active Living Cases (${activeCases.length})`,
+        data: caseSummaries,
+        relevance: "context",
+      });
+    }
+
+    // ── Pending Response Actions ──
+    const pendingActions = await db
+      .select({
+        id: responseActions.id,
+        actionId: responseActions.actionId,
+        category: responseActions.category,
+        title: responseActions.title,
+        urgency: responseActions.urgency,
+        targetValue: responseActions.targetValue,
+        targetType: responseActions.targetType,
+        state: responseActions.state,
+        createdAt: responseActions.createdAt,
+      })
+      .from(responseActions)
+      .where(eq(responseActions.state, "proposed"))
+      .orderBy(desc(responseActions.createdAt))
+      .limit(10);
+
+    if (pendingActions.length > 0) {
+      sources.push({
+        type: "pipeline",
+        label: `Pending Response Actions (${pendingActions.length})`,
+        data: pendingActions,
+        relevance: "context",
+      });
+    }
+
+    // ── Recent Triage Results (last 10) ──
+    const recentTriages = await db
+      .select({
+        id: triageObjects.id,
+        triageId: triageObjects.triageId,
+        alertId: triageObjects.alertId,
+        severity: triageObjects.severity,
+        route: triageObjects.route,
+        alertFamily: triageObjects.alertFamily,
+        agentId: triageObjects.agentId,
+        createdAt: triageObjects.createdAt,
+      })
+      .from(triageObjects)
+      .orderBy(desc(triageObjects.createdAt))
+      .limit(10);
+
+    if (recentTriages.length > 0) {
+      sources.push({
+        type: "pipeline",
+        label: `Recent Triage Results (${recentTriages.length})`,
+        data: recentTriages,
+        relevance: "context",
+      });
+    }
+
+    // ── Pipeline Run Stats ──
+    const [runStats] = await db.select({
+      total: sql<number>`COUNT(*)`,
+      completed: sql<number>`SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END)`,
+      partial: sql<number>`SUM(CASE WHEN status = 'partial' THEN 1 ELSE 0 END)`,
+      failed: sql<number>`SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)`,
+      running: sql<number>`SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END)`,
+    }).from(pipelineRuns);
+
+    if (runStats && runStats.total > 0) {
+      sources.push({
+        type: "pipeline",
+        label: "Pipeline Run Statistics",
+        data: runStats,
+        relevance: "context",
+      });
+    }
+
+    // ── Entity-Specific Context ──
+    // If the analyst query mentions specific agents, hosts, or IPs that have
+    // active cases or pending actions, surface those specifically.
+    const mentionedAgents = intent.entities.agentIds;
+    const mentionedHosts = intent.entities.hostnames;
+    const mentionedIPs = intent.entities.ipAddresses;
+
+    if (mentionedAgents.length > 0 || mentionedHosts.length > 0 || mentionedIPs.length > 0) {
+      // Check for triage results matching mentioned entities
+      const entityTriages = await db
+        .select()
+        .from(triageObjects)
+        .where(
+          mentionedAgents.length > 0
+            ? inArray(triageObjects.agentId, mentionedAgents)
+            : sql`1=0`
+        )
+        .orderBy(desc(triageObjects.createdAt))
+        .limit(5);
+
+      if (entityTriages.length > 0) {
+        sources.push({
+          type: "pipeline",
+          label: `Triage History for Mentioned Entities (${entityTriages.length})`,
+          data: entityTriages.map(t => ({
+            triageId: t.triageId,
+            alertId: t.alertId,
+            severity: t.severity,
+            route: t.route,
+            alertFamily: t.alertFamily,
+            agentId: t.agentId,
+            summary: (t.summary ?? "").slice(0, 200),
+          })),
+          relevance: "direct",
+        });
+      }
+    }
+
+    steps[steps.length - 1] = {
+      ...steps[steps.length - 1],
+      status: "complete",
+      durationMs: Date.now() - stepStart,
+      dataPoints: sources.reduce((sum, s) => sum + (Array.isArray(s.data) ? (s.data as unknown[]).length : 1), 0),
+      detail: `Retrieved ${sources.length} pipeline context sources (${activeCases.length} cases, ${pendingActions.length} pending actions, ${recentTriages.length} triages)`,
+    };
+  } catch (err) {
+    steps[steps.length - 1] = {
+      ...steps[steps.length - 1],
+      status: "error",
+      durationMs: Date.now() - stepStart,
+      detail: `Pipeline context retrieval failed: ${(err as Error).message}`,
+    };
+  }
+
+  return sources;
+}
+
 // ── Phase 4: LLM Synthesis with Safety Rails ───────────────────────────────
 
 async function synthesizeResponse(
@@ -606,6 +892,14 @@ The KG contains 4 layers:
 2. Operational Semantics: Use cases, risk classification (SAFE/MUTATING/DESTRUCTIVE)
 3. Schema Lineage: Index patterns, field mappings, data types
 4. Error/Failure: Error codes, causes, mitigations
+
+## SOC PIPELINE CONTEXT
+You have access to the automated SOC pipeline state. This includes:
+- **Active Living Cases**: Ongoing investigations with working theories, risk scores, and pending actions
+- **Pending Response Actions**: Proposed actions (isolate_host, block_ioc, etc.) awaiting analyst approval
+- **Recent Triage Results**: Automated alert classifications with severity, route, and alert family
+- **Pipeline Run Statistics**: Overall pipeline health and throughput
+When pipeline context is available, reference it naturally in your analysis. If the analyst asks about ongoing investigations, pending actions, or recent triages, use this data directly. Cross-reference pipeline findings with graph and indexer data for richer analysis.
 
 The user's detected intent is: ${intent.intent}
 Confidence: ${((intent.confidence ?? 0.5) * 100).toFixed(0)}%
@@ -786,6 +1080,9 @@ export async function runAnalystPipeline(
   if (useGraph) retrievalPromises.push(retrieveFromGraph(intent, steps));
   if (useIndexer) retrievalPromises.push(retrieveFromIndexer(intent, steps));
 
+  // Always inject pipeline context — active cases, pending actions, recent triages
+  retrievalPromises.push(retrievePipelineContext(intent, steps));
+
   // Always get graph stats for context
   if (!useGraph) {
     retrievalPromises.push(
@@ -806,6 +1103,7 @@ export async function runAnalystPipeline(
   // ── Compute Trust Score ──
   const graphSources = allSources.filter(s => s.type === "graph" || s.type === "stats");
   const indexerSources = allSources.filter(s => s.type === "indexer");
+  const pipelineSources = allSources.filter(s => s.type === "pipeline");
   const errorSources = allSources.filter(s => s.relevance === "error");
   const totalDataPoints = allSources.reduce((sum, s) => {
     if (Array.isArray(s.data)) return sum + s.data.length;
@@ -817,6 +1115,7 @@ export async function runAnalystPipeline(
   let trustScore = 0.3; // base
   if (graphSources.length > 0) trustScore += 0.2;
   if (indexerSources.length > 0) trustScore += 0.2;
+  if (pipelineSources.length > 0) trustScore += 0.1; // pipeline context boosts trust
   if (totalDataPoints > 10) trustScore += 0.15;
   if (totalDataPoints > 50) trustScore += 0.1;
   if (errorSources.length > 0) trustScore -= 0.15;
@@ -824,6 +1123,28 @@ export async function runAnalystPipeline(
   trustScore = Math.max(0, Math.min(1, trustScore));
 
   const totalDurationMs = Date.now() - pipelineStart;
+
+  // ── Extract real KG node IDs from retrieval sources for provenance ──
+  const provenanceIds = extractProvenanceIds(allSources);
+
+  // ── Record Provenance (fire-and-forget, never blocks the response) ──
+  // endpointIds and parameterIds are extracted from actual graph retrieval results.
+  // docChunkIds is always [] because the current KG architecture has no document
+  // chunk layer — the 4 layers are: API Ontology, Operational Semantics, Schema
+  // Lineage, and Error/Failure. A future RAG integration could populate this field.
+  recordProvenance({
+    sessionId: hashQuery(query),
+    question: query,
+    answer: answer.slice(0, 4000), // truncate to avoid DB column overflow
+    confidence: trustScore.toFixed(3),
+    endpointIds: provenanceIds.endpointIds,
+    parameterIds: provenanceIds.parameterIds,
+    docChunkIds: [], // No doc chunk layer in current KG architecture — genuinely empty
+    warnings: [
+      ...(safetyResult.status === "filtered" ? [`safety_filtered: ${safetyResult.filtered.join(", ")}`] : []),
+      ...(errorSources.length > 0 ? [`retrieval_errors: ${errorSources.length}`] : []),
+    ],
+  }).catch(() => { /* provenance is best-effort — never fail the pipeline */ });
 
   // Final orchestrator step
   steps.push({
@@ -839,7 +1160,7 @@ export async function runAnalystPipeline(
 
   return {
     answer,
-    reasoning: `Intent: ${intent.intent} | Confidence: ${((intent.confidence ?? 0.5) * 100).toFixed(0)}% | Strategy: ${intent.retrievalStrategy.join(", ")} | Sources: ${allSources.length} | Trust: ${(trustScore * 100).toFixed(0)}%`,
+    reasoning: `Intent: ${intent.intent} | Confidence: ${((intent.confidence ?? 0.5) * 100).toFixed(0)}% | Strategy: ${intent.retrievalStrategy.join(", ")} | Sources: ${allSources.length} (${pipelineSources.length} pipeline) | Trust: ${(trustScore * 100).toFixed(0)}%`,
     sources: allSources,
     suggestedFollowUps,
     trustScore,

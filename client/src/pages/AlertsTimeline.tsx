@@ -1,6 +1,9 @@
 import { trpc } from "@/lib/trpc";
 import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
+import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared/IndexerStates";
+import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
+import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge, threatLevelFromNumber } from "@/components/shared/ThreatBadge";
@@ -21,7 +24,7 @@ import {
   AlertTriangle, Shield, Search, ChevronLeft, ChevronRight,
   BarChart3, Clock, Layers, TrendingUp, FileWarning,
   Zap, Target, Eye, ExternalLink, Filter, RefreshCw,
-  Database, Radio, Brain,
+  Database, Radio, Brain, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useState, useMemo, useCallback, useEffect } from "react";
@@ -206,7 +209,7 @@ export default function AlertsTimeline() {
     utils.indexer.invalidate();
   }, [utils]);
 
-  // ── Alerts (Indexer or mock) ───────────────────────────────────────────
+  // ── Alerts (Indexer or empty fallback) ─────────────────────────────────
   const { alerts, totalAlerts } = useMemo(() => {
     if (isIndexerConnected && alertsSearchQ.data?.data) {
       const resp = alertsSearchQ.data.data as unknown as Record<string, unknown>;
@@ -220,8 +223,7 @@ export default function AlertsTimeline() {
   }, [alertsSearchQ.data, isIndexerConnected, levelFilter, agentFilter, searchQuery, page]);
 
   const alertsSource: "indexer" | "server" = isIndexerConnected && alertsSearchQ.data?.data ? "indexer" : "server";
-
-  // ── Severity Timeline (Indexer or mock) ────────────────────────────────
+  // ── Severity Timeline (Indexer or empty fallback) ──────────────────────────────
   const severityTimeline = useMemo(() => {
     if (isIndexerConnected && alertsAggByLevelQ.data?.data) {
       const resp = alertsAggByLevelQ.data.data as unknown as Record<string, unknown>;
@@ -250,7 +252,7 @@ export default function AlertsTimeline() {
 
   const timelineSource: "indexer" | "server" = isIndexerConnected && alertsAggByLevelQ.data?.data ? "indexer" : "server";
 
-  // ── Rule Distribution (Indexer or mock) ────────────────────────────────
+  // ── Rule Distribution (Indexer or empty fallback) ──────────────────────────────
   const ruleDistribution = useMemo(() => {
     if (isIndexerConnected && alertsAggByRuleQ.data?.data) {
       const resp = alertsAggByRuleQ.data.data as unknown as Record<string, unknown>;
@@ -276,12 +278,12 @@ export default function AlertsTimeline() {
       const aggs = resp.aggregations as Record<string, unknown> ?? {};
       const topAgents = aggs.top_agents as Record<string, unknown> ?? {};
       const buckets = (topAgents.buckets as Array<Record<string, unknown>>) ?? [];
-      return buckets.map(b => ({ id: String(b.key ?? ""), count: Number(b.doc_count ?? 0) }));
+      return buckets.map(b => ({ id: String(b.key ?? ""), count: Number(b.doc_count ?? 0) })).filter(a => a.id !== "");
     }
     return [];
   }, [alertsAggByAgentQ.data, isIndexerConnected]);
 
-  // ── Weekly heatmap (Server API or mock) ────────────────────────────────
+  // ── Weekly heatmap (Server API or zeroed grid) ────────────────────────────────
   const weeklyHeatmap = useMemo(() => {
     if (isConnected && statsWeeklyQ.data) {
       const items = extractItems(statsWeeklyQ.data);
@@ -341,17 +343,36 @@ export default function AlertsTimeline() {
           </div>
         </GlassPanel>
 
+        {/* ── Loading State ── */}
+        {alertsSearchQ.isLoading && <IndexerLoadingState message="Fetching alerts from indexer…" />}
+        {/* ── Error State ── */}
+        {alertsSearchQ.isError && (
+          <IndexerErrorState
+            message="Failed to fetch alerts from indexer"
+            detail={alertsSearchQ.error?.message}
+            onRetry={() => alertsSearchQ.refetch()}
+          />
+        )}
+
         {/* KPI Row */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {alertsSearchQ.isLoading ? <StatCardSkeleton count={5} /> : (<>
           <StatCard label="Total Alerts" value={totalAlerts.toLocaleString()} icon={Zap} colorClass="text-primary" />
           <StatCard label="Critical (12+)" value={criticalCount} icon={AlertTriangle} colorClass="text-threat-critical" />
           <StatCard label="High (8-11)" value={highCount} icon={TrendingUp} colorClass="text-threat-high" />
           <StatCard label="Medium (4-7)" value={mediumCount} icon={BarChart3} colorClass="text-threat-medium" />
           <StatCard label="Low / Info" value={lowCount} icon={Shield} colorClass="text-info-cyan" />
+          </>)}
         </div>
 
         {/* Charts Row: Severity Timeline + Rule Distribution */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          {alertsSearchQ.isLoading ? (
+            <>
+              <ChartSkeleton variant="area" height={240} title="Severity Trends" className="lg:col-span-8" />
+              <ChartSkeleton variant="bar" height={240} title="Top Firing Rules" className="lg:col-span-4" />
+            </>
+          ) : (<>
           <GlassPanel className="lg:col-span-8">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><TrendingUp className="h-4 w-4 text-primary" /> Severity Trends</h3>
@@ -407,9 +428,13 @@ export default function AlertsTimeline() {
               })}
             </div>
           </GlassPanel>
+          </>)}
         </div>
 
         {/* Weekly Heatmap */}
+        {alertsSearchQ.isLoading ? (
+          <ChartSkeleton variant="heatmap" height={200} title="Weekly Alert Heatmap" />
+        ) : (
         <GlassPanel>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /> Weekly Alert Heatmap</h3>
@@ -447,6 +472,7 @@ export default function AlertsTimeline() {
             </div>
           </div>
         </GlassPanel>
+        )}
 
         {/* Dense Alert Table */}
         <GlassPanel>
@@ -507,6 +533,9 @@ export default function AlertsTimeline() {
             )}
           </div>
 
+          {alertsSearchQ.isLoading ? (
+            <TableSkeleton columns={9} rows={12} columnWidths={[2, 1, 1, 3, 2, 1, 1, 1, 1]} />
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead><tr className="border-b border-border/30">
@@ -565,6 +594,7 @@ export default function AlertsTimeline() {
               </tbody>
             </table>
           </div>
+          )}
 
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-4 pt-4 border-t border-border/30">

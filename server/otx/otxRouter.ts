@@ -12,12 +12,12 @@
  */
 
 import { z } from "zod";
-import { publicProcedure, router } from "../_core/trpc";
+import { protectedProcedure, router } from "../_core/trpc";
 import { isOtxConfigured, otxGet } from "./otxClient";
 
 export const otxRouter = router({
   // ── Status / connectivity check ────────────────────────────────────────────
-  status: publicProcedure.query(async () => {
+  status: protectedProcedure.query(async () => {
     if (!isOtxConfigured()) {
       return { configured: false, user: null };
     }
@@ -30,7 +30,7 @@ export const otxRouter = router({
   }),
 
   // ── Subscribed pulses (paginated) ──────────────────────────────────────────
-  subscribedPulses: publicProcedure
+  subscribedPulses: protectedProcedure
     .input(
       z.object({
         page: z.number().int().min(1).default(1),
@@ -56,7 +56,7 @@ export const otxRouter = router({
     }),
 
   // ── Pulse detail ───────────────────────────────────────────────────────────
-  pulseDetail: publicProcedure
+  pulseDetail: protectedProcedure
     .input(z.object({ pulseId: z.string().min(1) }))
     .query(async ({ input }) => {
       if (!isOtxConfigured()) {
@@ -72,7 +72,7 @@ export const otxRouter = router({
     }),
 
   // ── Pulse indicators (IOCs in a pulse) ─────────────────────────────────────
-  pulseIndicators: publicProcedure
+  pulseIndicators: protectedProcedure
     .input(
       z.object({
         pulseId: z.string().min(1),
@@ -94,7 +94,7 @@ export const otxRouter = router({
     }),
 
   // ── Search pulses ──────────────────────────────────────────────────────────
-  searchPulses: publicProcedure
+  searchPulses: protectedProcedure
     .input(
       z.object({
         query: z.string().min(1),
@@ -116,7 +116,7 @@ export const otxRouter = router({
     }),
 
   // ── IOC Indicator lookup ───────────────────────────────────────────────────
-  indicatorLookup: publicProcedure
+  indicatorLookup: protectedProcedure
     .input(
       z.object({
         type: z.enum(["IPv4", "IPv6", "domain", "hostname", "file", "url", "cve"]),
@@ -146,7 +146,7 @@ export const otxRouter = router({
     }),
 
   // ── Recent activity feed ───────────────────────────────────────────────────
-  activity: publicProcedure
+  activity: protectedProcedure
     .input(
       z.object({
         page: z.number().int().min(1).default(1),

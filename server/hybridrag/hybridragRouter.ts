@@ -14,7 +14,7 @@ import { z } from "zod";
 import { eq, desc, and } from "drizzle-orm";
 import axios from "axios";
 import { nanoid } from "nanoid";
-import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
+import { protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { analystNotes, ragSessions } from "../../drizzle/schema";
 import { invokeLLMWithFallback, getEffectiveLLMConfig } from "../llm/llmService";
@@ -123,7 +123,7 @@ Current date: ${new Date().toISOString()}`;
 export const hybridragRouter = router({
 
   // ── Model status ────────────────────────────────────────────────────────────
-  modelStatus: publicProcedure.query(async () => {
+  modelStatus: protectedProcedure.query(async () => {
     const llmStatus = await checkLLMAvailability();
     return {
       nemotron: llmStatus,
@@ -133,7 +133,7 @@ export const hybridragRouter = router({
   }),
 
   // ── Chat ────────────────────────────────────────────────────────────────────
-  chat: publicProcedure
+  chat: protectedProcedure
     .input(
       z.object({
         sessionId: z.string().default(() => nanoid()),
@@ -206,7 +206,7 @@ export const hybridragRouter = router({
     }),
 
   // ── Session history ─────────────────────────────────────────────────────────
-  sessionHistory: publicProcedure
+  sessionHistory: protectedProcedure
     .input(z.object({ sessionId: z.string() }))
     .query(async ({ input }) => {
       const db = await getDb();
@@ -218,7 +218,7 @@ export const hybridragRouter = router({
         .orderBy(ragSessions.createdAt);
     }),
 
-  clearSession: publicProcedure
+  clearSession: protectedProcedure
     .input(z.object({ sessionId: z.string() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -230,7 +230,7 @@ export const hybridragRouter = router({
 
   // ── Analyst Notes CRUD ──────────────────────────────────────────────────────
   notes: router({
-    list: publicProcedure
+    list: protectedProcedure
       .input(
         z.object({
           agentId: z.string().optional(),
@@ -267,7 +267,7 @@ export const hybridragRouter = router({
         return { notes };
       }),
 
-    create: publicProcedure
+    create: protectedProcedure
       .input(
         z.object({
           title: z.string().min(1).max(512),
@@ -297,7 +297,7 @@ export const hybridragRouter = router({
         return { id: Number(result[0].insertId), success: true };
       }),
 
-    update: publicProcedure
+    update: protectedProcedure
       .input(
         z.object({
           id: z.number().int(),
@@ -323,7 +323,7 @@ export const hybridragRouter = router({
         return { success: true };
       }),
 
-    delete: publicProcedure
+    delete: protectedProcedure
       .input(z.object({ id: z.number().int() }))
       .mutation(async ({ input }) => {
         const db = await getDb();
@@ -332,7 +332,7 @@ export const hybridragRouter = router({
         return { success: true };
       }),
 
-    getById: publicProcedure
+    getById: protectedProcedure
       .input(z.object({ id: z.number().int() }))
       .query(async ({ input }) => {
         const db = await getDb();

@@ -5,7 +5,9 @@ import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
+import { sdk } from "./sdk";
 import { serveStatic, setupVite } from "./vite";
+import { startBaselineScheduler } from "../baselines/baselineSchedulerService";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -197,10 +199,21 @@ async function startServer() {
     });
   });
 
-  // SSE alert stream endpoint
+  // SSE alert stream endpoint — authenticated
   const { handleSSEConnection, getStreamStats } = await import("../sse/alertStreamService");
-  app.get("/api/sse/alerts", handleSSEConnection);
-  app.get("/api/sse/stats", (_req, res) => {
+
+  // SSE auth middleware: validates session cookie before allowing connection
+  const sseAuthMiddleware: import("express").RequestHandler = async (req, res, next) => {
+    try {
+      await sdk.authenticateRequest(req);
+      next();
+    } catch {
+      res.status(401).json({ error: "Authentication required for SSE stream" });
+    }
+  };
+
+  app.get("/api/sse/alerts", sseAuthMiddleware, handleSSEConnection);
+  app.get("/api/sse/stats", sseAuthMiddleware, (_req, res) => {
     res.json(getStreamStats());
   });
 
@@ -228,6 +241,13 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
+
+    // Start the baseline auto-capture scheduler
+    try {
+      startBaselineScheduler();
+    } catch (err) {
+      console.warn(`[BaselineScheduler] Failed to start: ${(err as Error).message}`);
+    }
   });
 }
 

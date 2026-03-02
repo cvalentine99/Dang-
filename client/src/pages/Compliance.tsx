@@ -1,6 +1,9 @@
 import { trpc } from "@/lib/trpc";
 import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
+import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/components/shared/IndexerStates";
+import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
+import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
@@ -113,7 +116,7 @@ export default function Compliance() {
 
   const agentsQ = trpc.wazuh.agents.useQuery({ limit: 100, offset: 0, status: "active" }, { retry: 1, staleTime: 30_000, enabled: isConnected });
   const agentList = useMemo(() => {
-    if (isConnected && agentsQ.data) return extractItems(agentsQ.data);
+    if (isConnected && agentsQ.data) return extractItems(agentsQ.data).filter(a => String(a.id ?? "") !== "");
     return [];
   }, [agentsQ.data, isConnected]);
 
@@ -125,8 +128,12 @@ export default function Compliance() {
 
   // Indexer compliance aggregation query
   const trMs = TIME_RANGES.find(t => t.value === timeRange)?.ms ?? 86400000;
+  const complianceTimeWindow = useMemo(() => ({
+    from: new Date(Date.now() - trMs).toISOString(),
+    to: new Date().toISOString(),
+  }), [timeRange]); // eslint-disable-line react-hooks/exhaustive-deps
   const complianceQ = trpc.indexer.alertsComplianceAgg.useQuery(
-    { framework: selectedFramework, from: new Date(Date.now() - trMs).toISOString(), to: new Date().toISOString() },
+    { framework: selectedFramework, from: complianceTimeWindow.from, to: complianceTimeWindow.to },
     { retry: 1, staleTime: 60_000, enabled: indexerHealthy }
   );
 
@@ -175,7 +182,7 @@ export default function Compliance() {
   const totalPages = Math.ceil(totalChecks / pageSize);
   const pagedChecks = filteredChecks.slice(page * pageSize, (page + 1) * pageSize);
 
-  // ── Indexer compliance data (real or mock fallback) ────────────────────
+  // ── Indexer compliance data (real or empty fallback) ────────────────────
   const complianceSource: "indexer" | "server" = indexerHealthy && complianceQ.data ? "indexer" : "server";
   const complianceData = useMemo(() => {
     if (indexerHealthy && complianceQ.data) {
@@ -210,12 +217,25 @@ export default function Compliance() {
       <div className="space-y-6">
         <PageHeader title="Compliance Posture" subtitle="SCA policy assessment and Indexer-powered framework alert analysis" onRefresh={handleRefresh} isLoading={isLoading} />
 
+        {/* ── Loading State ── */}
+        {isLoading && <IndexerLoadingState message="Fetching compliance data from Wazuh…" />}
+        {/* ── Error State ── */}
+        {statusQ.isError && (
+          <IndexerErrorState
+            message="Failed to connect to Wazuh Manager"
+            detail={statusQ.error?.message}
+            onRetry={() => statusQ.refetch()}
+          />
+        )}
+
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {isLoading ? <StatCardSkeleton count={5} /> : (<>
           <StatCard label="Avg Score" value={`${avgScore}%`} icon={ShieldCheck} colorClass={avgScore >= 80 ? "text-threat-low" : avgScore >= 60 ? "text-threat-medium" : "text-threat-critical"} />
           <StatCard label="Policies" value={totalPolicies} icon={Layers} colorClass="text-primary" />
           <StatCard label="Passed" value={totalPass} icon={CheckCircle2} colorClass="text-threat-low" />
           <StatCard label="Failed" value={totalFail} icon={XCircle} colorClass="text-threat-critical" />
           <StatCard label="N/A" value={totalNA} icon={MinusCircle} colorClass="text-muted-foreground" />
+          </>)}
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -230,6 +250,13 @@ export default function Compliance() {
 
           {/* ── Overview Tab ─────────────────────────────────────────────── */}
           <TabsContent value="overview" className="space-y-4 mt-4">
+            {isLoading ? (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                <ChartSkeleton variant="pie" height={200} title="Policy Scores" className="lg:col-span-5" />
+                <ChartSkeleton variant="pie" height={200} title="Check Results" className="lg:col-span-3" />
+                <ChartSkeleton variant="bar" height={200} title="Score by Policy" className="lg:col-span-4" />
+              </div>
+            ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
               <GlassPanel className="lg:col-span-5">
                 <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" /> Policy Scores</h3>
@@ -264,6 +291,7 @@ export default function Compliance() {
                 </ResponsiveContainer>
               </GlassPanel>
             </div>
+            )}
 
             <GlassPanel>
               <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Layers className="h-4 w-4 text-primary" /> Regulatory Frameworks</h3>
@@ -368,6 +396,9 @@ export default function Compliance() {
               <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
                 <Layers className="h-4 w-4 text-primary" /> Top {currentFw.label} Controls by Alert Count
               </h3>
+              {isLoading ? (
+                <TableSkeleton columns={4} rows={8} columnWidths={[1, 3, 1, 4]} />
+              ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
@@ -400,6 +431,7 @@ export default function Compliance() {
                   </tbody>
                 </table>
               </div>
+              )}
             </GlassPanel>
           </TabsContent>
 
@@ -485,6 +517,9 @@ export default function Compliance() {
                 <div className="text-center text-sm text-muted-foreground py-12">Select a policy from the Policies tab to view checks</div>
               ) : (
                 <>
+                  {checksQ.isLoading ? (
+                    <TableSkeleton columns={6} rows={10} columnWidths={[1, 1, 3, 2, 2, 2]} />
+                  ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead><tr className="border-b border-border/30">
@@ -512,6 +547,7 @@ export default function Compliance() {
                       </tbody>
                     </table>
                   </div>
+                  )}
                   {totalPages > 1 ? (
                     <div className="flex items-center justify-between mt-4 pt-4 border-t border-border/30">
                       <p className="text-xs text-muted-foreground">Page {page + 1} of {totalPages} ({totalChecks} checks)</p>

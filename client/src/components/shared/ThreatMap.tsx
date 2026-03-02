@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-/** Country centroid coordinates fallback for mock data */
+/** Country centroid coordinates — used when GeoIP response lacks lat/lng */
 const COUNTRY_COORDS: Record<string, { lat: number; lng: number }> = {
   "United States": { lat: 39.8283, lng: -98.5795 },
   "China": { lat: 35.8617, lng: 104.1954 },

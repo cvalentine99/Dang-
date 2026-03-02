@@ -68,6 +68,12 @@ export interface KgStats {
   indices: number;
   fields: number;
   errorPatterns: number;
+  /**
+   * DORMANT — kgTrustHistory table exists in schema but has NO runtime writer.
+   * This count will always be 0 in the current release. The table is reserved
+   * for a future feature that tracks trust-score-over-time per endpoint.
+   * Do not present this as an active/operational metric.
+   */
   trustHistory: number;
   answerProvenance: number;
   byRiskLevel: { safe: number; mutating: number; destructive: number };
@@ -134,6 +140,8 @@ export async function getGraphStats(): Promise<KgStats> {
     indices: ix[0]?.count ?? 0,
     fields: fi[0]?.count ?? 0,
     errorPatterns: er[0]?.count ?? 0,
+    // DORMANT: kgTrustHistory has no runtime writer — this will always be 0.
+    // Kept in stats for schema completeness. See drizzle/schema.ts kgTrustHistory.
     trustHistory: th[0]?.count ?? 0,
     answerProvenance: ap[0]?.count ?? 0,
     byRiskLevel,
