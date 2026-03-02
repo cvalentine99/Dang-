@@ -2385,4 +2385,11 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 ## Migration 0011 Fix — Statement Breakpoints
 
 - [x] Fix migration 0011 (0011_missing_tables.sql) — add `--> statement-breakpoint` markers between all SQL statements
-- [ ] Push fix to GitHub dev branch
+- [x] Push fix to GitHub dev branch
+
+## Deployment Fixes — Docker Migration & Entrypoint
+
+- [x] Fix migration 0011 still not being picked up by Docker build (verify file content in container)
+- [x] Fix docker-entrypoint.sh fragile URL parsing — replace sed with Node.js URL parser
+- [x] Add .env template warnings about literal values (no shell expansion)
+- [x] Fix deploy.sh to validate .env values

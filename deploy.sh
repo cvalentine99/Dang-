@@ -132,6 +132,22 @@ preflight() {
   fi
   ok "Required environment variables are set"
 
+  # Validate .env values don't contain shell expansion syntax
+  if grep -qE '^[A-Z_]+=.*\$\(' .env 2>/dev/null; then
+    err ".env contains shell expansion syntax \$(command) which will cause errors."
+    err "Use literal values only. See env.docker.template for examples."
+    grep -nE '^[A-Z_]+=.*\$\(' .env | while read line; do
+      err "  $line"
+    done
+    exit 1
+  fi
+  if grep -qE '^[A-Z_]+=.*\`' .env 2>/dev/null; then
+    err ".env contains backtick expansion which will cause errors."
+    err "Use literal values only. See env.docker.template for examples."
+    exit 1
+  fi
+  ok ".env values are safe (no shell expansion detected)"
+
   # Warn about optional but recommended variables
   local wazuh_host=$(grep "^WAZUH_HOST=" .env 2>/dev/null | cut -d'=' -f2-)
   if [ -z "$wazuh_host" ]; then
