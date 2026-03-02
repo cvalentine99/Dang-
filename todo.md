@@ -2372,3 +2372,12 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Threat Intel: enhanced PulseCards with threat-level borders, MITRE badges, adversary tags, IOC stats
 - [x] Threat Intel: enhanced IOC Lookup with threat assessment banner, validation section
 - [x] Threat Intel: added loading skeletons, retry buttons, background update indicators
+
+## Correlation Deep-Links (Living Cases → Triage Pipeline)
+
+- [x] Add correlation deep-link from Living Cases list view (Source Correlation badge with GitBranch icon)
+- [x] Add correlation deep-link from Living Cases detail view (clickable Correlation IDs in Linked Artifacts)
+- [x] Add highlight support for correlations on TriagePipeline (?highlightCorrelation=<correlationId>)
+- [x] Auto-expand triage card, auto-show correlation bundle, scroll into view with cyan glow ring
+- [x] Added correlationBundleId to listTriages via LEFT JOIN with correlation_bundles
+- [x] All 1,216 tests passing

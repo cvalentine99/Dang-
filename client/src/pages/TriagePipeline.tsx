@@ -506,17 +506,21 @@ function CorrelationBundleCard({ bundle }: { bundle: any }) {
 
 // ── Triage Result Card ───────────────────────────────────────────────────────
 
-function TriageResultCard({ triage, onRefresh, isHighlighted }: { triage: any; onRefresh?: () => void; isHighlighted?: boolean }) {
+function TriageResultCard({ triage, onRefresh, isHighlighted, highlightCorrelationId }: { triage: any; onRefresh?: () => void; isHighlighted?: boolean; highlightCorrelationId?: string | null }) {
   const cardRef = useRef<HTMLDivElement>(null);
-  // Auto-scroll and expand when highlighted
+  // Determine if this card's correlation is highlighted
+  const isCorrelationHighlighted = !!(highlightCorrelationId && triage.correlationBundleId && triage.correlationBundleId === highlightCorrelationId);
+
+  // Auto-scroll and expand when highlighted (triage or correlation)
   useEffect(() => {
-    if (isHighlighted && cardRef.current) {
+    if ((isHighlighted || isCorrelationHighlighted) && cardRef.current) {
       setExpanded(true);
+      if (isCorrelationHighlighted) setShowCorrelation(true);
       setTimeout(() => {
         cardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       }, 100);
     }
-  }, [isHighlighted]);
+  }, [isHighlighted, isCorrelationHighlighted]);
   const [expanded, setExpanded] = useState(false);
   const [showRawJson, setShowRawJson] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -556,7 +560,7 @@ function TriageResultCard({ triage, onRefresh, isHighlighted }: { triage: any; o
   // Get correlation bundle if exists
   const correlationQuery = trpc.pipeline.getCorrelationByTriageId.useQuery(
     { triageId: triage.triageId },
-    { enabled: !!triage.triageId && (showCorrelation || triage.correlationBundleId != null) }
+    { enabled: !!triage.triageId && (showCorrelation || triage.correlationBundleId != null || isCorrelationHighlighted) }
   );
 
   const triageData = triage.triageData as any;
@@ -565,7 +569,7 @@ function TriageResultCard({ triage, onRefresh, isHighlighted }: { triage: any; o
   const routeInfo = ROUTE_LABELS[route] || ROUTE_LABELS.B_LOW_CONFIDENCE;
 
   return (
-    <GlassPanel ref={cardRef} className={`p-0 overflow-hidden transition-all duration-500 ${isHighlighted ? "ring-2 ring-violet-500/60 shadow-[0_0_20px_rgba(139,92,246,0.2)]" : ""}`}>
+    <GlassPanel ref={cardRef} className={`p-0 overflow-hidden transition-all duration-500 ${isHighlighted ? "ring-2 ring-violet-500/60 shadow-[0_0_20px_rgba(139,92,246,0.2)]" : ""} ${isCorrelationHighlighted ? "ring-2 ring-cyan-500/60 shadow-[0_0_20px_rgba(6,182,212,0.2)]" : ""}`}>
       {/* Header Row */}
       <button
         onClick={() => setExpanded(!expanded)}
@@ -930,10 +934,14 @@ export default function TriagePipeline() {
   const [page, setPage] = useState(0);
   const pageSize = 25;
 
-  // Deep-link highlight support: /triage?highlight=<triageId>
+  // Deep-link highlight support: /triage?highlight=<triageId>&highlightCorrelation=<correlationId>
   const highlightId = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("highlight") || null;
+  }, []);
+  const highlightCorrelationId = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("highlightCorrelation") || null;
   }, []);
 
   const { data, isLoading, refetch, isFetching } = trpc.pipeline.listTriages.useQuery({
@@ -1026,7 +1034,7 @@ export default function TriagePipeline() {
       ) : (
         <div className="space-y-2">
           {triages.map((triage: any) => (
-            <TriageResultCard key={triage.id} triage={triage} onRefresh={() => refetch()} isHighlighted={triage.triageId === highlightId} />
+            <TriageResultCard key={triage.id} triage={triage} onRefresh={() => refetch()} isHighlighted={triage.triageId === highlightId} highlightCorrelationId={highlightCorrelationId} />
           ))}
         </div>
       )}
