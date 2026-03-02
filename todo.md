@@ -2283,3 +2283,21 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Return 429 with Retry-After in error message when per-user limit is hit
 - [x] Write tests for per-user rate limiting behavior — perUserRateLimit.test.ts (10 tests)
 - [x] Run full test suite to confirm no regressions — 52 files, 1205 tests passing
+
+## Manus OAuth Exclusion Audit
+
+- [x] Audit all OAuth/Manus auth references in server code — 0 OAuth routes, 0 OAuth callbacks, 0 Manus auth imports
+- [x] Audit all OAuth/Manus auth references in client code — 0 OAuth buttons, 0 Manus login redirects
+- [x] Verify local auth is the primary/only active auth path — JWT + bcrypt, /login route, localAuthRouter
+- [x] Identify any remaining Manus OAuth dependencies that could block login — NONE found
+- [x] Fix any issues found — no fixes needed, audit CLEAN
+
+## Fresh API Contract Audit (Post-Hardening)
+
+- [x] Generate complete endpoint inventory with auth level, input schema, procedure type — 281 procedures, 27 routers
+- [x] Audit input validation — 213/213 input-accepting procedures use Zod, 0 unvalidated
+- [x] Audit auth levels — 7 public endpoints, all justified (auth + health checks)
+- [x] Audit error handling — 0 raw Error in routers, 47 in services (acceptable, wrapped by tRPC)
+- [x] Audit response consistency — 73 mutations, all return values, consistent patterns
+- [x] Run full test suite — 52 files, 1205 tests passing
+- [x] Write API_CONTRACT_AUDIT.md deliverable
