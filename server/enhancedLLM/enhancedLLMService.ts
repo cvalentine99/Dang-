@@ -113,6 +113,13 @@ class PriorityQueue {
   private activeRequests = 0;
   private readonly maxConcurrent = 2; // Match llama-server --parallel 2
 
+  // Real per-priority tracking — counts items currently in the queue (waiting)
+  private _priorityCounts: Record<Priority, number> = { critical: 0, high: 0, normal: 0 };
+
+  // Lifetime counters for observability
+  private _totalEnqueued: Record<Priority, number> = { critical: 0, high: 0, normal: 0 };
+  private _totalCompleted: Record<Priority, number> = { critical: 0, high: 0, normal: 0 };
+
   get depth(): number {
     return this.queue.length;
   }
@@ -121,19 +128,37 @@ class PriorityQueue {
     return this.activeRequests;
   }
 
+  /** Current count of items waiting in queue, broken down by priority. */
+  get priorityCounts(): Record<Priority, number> {
+    return { ...this._priorityCounts };
+  }
+
+  /** Lifetime totals for observability. */
+  get stats(): { enqueued: Record<Priority, number>; completed: Record<Priority, number> } {
+    return {
+      enqueued: { ...this._totalEnqueued },
+      completed: { ...this._totalCompleted },
+    };
+  }
+
   async enqueue<T>(priority: Priority, execute: () => Promise<T>): Promise<T> {
-    // If under capacity, execute immediately
+    this._totalEnqueued[priority]++;
+
+    // If under capacity, execute immediately (not queued, so no priorityCount increment)
     if (this.activeRequests < this.maxConcurrent) {
       this.activeRequests++;
       try {
         return await execute();
       } finally {
         this.activeRequests--;
+        this._totalCompleted[priority]++;
         this.processNext();
       }
     }
 
-    // Otherwise queue with priority ordering
+    // Otherwise queue with priority ordering — track the waiting count
+    this._priorityCounts[priority]++;
+
     return new Promise<T>((resolve, reject) => {
       const request: QueuedRequest = {
         id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -162,6 +187,9 @@ class PriorityQueue {
     const next = this.queue.shift();
     if (!next) return;
 
+    // Decrement waiting count when item leaves the queue to start executing
+    this._priorityCounts[next.priority]--;
+
     this.activeRequests++;
     try {
       const result = await next.execute();
@@ -170,6 +198,7 @@ class PriorityQueue {
       next.reject(err);
     } finally {
       this.activeRequests--;
+      this._totalCompleted[next.priority]++;
       this.processNext();
     }
   }
@@ -642,10 +671,7 @@ export function getQueueStats() {
   return {
     activeRequests: priorityQueue.active,
     queueDepth: priorityQueue.depth,
-    priorityCounts: {
-      critical: 0,
-      high: 0,
-      normal: 0,
-    },
+    priorityCounts: priorityQueue.priorityCounts,
+    lifetimeStats: priorityQueue.stats,
   };
 }

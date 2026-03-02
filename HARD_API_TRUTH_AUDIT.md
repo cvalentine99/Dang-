@@ -3,8 +3,8 @@
 **Date:** 2026-03-01 (updated with security fixes)  
 **Scope:** Full API surface audit — every mounted router, every procedure, every contract  
 **Method:** Static code analysis of all `server/**/*Router.ts` files, `server/_core/index.ts`, and supporting services  
-**Test Suite at time of audit:** 49 files, 1172 tests passing, 0 TypeScript errors  
-**Security fixes applied:** SSE auth middleware, OTX + hybridrag endpoint promotion (19 new tests in `securityHardening.test.ts`)
+**Test Suite at time of audit:** 51 files, 1195 tests passing, 0 TypeScript errors  
+**Security fixes applied:** SSE auth middleware, OTX + hybridrag endpoint promotion, SSRF host allowlist, real priority queue tracking (42 new tests across `securityHardening.test.ts`, `hostValidation.test.ts`, `priorityQueue.test.ts`)
 
 ---
 
@@ -284,9 +284,9 @@ The core API surface is well-structured. Wazuh integration follows a clean proxy
 | ~~High~~ | ~~SSE alert stream has no authentication~~ — **FIXED**: `sseAuthMiddleware` added | §5.1 |
 | ~~Medium~~ | ~~OTX router uses `publicProcedure`~~ — **FIXED**: all 8 promoted to `protectedProcedure` | §5.1 |
 | ~~Medium~~ | ~~`hybridrag.sessionHistory` and `hybridrag.notes.list/getById` are public~~ — **FIXED**: all promoted | §5.1 |
-| **Medium** | `enhancedLLM.queueStats.priorityCounts` always returns zeros — misleading | §4.3 |
-| **Low** | SOC_COMPLIANCE_EVIDENCE.md test count is stale (1098 vs 1153) | §6.3 |
-| **Low** | No host allowlist on `connectionSettings.testConnection` SSRF surface | §5.2 |
+| ~~Medium~~ | ~~`enhancedLLM.queueStats.priorityCounts` always returns zeros~~ — **FIXED**: real per-priority tracking in PriorityQueue class + lifetime stats | §4.3 |
+| ~~Low~~ | ~~SOC_COMPLIANCE_EVIDENCE.md test count is stale~~ — **FIXED**: updated to 1195/51 | §6.3 |
+| ~~Low~~ | ~~No host allowlist on `connectionSettings.testConnection`~~ — **FIXED**: RFC 1918 allowlist with metadata/loopback/public IP blocking | §5.2 |
 | **Low** | Some routers throw raw `Error` instead of `TRPCError` | §5.5 |
 | **Low** | `AIChatBox.tsx` references non-existent `trpc.ai.chat` router | §2.1 |
 

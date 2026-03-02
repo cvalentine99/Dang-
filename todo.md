@@ -2232,3 +2232,20 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Promote hybridrag.notes.getById from publicProcedure to protectedProcedure
 - [x] Write tests confirming auth enforcement on promoted endpoints — securityHardening.test.ts (17 tests)
 - [x] Update HARD_API_TRUTH_AUDIT.md findings section to reflect fixes
+
+## Audit Finding Fixes (Final Pre-Deploy)
+
+### SSRF Host Allowlist
+- [x] Add RFC 1918 host validation to connectionSettings.testConnection
+- [x] Block metadata endpoints (169.254.169.254, fd00::, etc.)
+- [x] Block localhost/loopback (127.0.0.0/8, ::1)
+- [x] Allow only RFC 1918 private ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+- [x] Allow hostnames that resolve to allowed IPs
+- [x] Write tests for SSRF host validation — hostValidation.test.ts (19 tests)
+
+### PriorityQueue Real Priority Tracking
+- [x] Add per-priority counters to PriorityQueue class
+- [x] Track enqueue/dequeue by priority level (critical, high, normal)
+- [x] Return real priorityCounts in getQueueStats()
+- [x] Remove hardcoded zero values — replaced with priorityQueue.priorityCounts getter
+- [x] Write tests for priority tracking accuracy — priorityQueue.test.ts (4 tests)
