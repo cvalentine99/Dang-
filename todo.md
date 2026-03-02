@@ -2215,3 +2215,20 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 ### Deliverable
 - [x] Write 8-section API Truth Audit report (HARD_API_TRUTH_AUDIT.md)
 - [x] Run full test suite and save checkpoint — 48 files, 1153 tests, 0 TS errors
+
+## Security Hardening (Pre-Deploy)
+
+### SSE Auth Gap Fix
+- [x] Add session cookie validation to /api/sse/alerts endpoint
+- [x] Add session cookie validation to /api/sse/stats endpoint
+- [x] Return 401 for unauthenticated SSE connections
+- [x] Write test for SSE auth enforcement — securityHardening.test.ts (2 tests)
+
+### Endpoint Auth Promotion
+- [x] Promote all 8 OTX router endpoints from publicProcedure to protectedProcedure
+- [x] Promote hybridrag.sessionHistory from publicProcedure to protectedProcedure
+- [x] Promote hybridrag.modelStatus from publicProcedure to protectedProcedure
+- [x] Promote hybridrag.notes.list from publicProcedure to protectedProcedure
+- [x] Promote hybridrag.notes.getById from publicProcedure to protectedProcedure
+- [x] Write tests confirming auth enforcement on promoted endpoints — securityHardening.test.ts (17 tests)
+- [x] Update HARD_API_TRUTH_AUDIT.md findings section to reflect fixes

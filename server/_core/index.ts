@@ -198,10 +198,21 @@ async function startServer() {
     });
   });
 
-  // SSE alert stream endpoint
+  // SSE alert stream endpoint — authenticated
   const { handleSSEConnection, getStreamStats } = await import("../sse/alertStreamService");
-  app.get("/api/sse/alerts", handleSSEConnection);
-  app.get("/api/sse/stats", (_req, res) => {
+
+  // SSE auth middleware: validates session cookie before allowing connection
+  const sseAuthMiddleware: import("express").RequestHandler = async (req, res, next) => {
+    try {
+      await sdk.authenticateRequest(req);
+      next();
+    } catch {
+      res.status(401).json({ error: "Authentication required for SSE stream" });
+    }
+  };
+
+  app.get("/api/sse/alerts", sseAuthMiddleware, handleSSEConnection);
+  app.get("/api/sse/stats", sseAuthMiddleware, (_req, res) => {
     res.json(getStreamStats());
   });
 

@@ -1,9 +1,10 @@
 # Hard API Truth Audit — Dang! Security Platform
 
-**Date:** 2026-03-01  
+**Date:** 2026-03-01 (updated with security fixes)  
 **Scope:** Full API surface audit — every mounted router, every procedure, every contract  
 **Method:** Static code analysis of all `server/**/*Router.ts` files, `server/_core/index.ts`, and supporting services  
-**Test Suite at time of audit:** 48 files, 1153 tests passing, 0 TypeScript errors
+**Test Suite at time of audit:** 49 files, 1172 tests passing, 0 TypeScript errors  
+**Security fixes applied:** SSE auth middleware, OTX + hybridrag endpoint promotion (19 new tests in `securityHardening.test.ts`)
 
 ---
 
@@ -19,11 +20,11 @@ The application mounts **27 routers** via `server/routers.ts`. Every router file
 | 2 | `graph` | `server/graph/graphRouter.ts` | ~15 | All protected |
 | 3 | `pipeline` | `server/agenticPipeline/pipelineRouter.ts` | ~30 | All protected |
 | 4 | `responseActions` | `server/agenticPipeline/responseActionsRouter.ts` | ~12 | All protected |
-| 5 | `hybridrag` | `server/hybridrag/hybridragRouter.ts` | ~10 | Mixed (see §5.1) |
+| 5 | `hybridrag` | `server/hybridrag/hybridragRouter.ts` | ~10 | All protected — **FIXED** |
 | 6 | `enhancedLLM` | `server/enhancedLLM/enhancedLLMRouter.ts` | ~8 | All protected |
 | 7 | `llm` | `server/llm/llmRouter.ts` | ~6 | All protected |
 | 8 | `indexer` | `server/indexer/indexerRouter.ts` | ~10 | All protected |
-| 9 | `otx` | `server/otx/otxRouter.ts` | ~8 | All public (see §5.2) |
+| 9 | `otx` | `server/otx/otxRouter.ts` | ~8 | All protected — **FIXED** |
 | 10 | `splunk` | `server/splunk/splunkRouter.ts` | ~6 | All protected |
 | 11 | `notes` | `server/notes/notesRouter.ts` | ~5 | All protected |
 | 12 | `savedSearches` | `server/savedSearches/savedSearchesRouter.ts` | ~5 | All protected |
@@ -32,7 +33,7 @@ The application mounts **27 routers** via `server/routers.ts`. Every router file
 | 15 | `driftAnalytics` | `server/baselines/driftAnalyticsRouter.ts` | ~8 | All protected |
 | 16 | `alertQueue` | `server/alertQueue/alertQueueRouter.ts` | ~8 | All protected |
 | 17 | `autoQueue` | `server/alertQueue/autoQueueRouter.ts` | ~8 | All protected |
-| 18 | `sse` (Express) | `server/sse/alertStreamService.ts` | 2 (raw Express) | **Unauthenticated** (see §5.3) |
+| 18 | `sse` (Express) | `server/sse/alertStreamService.ts` | 2 (raw Express) | Authenticated (sseAuthMiddleware) — **FIXED** |
 | 19 | `admin.users` | `server/admin/adminUsersRouter.ts` | ~5 | All admin |
 | 20 | `admin.connectionSettings` | `server/admin/connectionSettingsRouter.ts` | ~5 | All admin |
 | 21 | `localAuth` | `server/localAuth/localAuthRouter.ts` | ~5 | Mixed |
@@ -50,8 +51,8 @@ Two endpoints are mounted directly on Express, outside the tRPC middleware:
 | Endpoint | Method | Auth | Purpose |
 |----------|--------|------|---------|
 | `GET /api/status` | GET | None | Health check — probes DB, Wazuh Manager, Wazuh Indexer, LLM, OTX, Splunk |
-| `GET /api/sse/alerts` | GET | None | Server-Sent Events stream for real-time alerts |
-| `GET /api/sse/stats` | GET | None | SSE connection statistics |
+| `GET /api/sse/alerts` | GET | Session cookie (sseAuthMiddleware) | Server-Sent Events stream for real-time alerts — **FIXED** |
+| `GET /api/sse/stats` | GET | Session cookie (sseAuthMiddleware) | SSE connection statistics — **FIXED** |
 
 ### 1.3 Aggregate Counts
 
@@ -60,8 +61,8 @@ Two endpoints are mounted directly on Express, outside the tRPC middleware:
 | Total tRPC routers | 25 |
 | Total Express endpoints | 3 |
 | Total procedures (approx) | 277 |
-| `publicProcedure` references | 29 |
-| `protectedProcedure` references | 269 |
+| `publicProcedure` references | 17 (was 29, 12 promoted) |
+| `protectedProcedure` references | 281 (was 269, +12 promoted) |
 | `adminProcedure` references | 12 |
 
 ---
@@ -170,16 +171,16 @@ Both systems are operator-controlled (rules/schedules must be explicitly created
 
 ### 5.1 Authentication Gaps
 
-| Endpoint | Auth Level | Risk | Recommendation |
-|----------|:----------:|:----:|----------------|
+| Endpoint | Auth Level | Risk | Status |
+|----------|:----------:|:----:|--------|
 | `GET /api/status` | None | Low | Health check — returns connectivity status, no sensitive data. Acceptable for monitoring. |
-| `GET /api/sse/alerts` | None | **Medium** | Streams real-time Wazuh alerts to any connected client. Should require session cookie validation. |
-| `GET /api/sse/stats` | None | Low | Returns connection count only. |
-| `otxRouter.*` (all 8 procedures) | Public | **Medium** | OTX threat intel queries are unauthenticated. An unauthenticated user could enumerate IOC lookups. Should be `protectedProcedure`. |
-| `hybridrag.modelStatus` | Public | Low | Returns LLM availability — no sensitive data. |
-| `hybridrag.sessionHistory` | Public | **Medium** | Returns chat session history without auth check. Could leak analyst queries. |
-| `hybridrag.notes.list` | Public | **Medium** | Returns analyst notes without auth check. Could leak investigation notes. |
-| `hybridrag.notes.getById` | Public | **Medium** | Returns individual analyst note without auth check. |
+| `GET /api/sse/alerts` | Session cookie | ~~Medium~~ **Resolved** | **FIXED** — `sseAuthMiddleware` validates session cookie, returns 401 for unauthenticated requests |
+| `GET /api/sse/stats` | Session cookie | ~~Low~~ **Resolved** | **FIXED** — same `sseAuthMiddleware` applied |
+| `otxRouter.*` (all 8 procedures) | Protected | ~~Medium~~ **Resolved** | **FIXED** — all 8 endpoints promoted from `publicProcedure` to `protectedProcedure` |
+| `hybridrag.modelStatus` | Protected | ~~Low~~ **Resolved** | **FIXED** — promoted to `protectedProcedure` |
+| `hybridrag.sessionHistory` | Protected | ~~Medium~~ **Resolved** | **FIXED** — promoted to `protectedProcedure` |
+| `hybridrag.notes.list` | Protected | ~~Medium~~ **Resolved** | **FIXED** — promoted to `protectedProcedure` |
+| `hybridrag.notes.getById` | Protected | ~~Medium~~ **Resolved** | **FIXED** — promoted to `protectedProcedure` |
 
 ### 5.2 SSRF Surface
 
@@ -280,9 +281,9 @@ The core API surface is well-structured. Wazuh integration follows a clean proxy
 
 | Priority | Finding | Section |
 |:--------:|---------|:-------:|
-| **High** | SSE alert stream (`/api/sse/alerts`) has no authentication | §5.1 |
-| **Medium** | OTX router uses `publicProcedure` for all 8 endpoints | §5.1 |
-| **Medium** | `hybridrag.sessionHistory` and `hybridrag.notes.list/getById` are public | §5.1 |
+| ~~High~~ | ~~SSE alert stream has no authentication~~ — **FIXED**: `sseAuthMiddleware` added | §5.1 |
+| ~~Medium~~ | ~~OTX router uses `publicProcedure`~~ — **FIXED**: all 8 promoted to `protectedProcedure` | §5.1 |
+| ~~Medium~~ | ~~`hybridrag.sessionHistory` and `hybridrag.notes.list/getById` are public~~ — **FIXED**: all promoted | §5.1 |
 | **Medium** | `enhancedLLM.queueStats.priorityCounts` always returns zeros — misleading | §4.3 |
 | **Low** | SOC_COMPLIANCE_EVIDENCE.md test count is stale (1098 vs 1153) | §6.3 |
 | **Low** | No host allowlist on `connectionSettings.testConnection` SSRF surface | §5.2 |

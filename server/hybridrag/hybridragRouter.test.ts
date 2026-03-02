@@ -63,8 +63,8 @@ describe("hybridrag router", () => {
     mockDb.delete.mockReturnThis();
   });
 
-  it("modelStatus returns model info (public)", async () => {
-    const ctx = createPublicContext();
+  it("modelStatus returns model info (requires auth)", async () => {
+    const ctx = createAuthContext();
     const caller = appRouter.createCaller(ctx);
     const result = await caller.hybridrag.modelStatus();
     expect(result).toHaveProperty("nemotron");
@@ -76,13 +76,13 @@ describe("hybridrag router", () => {
     expect(typeof result.nemotron.endpoint).toBe("string");
   });
 
-  it("notes.list returns notes array (public)", async () => {
+  it("notes.list returns notes array (requires auth)", async () => {
     const mockNotes = [
       { id: 1, title: "Test", content: "", severity: "medium", tags: [], resolved: 0, createdAt: new Date(), updatedAt: new Date() },
     ];
     mockDb.offset.mockResolvedValue(mockNotes);
 
-    const ctx = createPublicContext();
+    const ctx = createAuthContext();
     const caller = appRouter.createCaller(ctx);
     const result = await caller.hybridrag.notes.list({ limit: 10 });
     expect(result).toHaveProperty("notes");
