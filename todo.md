@@ -2273,3 +2273,13 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Convert each to `throw new TRPCError()` with appropriate code — 81 converted (28 NOT_FOUND, 60 INTERNAL_SERVER_ERROR, 8 BAD_REQUEST, 5 PRECONDITION_FAILED, 7 FORBIDDEN)
 - [x] Ensure TRPCError is imported in every affected file — all 16 files confirmed
 - [x] Run full test suite to confirm no regressions — 51 files, 1195 tests passing
+
+## Per-User Rate Limiting
+
+- [x] Audit current global rate limiter in wazuhClient.ts
+- [x] Implement per-user rate limiting using user ID from tRPC context — AsyncLocalStorage + wazuhProcedure middleware
+- [x] Keep global rate limit as a ceiling; add per-user limits underneath
+- [x] Add configurable per-user limits (requests per window, window size) — PER_USER_RATE_LIMITS: 30/15/10/10
+- [x] Return 429 with Retry-After in error message when per-user limit is hit
+- [x] Write tests for per-user rate limiting behavior — perUserRateLimit.test.ts (10 tests)
+- [x] Run full test suite to confirm no regressions — 52 files, 1205 tests passing
