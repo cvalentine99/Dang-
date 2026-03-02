@@ -2335,3 +2335,9 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 ## Analyze Button Loading Indicator
 
 - [x] Improve loading feedback on Analyze button during triage pipeline execution
+
+## View in Triage Deep-Link
+
+- [x] Add "View in Triage" link on completed queue items with pipelineTriageId
+- [x] Deep-link navigates to /triage?highlight=<triageId> with auto-scroll and ring highlight
+- [x] Updated GlassPanel to support ref forwarding for scroll-into-view

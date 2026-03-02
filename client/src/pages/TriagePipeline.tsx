@@ -8,7 +8,7 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { GlassPanel, StatCard, RawJsonViewer, ThreatBadge } from "@/components/shared";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -506,7 +506,17 @@ function CorrelationBundleCard({ bundle }: { bundle: any }) {
 
 // ── Triage Result Card ───────────────────────────────────────────────────────
 
-function TriageResultCard({ triage, onRefresh }: { triage: any; onRefresh?: () => void }) {
+function TriageResultCard({ triage, onRefresh, isHighlighted }: { triage: any; onRefresh?: () => void; isHighlighted?: boolean }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  // Auto-scroll and expand when highlighted
+  useEffect(() => {
+    if (isHighlighted && cardRef.current) {
+      setExpanded(true);
+      setTimeout(() => {
+        cardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
+    }
+  }, [isHighlighted]);
   const [expanded, setExpanded] = useState(false);
   const [showRawJson, setShowRawJson] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -555,7 +565,7 @@ function TriageResultCard({ triage, onRefresh }: { triage: any; onRefresh?: () =
   const routeInfo = ROUTE_LABELS[route] || ROUTE_LABELS.B_LOW_CONFIDENCE;
 
   return (
-    <GlassPanel className="p-0 overflow-hidden">
+    <GlassPanel ref={cardRef} className={`p-0 overflow-hidden transition-all duration-500 ${isHighlighted ? "ring-2 ring-violet-500/60 shadow-[0_0_20px_rgba(139,92,246,0.2)]" : ""}`}>
       {/* Header Row */}
       <button
         onClick={() => setExpanded(!expanded)}
@@ -920,6 +930,12 @@ export default function TriagePipeline() {
   const [page, setPage] = useState(0);
   const pageSize = 25;
 
+  // Deep-link highlight support: /triage?highlight=<triageId>
+  const highlightId = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("highlight") || null;
+  }, []);
+
   const { data, isLoading, refetch, isFetching } = trpc.pipeline.listTriages.useQuery({
     limit: pageSize,
     offset: page * pageSize,
@@ -1010,7 +1026,7 @@ export default function TriagePipeline() {
       ) : (
         <div className="space-y-2">
           {triages.map((triage: any) => (
-            <TriageResultCard key={triage.id} triage={triage} onRefresh={() => refetch()} />
+            <TriageResultCard key={triage.id} triage={triage} onRefresh={() => refetch()} isHighlighted={triage.triageId === highlightId} />
           ))}
         </div>
       )}

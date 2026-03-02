@@ -289,7 +289,7 @@ function QueueItemCard({
           {/* Pipeline Auto-Triage indicator */}
           {item.pipelineTriageId && (
             <button
-              onClick={() => navigate("/triage")}
+              onClick={() => navigate(`/triage?highlight=${item.pipelineTriageId}`)}
               className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-300 text-[10px] font-medium hover:bg-violet-500/20 transition-all"
               title={`Pipeline Triage: ${item.pipelineTriageId}`}
             >
@@ -356,6 +356,16 @@ function QueueItemCard({
               {/* Show ticket ID if already created — clickable deep link to Splunk ES */}
               {triage?.splunkTicketId && (
                 <SplunkTicketLink ticketId={triage.splunkTicketId} />
+              )}
+              {item.pipelineTriageId && (
+                <button
+                  onClick={() => navigate(`/triage?highlight=${item.pipelineTriageId}`)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-300 text-xs font-medium hover:bg-violet-500/20 transition-all"
+                  title="View triage result on the Triage Pipeline page"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  View in Triage
+                </button>
               )}
               <button
                 onClick={handleAnalyzeInWalter}
