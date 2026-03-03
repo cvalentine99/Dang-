@@ -2434,3 +2434,15 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Verify DB state: confirmed triageId column (varchar(64), nullable) and ta_triageId_idx (BTREE) exist in live DB via DESCRIBE + SHOW INDEX
 - [x] Prove insert path: 8 new tests covering migration-schema alignment (column order, all columns, all indexes) and insert payload construction (success, failure, exception paths with triageId)
 - [x] All 1,286 tests passing across 53 test files, zero TypeScript errors
+
+## Runtime Truth Audit
+
+- [x] Audit 1: Fresh migration correctness — 15 columns and 8 indexes match across schema, migration SQL, and live DB (including triageId). PASS.
+- [x] Audit 2: Splunk ticket success path — backend returns success:true+ticketId, UI shows success toast, artifact inserted with success=true. PASS.
+- [x] Audit 3: Splunk ticket failure path — backend returns success:false+null, UI shows error toast, failure artifact recorded. Batch uses 4 distinct toast types. PASS.
+- [x] Audit 4: First-class ticket lineage — 4-path indexed FK linkage (queueItemId, pipelineRunId, triageId, alertId), resolved at insert time with 2-level fallback. PASS.
+- [x] Audit 5: Partial pipeline semantics — completedAt=null, status=partial, UI shows "Triage Only" + "awaiting analyst advancement". Semantic table proves distinction. PASS.
+- [x] Audit 6: Queue triage visibility in Pipeline Inspector — partial runs visible with Queue Item #N cross-reference. PASS.
+- [x] Audit 7: Readiness/Wazuh truth — extractWazuhErrorDetail() maps 6 error codes to actionable messages, ReadinessBanner gates workflows. Live screenshot confirms. PASS.
+- [x] Audit 8: Regression check — 1,286 tests passing, 0 TypeScript errors, dev server healthy, UI screenshot clean. PASS.
+- [x] Full audit report written: runtime-truth-audit-report.md
