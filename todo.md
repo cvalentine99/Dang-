@@ -2605,3 +2605,17 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Protect /api/status endpoint with auth middleware (keep /api/health minimal public)
 - [x] Clean all stale "Walter analysis" wording from schema, comments, and code
 - [x] Deliver single canonical source tree zip (no duplicate nested copy)
+
+### Phase 1 — Wazuh Parameter-Gap Program
+- [x] Fix A1: /agents os_platform → os.platform mismatch (forward correct spec param name)
+- [x] Fix A2: /agents search must not be rewritten into narrow q=name~... (forward native search)
+- [x] Build reusable parameter broker foundation (server/wazuh/paramBroker.ts)
+- [x] Wire broker into /agents endpoint
+- [x] Wire broker into /rules endpoint
+- [x] Wire broker into /groups endpoint
+- [x] Wire broker into /cluster/nodes endpoint
+- [x] Wire broker into /sca/{agent_id} endpoint
+- [x] Tests: broker unit tests (forwarding, alias mapping, unsupported param rejection)
+- [x] Tests: /agents os.platform forwarded correctly
+- [x] Tests: /agents search and q are distinct and not conflated
+- [x] Tests: all 5 wired endpoints forward accepted params and reject unsupported ones
