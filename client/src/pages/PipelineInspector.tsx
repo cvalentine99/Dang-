@@ -9,7 +9,7 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { GlassPanel, StatCard, RawJsonViewer } from "@/components/shared";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -38,6 +38,8 @@ import {
   GitBranch,
   Brain,
   Swords,
+  Ticket,
+  ExternalLink,
 } from "lucide-react";
 
 // ── Stage Config ───────────────────────────────────────────────────────────
@@ -74,6 +76,17 @@ export default function PipelineInspector() {
 
   const runs = data?.runs ?? [];
   const total = data?.total ?? 0;
+
+  // Batch-query ticket artifact counts for visible runs
+  const pipelineRunIds = useMemo(
+    () => runs.map((r: any) => r.id).filter((id: number) => id != null),
+    [runs]
+  );
+  const { data: ticketCountsData } = trpc.splunk.ticketArtifactCounts.useQuery(
+    { pipelineRunIds },
+    { enabled: pipelineRunIds.length > 0 }
+  );
+  const ticketCounts = ticketCountsData?.counts ?? {};
 
   return (
     <div className="space-y-6">
@@ -159,7 +172,11 @@ export default function PipelineInspector() {
       ) : (
         <div className="space-y-3">
           {runs.map((run: any) => (
-            <PipelineRunCard key={run.id} run={run} />
+            <PipelineRunCard
+              key={run.id}
+              run={run}
+              ticketCount={ticketCounts[run.id] ?? null}
+            />
           ))}
         </div>
       )}
@@ -194,7 +211,10 @@ export default function PipelineInspector() {
 
 // ── Pipeline Run Card ──────────────────────────────────────────────────────
 
-function PipelineRunCard({ run }: { run: any }) {
+function PipelineRunCard({ run, ticketCount }: {
+  run: any;
+  ticketCount: { total: number; success: number; failed: number } | null;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [, navigate] = useLocation();
 
@@ -258,6 +278,30 @@ function PipelineRunCard({ run }: { run: any }) {
             }`}>
               {overallStatus.label}
             </span>
+            {/* Tickets badge — links to Alert Queue audit panel */}
+            {ticketCount && ticketCount.total > 0 && (
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded border flex items-center gap-1 cursor-pointer transition-colors ${
+                  ticketCount.failed > 0 && ticketCount.success === 0
+                    ? "bg-red-500/10 border-red-500/20 text-red-300 hover:bg-red-500/20"
+                    : ticketCount.failed > 0
+                    ? "bg-amber-500/10 border-amber-500/20 text-amber-300 hover:bg-amber-500/20"
+                    : "bg-violet-500/10 border-violet-500/20 text-violet-300 hover:bg-violet-500/20"
+                }`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/alert-queue?tab=tickets&pipelineRunId=${run.id}`);
+                }}
+                title={`${ticketCount.success} successful, ${ticketCount.failed} failed — click to view in Alert Queue`}
+              >
+                <Ticket className="w-3 h-3" />
+                {ticketCount.total}
+                {ticketCount.failed > 0 && (
+                  <span className="text-[9px] opacity-70">({ticketCount.failed} failed)</span>
+                )}
+                <ExternalLink className="w-2.5 h-2.5 opacity-50" />
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3 mt-1">
             {run.alertId && (

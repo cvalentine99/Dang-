@@ -1079,3 +1079,111 @@ describe("Insert Path Proof — ticket artifact with triageId", () => {
     expect(insertPayload.ticketId).toMatch(/^exception-\d+$/);
   });
 });
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Ticket Artifact Counts — Pipeline Inspector Badge Tests
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import * as fs from "fs";
+import * as path from "path";
+
+describe("ticketArtifactCounts endpoint", () => {
+  const routerPath = path.resolve(__dirname, "splunkRouter.ts");
+  const routerSrc = fs.readFileSync(routerPath, "utf-8");
+
+  it("should define ticketArtifactCounts as a protectedProcedure query", () => {
+    expect(routerSrc).toContain("ticketArtifactCounts: protectedProcedure");
+    expect(routerSrc).toContain(".query(async");
+  });
+
+  it("should accept pipelineRunIds as input array", () => {
+    expect(routerSrc).toContain("pipelineRunIds: z.array(z.number().int())");
+  });
+
+  it("should enforce min(1) and max(200) on the array", () => {
+    expect(routerSrc).toContain(".min(1).max(200)");
+  });
+
+  it("should use GROUP BY to aggregate counts per pipelineRunId", () => {
+    expect(routerSrc).toContain(".groupBy(ticketArtifacts.pipelineRunId)");
+  });
+
+  it("should use inArray to filter by pipelineRunIds", () => {
+    expect(routerSrc).toContain("inArray(ticketArtifacts.pipelineRunId, input.pipelineRunIds)");
+  });
+
+  it("should return counts with total, success, and failed fields", () => {
+    expect(routerSrc).toContain("total: Number(row.total)");
+    expect(routerSrc).toContain("success: Number(row.success)");
+    expect(routerSrc).toContain("failed: Number(row.failed)");
+  });
+
+  it("should use SUM CASE for success/failed aggregation", () => {
+    expect(routerSrc).toContain("SUM(CASE WHEN");
+    expect(routerSrc).toContain("= true THEN 1 ELSE 0 END)");
+    expect(routerSrc).toContain("= false THEN 1 ELSE 0 END)");
+  });
+
+  it("should return a counts map keyed by pipelineRunId", () => {
+    expect(routerSrc).toContain("return { counts }");
+  });
+});
+
+describe("Pipeline Inspector Tickets Badge", () => {
+  const inspectorPath = path.resolve(__dirname, "../../client/src/pages/PipelineInspector.tsx");
+  const inspectorSrc = fs.readFileSync(inspectorPath, "utf-8");
+
+  it("should import Ticket and ExternalLink icons", () => {
+    expect(inspectorSrc).toContain("Ticket");
+    expect(inspectorSrc).toContain("ExternalLink");
+  });
+
+  it("should query ticketArtifactCounts with pipelineRunIds", () => {
+    expect(inspectorSrc).toContain("trpc.splunk.ticketArtifactCounts.useQuery");
+  });
+
+  it("should memoize pipelineRunIds to prevent infinite re-fetches", () => {
+    expect(inspectorSrc).toContain("useMemo");
+    expect(inspectorSrc).toContain("pipelineRunIds");
+  });
+
+  it("should only enable the query when pipelineRunIds is non-empty", () => {
+    expect(inspectorSrc).toContain("enabled: pipelineRunIds.length > 0");
+  });
+
+  it("should pass ticketCount prop to PipelineRunCard", () => {
+    expect(inspectorSrc).toContain("ticketCount={ticketCounts[run.id]");
+  });
+
+  it("should render Tickets badge only when ticketCount.total > 0", () => {
+    expect(inspectorSrc).toContain("ticketCount && ticketCount.total > 0");
+  });
+
+  it("should navigate to alert-queue with tickets tab and pipelineRunId filter", () => {
+    expect(inspectorSrc).toContain("/alert-queue?tab=tickets&pipelineRunId=");
+  });
+
+  it("should use stopPropagation to prevent card expand/collapse on badge click", () => {
+    expect(inspectorSrc).toContain("e.stopPropagation()");
+  });
+
+  it("should show failed count when failures exist", () => {
+    expect(inspectorSrc).toContain("ticketCount.failed > 0");
+    expect(inspectorSrc).toContain("failed)");
+  });
+
+  it("should use semantic colors: violet for all-success, amber for mixed, red for all-failed", () => {
+    // All-failed: red
+    expect(inspectorSrc).toContain("ticketCount.failed > 0 && ticketCount.success === 0");
+    expect(inspectorSrc).toContain("bg-red-500/10 border-red-500/20 text-red-300");
+    // Mixed: amber
+    expect(inspectorSrc).toContain("bg-amber-500/10 border-amber-500/20 text-amber-300");
+    // All-success: violet
+    expect(inspectorSrc).toContain("bg-violet-500/10 border-violet-500/20 text-violet-300");
+  });
+
+  it("should include a tooltip with success/failed counts", () => {
+    expect(inspectorSrc).toContain("successful, ${ticketCount.failed} failed");
+  });
+});

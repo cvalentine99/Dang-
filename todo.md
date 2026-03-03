@@ -2482,3 +2482,11 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] 30 new tests in partialRunContinuation.test.ts proving: code structure, priority ordering, simulated detection, prerequisite validation, UI language alignment
 - [x] Updated detectFirstFailedStage → detectFirstActionableStage in directions8-10.test.ts with 5 new partial-run tests
 - [x] All 1,338 tests passing across 55 test files, zero TypeScript errors
+
+## Feature: Ticket Artifact Cross-Links in Pipeline Inspector
+
+- [x] Added ticketArtifactCounts endpoint to splunkRouter — batch GROUP BY query returning { pipelineRunId: { total, success, failed } }
+- [x] Added Tickets badge to PipelineRunCard header with semantic colors (violet=all-success, amber=mixed, red=all-failed)
+- [x] Badge shows count, failed breakdown, and links to /alert-queue?tab=tickets&pipelineRunId=N
+- [x] 19 new tests covering endpoint structure, badge rendering, semantic colors, navigation, and stopPropagation
+- [x] All 1,357 tests passing across 55 test files, zero TypeScript errors
