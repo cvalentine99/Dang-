@@ -1,16 +1,24 @@
 /**
  * Agentic Readiness Service — Central pre-flight check for all agentic workflows.
  *
- * Checks 5 dependencies:
- *   1. Database — required by both workflows
- *   2. LLM — required by both workflows (custom or built-in fallback)
- *   3. Wazuh Manager — required for structured pipeline, used by ad-hoc
- *   4. Wazuh Indexer — used by correlation and ad-hoc retrieval
- *   5. Graph Context — used by ad-hoc analyst only
+ * Checks 6 dependencies:
+ *   1. Database — required by both workflows (blocker)
+ *   2. LLM — required by both workflows, custom or built-in fallback (blocker)
+ *   3. Wazuh Manager — required for structured pipeline, used by ad-hoc (degraded)
+ *   4. Wazuh Indexer — used by correlation and ad-hoc retrieval (degraded)
+ *   5. Graph Context — used by ad-hoc analyst only (degraded)
+ *   6. Splunk HEC — used by ticketing only (degraded, never blocks pipeline)
  *
  * Derives workflow-level readiness:
  *   - structuredPipeline: triage -> correlation -> hypothesis -> living case
  *   - adHocAnalyst: Walter conversational analysis (ad-hoc, not persisted)
+ *   - ticketing: Splunk ES ticket creation from completed triage
+ *
+ * Dependency severity semantics:
+ *   - DB down → blocked
+ *   - LLM down → blocked/degraded depending on fallback
+ *   - Wazuh down → degraded
+ *   - Splunk HEC down → ticketing degraded, pipeline still usable
  */
 
 import { getDb } from "../db";
@@ -18,6 +26,7 @@ import { getEffectiveLLMConfig } from "../llm/llmService";
 import { getEffectiveWazuhConfig, wazuhGet } from "../wazuh/wazuhClient";
 import { getEffectiveIndexerConfig, indexerHealth } from "../indexer/indexerClient";
 import { getGraphStats } from "../graph/graphQueryService";
+import { getEffectiveSplunkConfig, testSplunkConnection } from "../splunk/splunkService";
 
 export interface DependencyStatus {
   state: "ready" | "degraded" | "blocked";
@@ -42,10 +51,12 @@ export interface AgenticReadiness {
     wazuhManager: DependencyStatus;
     wazuhIndexer: DependencyStatus;
     graphContext: DependencyStatus;
+    splunkHec: DependencyStatus;
   };
   workflows: {
     structuredPipeline: WorkflowStatus;
     adHocAnalyst: WorkflowStatus;
+    ticketing: WorkflowStatus;
   };
 }
 
@@ -125,9 +136,38 @@ async function checkGraphContext(): Promise<DependencyStatus> {
   }
 }
 
+/**
+ * Check Splunk HEC reachability.
+ * Splunk is a degraded dependency, not a global blocker.
+ * Semantics:
+ *   - DB down → blocked
+ *   - LLM down → blocked/degraded depending on fallback
+ *   - Wazuh down → degraded
+ *   - Splunk HEC down → ticketing degraded, pipeline still usable
+ */
+async function checkSplunkHec(): Promise<DependencyStatus> {
+  const now = new Date().toISOString();
+  try {
+    const config = await getEffectiveSplunkConfig();
+    if (!config.host || !config.hecToken) {
+      return { state: "degraded", reason: "Splunk HEC not configured (missing host or token) — ticketing unavailable", fallbackActive: false, blocksWorkflow: false, lastChecked: now };
+    }
+    if (!config.enabled) {
+      return { state: "degraded", reason: "Splunk integration disabled — ticketing unavailable", fallbackActive: false, blocksWorkflow: false, lastChecked: now };
+    }
+    const result = await testSplunkConnection();
+    if (result.success) {
+      return { state: "ready", reason: `Splunk HEC healthy (${result.latencyMs}ms)`, fallbackActive: false, blocksWorkflow: false, lastChecked: now };
+    }
+    return { state: "degraded", reason: `Splunk HEC: ${result.message}`, fallbackActive: false, blocksWorkflow: false, lastChecked: now };
+  } catch (err) {
+    return { state: "degraded", reason: `Splunk HEC check failed: ${(err as Error).message}`, fallbackActive: false, blocksWorkflow: false, lastChecked: now };
+  }
+}
+
 export async function checkAgenticReadiness(): Promise<AgenticReadiness> {
-  const [database, llm, wazuhManager, wazuhIndexer, graphContext] = await Promise.allSettled([
-    checkDatabase(), checkLLM(), checkWazuhManager(), checkWazuhIndexer(), checkGraphContext(),
+  const [database, llm, wazuhManager, wazuhIndexer, graphContext, splunkHec] = await Promise.allSettled([
+    checkDatabase(), checkLLM(), checkWazuhManager(), checkWazuhIndexer(), checkGraphContext(), checkSplunkHec(),
   ]);
 
   const deps = {
@@ -136,6 +176,7 @@ export async function checkAgenticReadiness(): Promise<AgenticReadiness> {
     wazuhManager: wazuhManager.status === "fulfilled" ? wazuhManager.value : { state: "blocked" as const, reason: `Check threw: ${(wazuhManager as PromiseRejectedResult).reason}`, fallbackActive: false, blocksWorkflow: false, lastChecked: new Date().toISOString() },
     wazuhIndexer: wazuhIndexer.status === "fulfilled" ? wazuhIndexer.value : { state: "blocked" as const, reason: `Check threw: ${(wazuhIndexer as PromiseRejectedResult).reason}`, fallbackActive: false, blocksWorkflow: false, lastChecked: new Date().toISOString() },
     graphContext: graphContext.status === "fulfilled" ? graphContext.value : { state: "degraded" as const, reason: `Check threw: ${(graphContext as PromiseRejectedResult).reason}`, fallbackActive: false, blocksWorkflow: false, lastChecked: new Date().toISOString() },
+    splunkHec: splunkHec.status === "fulfilled" ? splunkHec.value : { state: "degraded" as const, reason: `Check threw: ${(splunkHec as PromiseRejectedResult).reason}`, fallbackActive: false, blocksWorkflow: false, lastChecked: new Date().toISOString() },
   };
 
   const structuredBlockers: string[] = [];
@@ -167,8 +208,13 @@ export async function checkAgenticReadiness(): Promise<AgenticReadiness> {
       ? { state: "degraded", reason: `Degraded: ${adHocDegraders.join(", ")}`, blockedBy: [] }
       : { state: "ready", reason: null, blockedBy: [] };
 
-  const overall = structuredPipeline.state === "blocked" || adHocAnalyst.state === "blocked" ? "blocked"
-    : structuredPipeline.state === "degraded" || adHocAnalyst.state === "degraded" ? "degraded" : "ready";
+  // Ticketing workflow — Splunk HEC is the sole dependency
+  const ticketing: WorkflowStatus = deps.splunkHec.state === "ready"
+    ? { state: "ready", reason: null, blockedBy: [] }
+    : { state: "degraded", reason: `Ticketing degraded: ${deps.splunkHec.reason}`, blockedBy: [] };
 
-  return { overall, timestamp: new Date().toISOString(), dependencies: deps, workflows: { structuredPipeline, adHocAnalyst } };
+  const overall = structuredPipeline.state === "blocked" || adHocAnalyst.state === "blocked" ? "blocked"
+    : structuredPipeline.state === "degraded" || adHocAnalyst.state === "degraded" || ticketing.state === "degraded" ? "degraded" : "ready";
+
+  return { overall, timestamp: new Date().toISOString(), dependencies: deps, workflows: { structuredPipeline, adHocAnalyst, ticketing } };
 }

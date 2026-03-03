@@ -47,7 +47,7 @@ export function ReadinessBanner() {
       {expanded && (
         <div className="mt-3 space-y-2 text-xs">
           {/* Workflow status */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <div className="rounded border border-white/5 bg-white/5 p-2">
               <div className="flex items-center gap-1.5 mb-1">
                 <WorkflowIcon state={data.workflows.structuredPipeline.state} />
@@ -64,6 +64,15 @@ export function ReadinessBanner() {
               </div>
               <span className="text-muted-foreground">
                 {data.workflows.adHocAnalyst.reason ?? "Ready"}
+              </span>
+            </div>
+            <div className="rounded border border-white/5 bg-white/5 p-2">
+              <div className="flex items-center gap-1.5 mb-1">
+                <WorkflowIcon state={data.workflows.ticketing?.state ?? "ready"} />
+                <span className="font-medium text-foreground">Ticketing</span>
+              </div>
+              <span className="text-muted-foreground">
+                {data.workflows.ticketing?.reason ?? "Ready"}
               </span>
             </div>
           </div>

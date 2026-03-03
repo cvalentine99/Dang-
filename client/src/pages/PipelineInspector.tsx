@@ -382,9 +382,9 @@ function PipelineRunCard({ run }: { run: any }) {
             </div>
           )}
 
-          {/* Replay Button for failed/partial runs */}
+          {/* Continue Pipeline for partial (triage-only) runs / Replay for failed runs */}
           {(run.status === "failed" || run.status === "partial") && (
-            <ReplayButton runId={run.runId} />
+            <ReplayButton runId={run.runId} runStatus={run.status} />
           )}
 
           {/* Direction 6: Artifacts Drill-Down */}
@@ -409,7 +409,7 @@ function PipelineRunCard({ run }: { run: any }) {
 
 // ── Replay Button ─────────────────────────────────────────────────────────
 
-function ReplayButton({ runId }: { runId: string }) {
+function ReplayButton({ runId, runStatus }: { runId: string; runStatus: string }) {
   const utils = trpc.useUtils();
   const replay = trpc.pipeline.replayPipelineRun.useMutation({
     onSuccess: () => {
@@ -418,33 +418,50 @@ function ReplayButton({ runId }: { runId: string }) {
     },
   });
 
+  // Precise language: "Continue Pipeline" for triage-only partial runs,
+  // "Replay Pipeline" for failed runs. Same backend mutation — it resumes
+  // from the first pending/failed stage.
+  const isPartial = runStatus === "partial";
+  const title = isPartial ? "Continue Pipeline" : "Replay Pipeline";
+  const description = isPartial
+    ? "Advance from triage to correlation, hypothesis, and response actions. Triage stage is preserved."
+    : "Re-run from the first failed stage. Completed stages are reused.";
+  const buttonLabel = isPartial ? "Continue" : "Replay";
+  const pendingLabel = isPartial ? "Continuing..." : "Replaying...";
+  const ButtonIcon = isPartial ? ArrowRight : Zap;
+  const borderColor = isPartial ? "border-cyan-500/20" : "border-violet-500/20";
+  const bgColor = isPartial ? "bg-cyan-500/5" : "bg-violet-500/5";
+  const accentColor = isPartial ? "text-cyan-300" : "text-violet-300";
+  const accentIcon = isPartial ? "text-cyan-400" : "text-violet-400";
+  const btnBg = isPartial ? "bg-cyan-500/15 border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/25" : "bg-violet-500/15 border-violet-500/30 text-violet-300 hover:bg-violet-500/25";
+
   return (
-    <div className="p-3 rounded-lg bg-violet-500/5 border border-violet-500/20">
+    <div className={`p-3 rounded-lg ${bgColor} border ${borderColor}`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <RefreshCw className="w-3.5 h-3.5 text-violet-400" />
+          {isPartial ? <ArrowRight className={`w-3.5 h-3.5 ${accentIcon}`} /> : <RefreshCw className={`w-3.5 h-3.5 ${accentIcon}`} />}
           <div>
-            <span className="text-xs font-semibold text-violet-300 font-[Space_Grotesk]">Replay Pipeline</span>
+            <span className={`text-xs font-semibold ${accentColor} font-[Space_Grotesk]`}>{title}</span>
             <p className="text-[10px] text-muted-foreground/40 mt-0.5">
-              Re-run from the first failed stage. Completed stages are reused.
+              {description}
             </p>
           </div>
         </div>
         <button
           onClick={() => replay.mutate({ runId })}
           disabled={replay.isPending}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-500/15 border border-violet-500/30 text-violet-300 hover:bg-violet-500/25 transition-colors disabled:opacity-40 flex items-center gap-1.5"
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors disabled:opacity-40 flex items-center gap-1.5 ${btnBg}`}
         >
           {replay.isPending ? (
-            <><Loader2 className="w-3 h-3 animate-spin" /> Replaying...</>
+            <><Loader2 className="w-3 h-3 animate-spin" /> {pendingLabel}</>
           ) : (
-            <><Zap className="w-3 h-3" /> Replay</>
+            <><ButtonIcon className="w-3 h-3" /> {buttonLabel}</>
           )}
         </button>
       </div>
       {replay.isSuccess && replay.data && (
         <div className="mt-2 p-2 rounded bg-emerald-500/5 border border-emerald-500/20">
-          <span className="text-[10px] text-emerald-300">Replay started: </span>
+          <span className="text-[10px] text-emerald-300">{isPartial ? "Pipeline continued: " : "Replay started: "}</span>
           <span className="text-[10px] font-mono text-emerald-300/70">{replay.data.replayRunId}</span>
           <span className="text-[10px] text-muted-foreground/40 ml-2">
             from stage: {replay.data.startedFromStage}

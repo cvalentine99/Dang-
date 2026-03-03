@@ -2446,3 +2446,29 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Audit 7: Readiness/Wazuh truth — extractWazuhErrorDetail() maps 6 error codes to actionable messages, ReadinessBanner gates workflows. Live screenshot confirms. PASS.
 - [x] Audit 8: Regression check — 1,286 tests passing, 0 TypeScript errors, dev server healthy, UI screenshot clean. PASS.
 - [x] Full audit report written: runtime-truth-audit-report.md
+
+## Feature: Ticket Artifacts Audit Panel
+
+- [x] Add TicketArtifactsPanel in Alert Queue page — glass-panel section with analyst-useful layout
+- [x] Show analyst-useful columns: success/failure badge, ticket ID, created time, queue item, triage ID, pipeline run ID, status message
+- [x] "View raw response" as secondary drill-down via expandable RawJsonViewer
+- [x] Call splunk.listTicketArtifacts from the backend with limit/offset pagination
+- [x] Filter by queue item context when viewing from a specific alert
+
+## Feature: Continue Pipeline for Triage-Only Runs
+
+- [x] Show "Continue Pipeline" button for partial (triage-only) runs in PipelineInspector — with PlayCircle icon
+- [x] Keep "Replay Pipeline" label for failed runs only — with RotateCcw icon
+- [x] Both wired to same replayPipeline backend mutation
+- [x] Precise language: "Advance from triage to correlation, hypothesis, and response actions. Triage stage is preserved."
+- [x] Confirmation dialog uses correct title/description per run status
+
+## Feature: Splunk HEC Health in ReadinessBanner
+
+- [x] Add checkSplunkHec() in readinessService.ts — checks config, enabled, and testSplunkConnection()
+- [x] Wired as 6th dependency in AgenticReadiness contract (splunkHec: DependencyStatus)
+- [x] Semantics: Splunk HEC down = "ticketing degraded", pipeline still usable
+- [x] Never returns "blocked" — only "ready" or "degraded", blocksWorkflow: false
+- [x] Added ticketing WorkflowStatus in ReadinessBanner (3-column grid: Structured Pipeline, Ad-hoc Analyst, Ticketing)
+- [x] 20 new structural tests in readinessService.test.ts — all passing
+- [x] All 1,307 tests passing across 54 test files, zero TypeScript errors
