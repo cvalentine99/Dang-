@@ -258,7 +258,7 @@ function RecentCallsTable() {
                   <div className="flex flex-col items-center gap-2">
                     <Gauge className="h-8 w-8 text-muted-foreground/30" />
                     <p>No LLM calls recorded yet</p>
-                    <p className="text-xs">Usage data will appear here as Walter and the AI Assistant process queries</p>
+                    <p className="text-xs">Usage data will appear here as the agentic pipeline and AI assistant process queries</p>
                   </div>
                 </td>
               </tr>

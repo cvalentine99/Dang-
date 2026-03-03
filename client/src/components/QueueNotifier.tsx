@@ -33,8 +33,8 @@ import {
 
 // ── Notification preferences (localStorage) ────────────────────────────────
 
-const NOTIF_PREFS_KEY = "walter-queue-notifications";
-const NOTIF_HISTORY_KEY = "walter-queue-notif-history";
+const NOTIF_PREFS_KEY = "dang-queue-notifications";
+const NOTIF_HISTORY_KEY = "dang-queue-notif-history";
 
 interface NotifPrefs {
   critical: boolean;

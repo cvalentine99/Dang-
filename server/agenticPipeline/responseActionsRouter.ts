@@ -24,7 +24,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq, and, desc, sql, count } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { protectedProcedure, router } from "../_core/trpc";
+import { protectedProcedure, adminProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import {
   responseActions,
@@ -48,7 +48,7 @@ import {
 
 export const responseActionsRouter = router({
   // ── Propose a new response action ──────────────────────────────────────────
-  propose: protectedProcedure
+  propose: adminProcedure
     .input(z.object({
       category: z.enum(RESPONSE_ACTION_CATEGORIES as unknown as [string, ...string[]]),
       title: z.string().min(1).max(512),
@@ -122,7 +122,7 @@ export const responseActionsRouter = router({
     }),
 
   // ── Approve ── (delegates to centralized state machine) ───────────────────
-  approve: protectedProcedure
+  approve: adminProcedure
     .input(z.object({
       actionId: z.string().min(1),
       reason: z.string().max(2000).optional(),
@@ -132,7 +132,7 @@ export const responseActionsRouter = router({
     }),
 
   // ── Reject ── (delegates to centralized state machine) ────────────────────
-  reject: protectedProcedure
+  reject: adminProcedure
     .input(z.object({
       actionId: z.string().min(1),
       reason: z.string().min(1).max(2000),
@@ -142,7 +142,7 @@ export const responseActionsRouter = router({
     }),
 
   // ── Execute ── (delegates to centralized state machine) ───────────────────
-  execute: protectedProcedure
+  execute: adminProcedure
     .input(z.object({
       actionId: z.string().min(1),
       executionResult: z.string().max(5000).optional(),
@@ -172,7 +172,7 @@ export const responseActionsRouter = router({
     }),
 
   // ── Defer ── (delegates to centralized state machine) ─────────────────────
-  defer: protectedProcedure
+  defer: adminProcedure
     .input(z.object({
       actionId: z.string().min(1),
       reason: z.string().min(1).max(2000),
@@ -182,7 +182,7 @@ export const responseActionsRouter = router({
     }),
 
   // ── Re-propose (from deferred) ── (delegates to centralized state machine)
-  repropose: protectedProcedure
+  repropose: adminProcedure
     .input(z.object({
       actionId: z.string().min(1),
       reason: z.string().max(2000).optional(),
@@ -192,7 +192,7 @@ export const responseActionsRouter = router({
     }),
 
   // ── Bulk Approve ── (delegates each to centralized state machine) ─────────
-  bulkApprove: protectedProcedure
+  bulkApprove: adminProcedure
     .input(z.object({
       actionIds: z.array(z.string().min(1)).min(1).max(50),
       reason: z.string().max(2000).optional(),

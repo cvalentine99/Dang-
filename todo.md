@@ -2598,3 +2598,10 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Write integration tests for livingCaseReportService (33 tests: full report, executive summary, shift handoff, escalation brief, tuning report)
 - [x] Fixed real bug: hypothesis merge overwrite (line 851 overwrote merged case with unmerged incoming case)
 - [x] All 1518 tests pass across 61 test files (122 new tests added)
+
+### Trust Issue Fixes (User Review Feedback)
+- [x] Use adminProcedure for response-action approval/execution mutations (approve, reject, execute, defer, repropose, bulkApprove)
+- [x] Use adminProcedure for Splunk ticket creation routes (createTicket, batchCreateTickets)
+- [x] Protect /api/status endpoint with auth middleware (keep /api/health minimal public)
+- [x] Clean all stale "Walter analysis" wording from schema, comments, and code
+- [x] Deliver single canonical source tree zip (no duplicate nested copy)

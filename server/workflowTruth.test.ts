@@ -33,7 +33,7 @@ describe("Workflow Identity — UI labels are honest", () => {
     expect(alertQueueSource).not.toMatch(/"Analyze"/);
   });
 
-  it("AlertQueue uses 'Ad-hoc Analysis' not 'Open in Walter' for secondary action", () => {
+  it("AlertQueue uses 'Ad-hoc Analysis' not 'Open in Walter' for secondary action (stale wording guard)", () => {
     const alertQueueSource = fs.readFileSync(
       path.resolve(__dirname, "../client/src/pages/AlertQueue.tsx"),
       "utf-8"
@@ -42,7 +42,7 @@ describe("Workflow Identity — UI labels are honest", () => {
     expect(alertQueueSource).not.toContain("Open in Walter");
   });
 
-  it("Sidebar uses 'Alert Queue' not 'Walter Queue'", () => {
+  it("Sidebar uses 'Alert Queue' not 'Walter Queue' (stale wording guard)", () => {
     const layoutSource = fs.readFileSync(
       path.resolve(__dirname, "../client/src/components/DashboardLayout.tsx"),
       "utf-8"

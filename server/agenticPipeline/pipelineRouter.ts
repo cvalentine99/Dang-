@@ -435,7 +435,7 @@ export const pipelineRouter = router({
     }),
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // AUTO-TRIAGE ON WALTER QUEUE INTAKE
+  // AUTO-TRIAGE ON QUEUE INTAKE
   // ═══════════════════════════════════════════════════════════════════════════
 
   /** Trigger auto-triage on a queued alert (runs triage pipeline in background). */

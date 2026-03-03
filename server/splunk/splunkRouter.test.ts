@@ -121,26 +121,26 @@ describe("Splunk HEC Event Structure", () => {
   it("should construct a valid HEC event with required fields", () => {
     const event = {
       time: Math.floor(Date.now() / 1000),
-      sourcetype: "dang:walter_triage",
+      sourcetype: "dang:agentic_triage",
       source: "dang_security_platform",
       host: "dang-siem",
       index: "notable",
       event: {
         ticket_id: "DANG-1234567890-rt-001",
-        ticket_type: "walter_triage",
+        ticket_type: "agentic_triage",
         alert_id: "alert-001",
         rule_id: "5710",
         urgency: "critical",
         platform: "Dang! SIEM",
-        analysis_engine: "Walter Agentic Pipeline",
+        analysis_engine: "Dang! Agentic Pipeline",
       },
     };
 
-    expect(event.sourcetype).toBe("dang:walter_triage");
+    expect(event.sourcetype).toBe("dang:agentic_triage");
     expect(event.source).toBe("dang_security_platform");
     expect(event.index).toBe("notable");
     expect(event.event.platform).toBe("Dang! SIEM");
-    expect(event.event.analysis_engine).toBe("Walter Agentic Pipeline");
+    expect(event.event.analysis_engine).toBe("Dang! Agentic Pipeline");
     expect(event.time).toBeGreaterThan(0);
   });
 

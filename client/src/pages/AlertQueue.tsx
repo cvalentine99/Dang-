@@ -5,7 +5,7 @@
  *   1. "Structured Triage" (primary) — runs triage-only via runTriageAgent(),
  *      creates triageObjects + pipelineRuns rows. Downstream stages (correlation,
  *      hypothesis) must be triggered separately.
- *   2. "Ad-hoc Analysis" (secondary) — opens Walter for conversational analysis.
+ *   2. "Ad-hoc Analysis" (secondary) — opens the AI analyst for conversational analysis.
  *      Does NOT create pipeline artifacts. Results are not persisted.
  */
 

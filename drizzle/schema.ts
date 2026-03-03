@@ -757,9 +757,9 @@ export type LlmUsage = typeof llmUsage.$inferSelect;
 export type InsertLlmUsage = typeof llmUsage.$inferInsert;
 
 /**
- * Alert Queue — 10-deep FIFO queue for alerts awaiting Walter analysis.
+ * Alert Queue — 10-deep FIFO queue for alerts awaiting agentic triage.
  * Analysts queue alerts from the Alerts Timeline, then click to trigger
- * Walter's full agentic pipeline on demand. Max 10 items; oldest evicted.
+ * the full agentic pipeline on demand. Max 10 items; oldest evicted.
  */
 export const alertQueue = mysqlTable("alert_queue", {
   id: int("id").autoincrement().primaryKey(),
@@ -777,11 +777,11 @@ export const alertQueue = mysqlTable("alert_queue", {
   agentName: varchar("agentName", { length: 128 }),
   /** Alert timestamp from Wazuh */
   alertTimestamp: varchar("alertTimestamp", { length: 64 }),
-  /** Full raw alert JSON for Walter context */
+  /** Full raw alert JSON for pipeline context */
   rawJson: json("rawJson").$type<Record<string, unknown>>(),
   /** Queue status: queued → processing → completed → failed → dismissed */
   status: mysqlEnum("status", ["queued", "processing", "completed", "failed", "dismissed"]).default("queued").notNull(),
-  /** Walter's triage result (stored after analysis completes) */
+  /** Agentic triage result (stored after analysis completes) */
   triageResult: json("triageResult").$type<{
     answer: string;
     reasoning?: string;
@@ -797,9 +797,9 @@ export const alertQueue = mysqlTable("alert_queue", {
   queuedBy: int("queuedBy"),
   /** When the alert was queued */
   queuedAt: timestamp("queuedAt").defaultNow().notNull(),
-  /** When Walter started processing */
+  /** When pipeline started processing */
   processedAt: timestamp("processedAt"),
-  /** When Walter completed analysis */
+  /** When pipeline completed analysis */
   completedAt: timestamp("completedAt"),
   /** Pipeline triage ID (links to triage_objects.triageId for auto-triage) */
   pipelineTriageId: varchar("pipelineTriageId", { length: 64 }),
@@ -816,10 +816,10 @@ export type InsertAlertQueueItem = typeof alertQueue.$inferInsert;
 
 /**
  * Auto-queue rules — configurable rules that automatically send matching
- * Wazuh alerts to Walter's queue without manual analyst intervention.
+ * Wazuh alerts to the triage queue without manual analyst intervention.
  *
  * Rules are evaluated against incoming alerts from the Wazuh Indexer.
- * When an alert matches a rule, it is automatically enqueued for Walter analysis.
+ * When an alert matches a rule, it is automatically enqueued for agentic triage.
  *
  * Rule types:
  * - severity_threshold: Queue any alert at or above a severity level

@@ -404,13 +404,13 @@ export default function AdminSettings() {
           <Zap className="h-4 w-4 text-violet-400" />
           <h2 className="text-lg font-display font-semibold text-foreground">AI Engine</h2>
           <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/30 font-mono">
-            WALTER BACKEND
+            LLM BACKEND
           </span>
         </div>
         <ConnectionPanel
           category="llm"
           title="Custom LLM Endpoint"
-          description="Self-hosted OpenAI-compatible LLM (e.g., Nemotron3 Nano via llama.cpp / vLLM / Ollama). When enabled, Walter routes queries here first with fallback to built-in."
+          description="Self-hosted OpenAI-compatible LLM (e.g., Nemotron3 Nano via llama.cpp / vLLM / Ollama). When enabled, Dang! routes queries here first with fallback to built-in."
           icon={<Brain className="h-5 w-5 text-violet-400" />}
           accentClass="bg-violet-500/15"
           toggleField="enabled"

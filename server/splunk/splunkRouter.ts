@@ -24,7 +24,7 @@
  */
 
 import { z } from "zod";
-import { router, protectedProcedure } from "../_core/trpc";
+import { router, protectedProcedure, adminProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import {
   testSplunkConnection,
@@ -137,7 +137,7 @@ export const splunkRouter = router({
    * Records a ticket_artifact row for both success and failure (audit trail).
    * Requires admin role (ticket creation is a privileged action).
    */
-  createTicket: protectedProcedure
+  createTicket: adminProcedure
     .input(
       z.object({
         /** Alert queue item ID */
@@ -145,13 +145,6 @@ export const splunkRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      // Feature gate: require admin role
-      if (ctx.user?.role !== "admin") {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Creating Splunk tickets requires admin role",
-        });
-      }
 
       // Check if Splunk is enabled
       const enabled = await isSplunkEnabled();
@@ -333,15 +326,8 @@ export const splunkRouter = router({
    * that don't already have a ticket. Requires admin role.
    * Updates in-memory progress tracker for real-time polling.
    */
-  batchCreateTickets: protectedProcedure
+  batchCreateTickets: adminProcedure
     .mutation(async ({ ctx }) => {
-      // Feature gate: require admin role
-      if (ctx.user?.role !== "admin") {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Creating Splunk tickets requires admin role",
-        });
-      }
 
       // Prevent concurrent batches
       if (currentBatch.status === "running") {

@@ -11,7 +11,7 @@
  *
  * Derives workflow-level readiness:
  *   - structuredPipeline: triage -> correlation -> hypothesis -> living case
- *   - adHocAnalyst: Walter conversational analysis (ad-hoc, not persisted)
+ *   - adHocAnalyst: AI conversational analysis (ad-hoc, not persisted)
  *   - ticketing: Splunk ES ticket creation from completed triage
  *
  * Dependency severity semantics:

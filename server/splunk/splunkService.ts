@@ -2,7 +2,7 @@
  * Splunk HEC Client Service
  *
  * Provides a server-side client for Splunk's HTTP Event Collector (HEC).
- * Used to push Walter triage reports as structured events to Splunk ES
+ * Used to push agentic triage reports as structured events to Splunk ES
  * Mission Control for ticket/notable event creation.
  *
  * Architecture:
@@ -244,8 +244,8 @@ export async function testSplunkConnection(): Promise<{
 }
 
 /**
- * Create a Splunk ES ticket (notable event) from a Walter triage report.
- * Sends a structured event to HEC with the `dang:walter_triage` sourcetype.
+ * Create a Splunk ES ticket (notable event) from an agentic triage report.
+ * Sends a structured event to HEC with the `dang:agentic_triage` sourcetype.
  */
 export async function createSplunkTicket(payload: SplunkTicketPayload): Promise<{
   success: boolean;
@@ -273,14 +273,14 @@ export async function createSplunkTicket(payload: SplunkTicketPayload): Promise<
 
   const event: SplunkHECEvent = {
     time: Math.floor(Date.now() / 1000),
-    sourcetype: "dang:walter_triage",
+    sourcetype: "dang:agentic_triage",
     source: "dang_security_platform",
     host: "dang-siem",
     index: "notable",
     event: {
       // Ticket metadata
       ticket_id: ticketId,
-      ticket_type: "walter_triage",
+      ticket_type: "agentic_triage",
       created_by: payload.createdBy,
       created_at: new Date().toISOString(),
 
@@ -294,7 +294,7 @@ export async function createSplunkTicket(payload: SplunkTicketPayload): Promise<
       agent_name: payload.agentName,
       alert_timestamp: payload.alertTimestamp,
 
-      // Walter triage analysis
+      // Agentic triage analysis
       triage_summary: payload.triageSummary,
       triage_reasoning: payload.triageReasoning,
       trust_score: payload.trustScore,
@@ -313,7 +313,7 @@ export async function createSplunkTicket(payload: SplunkTicketPayload): Promise<
 
       // Dang! platform metadata
       platform: "Dang! SIEM",
-      analysis_engine: "Walter Agentic Pipeline",
+      analysis_engine: "Dang! Agentic Pipeline",
     },
   };
 

@@ -113,7 +113,7 @@ const BLOCKED_PATTERNS = [
 /** Hard refusal template — immutable */
 const HARD_REFUSAL = `⛔ **Safety Rail Triggered**
 
-This request involves a write/mutate/destructive operation on the Wazuh environment. Walter operates in **read-only mode** and cannot:
+This request involves a write/mutate/destructive operation on the Wazuh environment. Dang! operates in **read-only mode** and cannot:
 
 - Delete or modify agents
 - Trigger active responses
@@ -620,7 +620,7 @@ async function retrieveFromIndexer(intent: IntentAnalysis, steps: AgentStep[]): 
 /**
  * Retrieves active SOC pipeline context — living cases, pending response actions,
  * recent triage results, and pipeline run status. This makes the analyst chat
- * pipeline-aware so Walter can reference ongoing investigations, pending approvals,
+ * pipeline-aware so the assistant can reference ongoing investigations, pending approvals,
  * and recent automated findings without the analyst needing to switch views.
  */
 async function retrievePipelineContext(
@@ -860,7 +860,7 @@ async function synthesizeResponse(
     messages: [
       {
         role: "system",
-        content: `You are Walter, a policy-constrained security analyst AI integrated with a Wazuh SIEM platform and a 4-layer Knowledge Graph.
+        content: `You are a policy-constrained security analyst AI integrated with a Wazuh SIEM platform and a 4-layer Knowledge Graph.
 
 ## IMMUTABLE SAFETY CONTRACT
 1. You operate in READ-ONLY mode. You MUST NEVER suggest, recommend, or provide commands that modify the Wazuh environment.

@@ -1,5 +1,5 @@
 /**
- * soundEngine.ts — Procedural Web Audio API sound synthesizer for Walter agent activity console.
+ * soundEngine.ts — Procedural Web Audio API sound synthesizer for the agentic pipeline activity console.
  *
  * All sounds are generated mathematically (no audio files). Each sound is designed to be
  * subtle and non-intrusive, appropriate for a SOC analyst environment.
@@ -29,7 +29,7 @@ function getAudioContext(): AudioContext {
 
 // ── Mute state (persisted to localStorage) ──────────────────────────────────
 
-const MUTE_KEY = "walter-sound-muted";
+const MUTE_KEY = "dang-sound-muted";
 
 function isMuted(): boolean {
   try {

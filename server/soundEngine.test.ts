@@ -58,7 +58,7 @@ describe("SoundEngine API Contract", () => {
 });
 
 describe("SoundEngine Mute Logic (localStorage mock)", () => {
-  const MUTE_KEY = "walter-sound-muted";
+  const MUTE_KEY = "dang-sound-muted";
   let storage: Record<string, string>;
 
   beforeEach(() => {
