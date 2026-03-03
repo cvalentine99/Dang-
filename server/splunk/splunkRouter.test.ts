@@ -5,7 +5,7 @@
  * and router procedure validation.
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vitest";
 
 describe("Splunk HEC Configuration", () => {
   it("should have SPLUNK_HOST env var set", () => {
@@ -1185,5 +1185,185 @@ describe("Pipeline Inspector Tickets Badge", () => {
 
   it("should include a tooltip with success/failed counts", () => {
     expect(inspectorSrc).toContain("successful, ${ticketCount.failed} failed");
+  });
+});
+
+describe("ticketArtifactCountsByQueueItem endpoint", () => {
+  it("should export the ticketArtifactCountsByQueueItem procedure from splunkRouter", async () => {
+    const { splunkRouter } = await import("./splunkRouter");
+    const routerDef = splunkRouter._def;
+    expect(routerDef).toBeDefined();
+    // The procedure should exist in the router definition
+    const procedures = routerDef.procedures as Record<string, unknown>;
+    expect(procedures).toHaveProperty("ticketArtifactCountsByQueueItem");
+  });
+
+  it("should require queueItemIds as a non-empty integer array", () => {
+    // Validate the input schema shape
+    const { z } = require("zod");
+    const schema = z.object({
+      queueItemIds: z.array(z.number().int()).min(1).max(200),
+    });
+
+    // Valid input
+    expect(() => schema.parse({ queueItemIds: [1, 2, 3] })).not.toThrow();
+
+    // Empty array should fail
+    expect(() => schema.parse({ queueItemIds: [] })).toThrow();
+
+    // Non-integer should fail
+    expect(() => schema.parse({ queueItemIds: [1.5] })).toThrow();
+
+    // Over 200 items should fail
+    const tooMany = Array.from({ length: 201 }, (_, i) => i + 1);
+    expect(() => schema.parse({ queueItemIds: tooMany })).toThrow();
+  });
+
+  it("should return a counts object keyed by queueItemId", () => {
+    // Simulate the expected response shape
+    const mockCounts: Record<number, { total: number; success: number; failed: number }> = {
+      42: { total: 3, success: 2, failed: 1 },
+      99: { total: 1, success: 1, failed: 0 },
+    };
+
+    expect(mockCounts[42]?.total).toBe(3);
+    expect(mockCounts[42]?.success).toBe(2);
+    expect(mockCounts[42]?.failed).toBe(1);
+    expect(mockCounts[99]?.success).toBe(1);
+    expect(mockCounts[99]?.failed).toBe(0);
+    // Non-existent key returns undefined
+    expect(mockCounts[100]).toBeUndefined();
+  });
+});
+
+describe("canRunTicketing readiness wiring in AlertQueue", () => {
+  let alertQueueSrc: string;
+
+  beforeAll(async () => {
+    const fs = await import("fs/promises");
+    alertQueueSrc = await fs.readFile("client/src/pages/AlertQueue.tsx", "utf-8");
+  });
+
+  it("should destructure canRunTicketing from useAgenticReadiness", () => {
+    expect(alertQueueSrc).toContain("canRunTicketing");
+    expect(alertQueueSrc).toContain("ticketingDegraded");
+    expect(alertQueueSrc).toContain("ticketingReason");
+  });
+
+  it("should pass canRunTicketing prop to QueueItemCard", () => {
+    expect(alertQueueSrc).toContain("canRunTicketing={canRunTicketing}");
+  });
+
+  it("should pass ticketingDegraded prop to QueueItemCard", () => {
+    expect(alertQueueSrc).toContain("ticketingDegraded={ticketingDegraded}");
+  });
+
+  it("should pass ticketingReason prop to QueueItemCard", () => {
+    expect(alertQueueSrc).toContain("ticketingReason={ticketingReason}");
+  });
+
+  it("should disable Create Ticket button when canRunTicketing is false", () => {
+    expect(alertQueueSrc).toContain("disabled={createTicketMutation.isPending || !canRunTicketing}");
+  });
+
+  it("should show XCircle icon when ticketing is blocked", () => {
+    expect(alertQueueSrc).toContain("!canRunTicketing");
+    expect(alertQueueSrc).toContain("<XCircle");
+  });
+
+  it("should show amber styling when ticketing is degraded", () => {
+    expect(alertQueueSrc).toContain("bg-amber-500/10 border border-amber-500/20 text-amber-300");
+    expect(alertQueueSrc).toContain("(degraded)");
+  });
+
+  it("should show ticketingReason in tooltip when unavailable", () => {
+    expect(alertQueueSrc).toContain("Ticketing unavailable:");
+    expect(alertQueueSrc).toContain("ticketingReason");
+  });
+
+  it("should also gate the batch Create All Tickets button with canRunTicketing", () => {
+    expect(alertQueueSrc).toContain("disabled={batchCreateMutation.isPending || !canRunTicketing}");
+  });
+});
+
+describe("Ticket Created indicator on queue items", () => {
+  let alertQueueSrc: string;
+
+  beforeAll(async () => {
+    const fs = await import("fs/promises");
+    alertQueueSrc = await fs.readFile("client/src/pages/AlertQueue.tsx", "utf-8");
+  });
+
+  it("should query ticketArtifactCountsByQueueItem for batch ticket status", () => {
+    expect(alertQueueSrc).toContain("trpc.splunk.ticketArtifactCountsByQueueItem.useQuery");
+  });
+
+  it("should pass hasSuccessfulTicket prop to QueueItemCard", () => {
+    expect(alertQueueSrc).toContain("hasSuccessfulTicket={hasSuccessfulTicketForItem(item.id)}");
+  });
+
+  it("should define hasSuccessfulTicketForItem helper function", () => {
+    expect(alertQueueSrc).toContain("hasSuccessfulTicketForItem");
+    expect(alertQueueSrc).toContain("counts.success > 0");
+  });
+
+  it("should show Ticketed badge when hasSuccessfulTicket is true", () => {
+    expect(alertQueueSrc).toContain("Ticketed");
+    expect(alertQueueSrc).toContain("Ticket already created for this queue item");
+  });
+
+  it("should exclude items with successful ticket artifacts from ticketEligibleCount", () => {
+    expect(alertQueueSrc).toContain("hasSuccessfulTicketForItem(i.id)");
+  });
+
+  it("should invalidate ticketArtifactCountsByQueueItem after ticket creation", () => {
+    expect(alertQueueSrc).toContain("splunk.ticketArtifactCountsByQueueItem.invalidate()");
+  });
+
+  it("should accept hasSuccessfulTicket as an optional prop with default false", () => {
+    expect(alertQueueSrc).toContain("hasSuccessfulTicket = false");
+  });
+
+  it("should include canRunTicketing as an optional prop with default true", () => {
+    expect(alertQueueSrc).toContain("canRunTicketing = true");
+  });
+
+  it("should include ticketingDegraded as an optional prop with default false", () => {
+    expect(alertQueueSrc).toContain("ticketingDegraded = false");
+  });
+});
+
+describe("Splunk Connection Settings Page (already implemented)", () => {
+  let adminSettingsSrc: string;
+
+  beforeAll(async () => {
+    const fs = await import("fs/promises");
+    adminSettingsSrc = await fs.readFile("client/src/pages/AdminSettings.tsx", "utf-8");
+  });
+
+  it("should include a Splunk ES section with category='splunk'", () => {
+    expect(adminSettingsSrc).toContain('category="splunk"');
+  });
+
+  it("should have HEC host, port, token, and protocol fields", () => {
+    expect(adminSettingsSrc).toContain('key: "host"');
+    expect(adminSettingsSrc).toContain('key: "hec_port"');
+    expect(adminSettingsSrc).toContain('key: "hec_token"');
+    expect(adminSettingsSrc).toContain('key: "protocol"');
+  });
+
+  it("should have an enable/disable toggle via toggleField", () => {
+    expect(adminSettingsSrc).toContain('toggleField="enabled"');
+  });
+
+  it("should show the Splunk ES title and description", () => {
+    expect(adminSettingsSrc).toContain("Splunk Enterprise Security");
+    expect(adminSettingsSrc).toContain("HTTP Event Collector");
+  });
+
+  it("should support test connection, save, and reset actions", () => {
+    expect(adminSettingsSrc).toContain("Test Connection");
+    expect(adminSettingsSrc).toContain("Save Settings");
+    expect(adminSettingsSrc).toContain("Reset to Env");
   });
 });

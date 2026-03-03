@@ -157,6 +157,10 @@ function QueueItemCard({
   elapsedSeconds = 0,
   canRunStructuredPipeline = true,
   canRunAdHoc = true,
+  canRunTicketing = true,
+  ticketingDegraded = false,
+  ticketingReason = null,
+  hasSuccessfulTicket = false,
 }: {
   item: {
     id: number;
@@ -182,6 +186,10 @@ function QueueItemCard({
   elapsedSeconds?: number;
   canRunStructuredPipeline?: boolean;
   canRunAdHoc?: boolean;
+  canRunTicketing?: boolean;
+  ticketingDegraded?: boolean;
+  ticketingReason?: string | null;
+  hasSuccessfulTicket?: boolean;
 }) {
   const elapsedDisplay = elapsedSeconds;
   const [expanded, setExpanded] = useState(false);
@@ -240,6 +248,7 @@ function QueueItemCard({
       }
       // Refetch regardless — if ticket was created, show it; if not, state is unchanged
       trpc.useUtils().alertQueue.list.invalidate();
+      trpc.useUtils().splunk.ticketArtifactCountsByQueueItem.invalidate();
     },
     onError: (err) => {
       toast.error("Failed to create Splunk ticket", { description: err.message });
@@ -360,21 +369,51 @@ function QueueItemCard({
           )}
           {(item.status === "completed" || item.status === "failed") && (
             <div className="flex items-center gap-1.5">
-              {/* Create Splunk Ticket button — only for completed items with triage */}
-              {item.status === "completed" && triage?.answer && splunkEnabled.data?.enabled && !triage?.splunkTicketId && (
-                <button
-                  onClick={() => createTicketMutation.mutate({ queueItemId: item.id })}
-                  disabled={createTicketMutation.isPending}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-medium hover:bg-emerald-500/20 transition-all disabled:opacity-50"
-                  title="Create ticket in Splunk ES Mission Control"
-                >
-                  {createTicketMutation.isPending ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Ticket className="h-3.5 w-3.5" />
-                  )}
-                  Create Ticket
-                </button>
+              {/* Create Splunk Ticket button — readiness-gated, duplicate-aware */}
+              {item.status === "completed" && triage?.answer && splunkEnabled.data?.enabled && (
+                hasSuccessfulTicket && !triage?.splunkTicketId ? (
+                  /* Ticket artifact exists (from ticket_artifacts table) but not in triageResult */
+                  <span
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/8 border border-emerald-500/15 text-emerald-400/70 text-xs font-medium cursor-default"
+                    title="Ticket already created for this queue item"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Ticketed
+                  </span>
+                ) : !triage?.splunkTicketId && !hasSuccessfulTicket ? (
+                  <button
+                    onClick={() => createTicketMutation.mutate({ queueItemId: item.id })}
+                    disabled={createTicketMutation.isPending || !canRunTicketing}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50 ${
+                      !canRunTicketing
+                        ? "bg-white/5 border border-white/10 text-muted-foreground/50 cursor-not-allowed"
+                        : ticketingDegraded
+                        ? "bg-amber-500/10 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20"
+                        : "bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/20"
+                    }`}
+                    title={
+                      !canRunTicketing
+                        ? `Ticketing unavailable: ${ticketingReason ?? "Splunk HEC not reachable"}`
+                        : ticketingDegraded
+                        ? `Ticketing degraded: ${ticketingReason ?? "HEC connectivity issues"}`
+                        : "Create ticket in Splunk ES Mission Control"
+                    }
+                  >
+                    {createTicketMutation.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : !canRunTicketing ? (
+                      <XCircle className="h-3.5 w-3.5" />
+                    ) : ticketingDegraded ? (
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                    ) : (
+                      <Ticket className="h-3.5 w-3.5" />
+                    )}
+                    Create Ticket
+                    {ticketingDegraded && canRunTicketing && (
+                      <span className="ml-0.5 text-[9px] text-amber-400/60">(degraded)</span>
+                    )}
+                  </button>
+                ) : null
               )}
               {/* Show ticket ID if already created — clickable deep link to Splunk ES */}
               {triage?.splunkTicketId && (
@@ -689,7 +728,7 @@ function TicketArtifactsPanel() {
 // Main page
 export default function AlertQueue() {
   const utils = trpc.useUtils();
-  const { canRunStructuredPipeline, structuredPipelineBlocked, canRunAdHoc, adHocBlocked } = useAgenticReadiness();
+  const { canRunStructuredPipeline, structuredPipelineBlocked, canRunAdHoc, adHocBlocked, canRunTicketing, ticketingDegraded, ticketingReason } = useAgenticReadiness();
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [processingStartTime, setProcessingStartTime] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -796,6 +835,7 @@ export default function AlertQueue() {
       }
       setIsBatchRunning(false);
       utils.alertQueue.list.invalidate();
+      utils.splunk.ticketArtifactCountsByQueueItem.invalidate();
     }
   }, [batchProgress.data?.status]);
 
@@ -825,6 +865,7 @@ export default function AlertQueue() {
       }
       setIsBatchRunning(false);
       utils.alertQueue.list.invalidate();
+      utils.splunk.ticketArtifactCountsByQueueItem.invalidate();
     },
     onError: (err) => {
       setIsBatchRunning(false);
@@ -845,12 +886,27 @@ export default function AlertQueue() {
   const queuedItems = items.filter(i => i.status === "queued" || i.status === "processing");
   const completedItems = items.filter(i => i.status === "completed" || i.status === "failed" || i.status === "dismissed");
 
-  // Count completed items eligible for ticketing (no existing splunkTicketId)
+  // Batch query ticket artifact counts for all queue items — avoids N+1 queries
+  const allItemIds = items.map(i => i.id).filter(Boolean);
+  const ticketCountsQuery = trpc.splunk.ticketArtifactCountsByQueueItem.useQuery(
+    { queueItemIds: allItemIds },
+    { enabled: allItemIds.length > 0, staleTime: 15_000 }
+  );
+  const ticketCounts = ticketCountsQuery.data?.counts ?? {};
+
+  // Helper: does this queue item have at least one successful ticket artifact?
+  const hasSuccessfulTicketForItem = (itemId: number): boolean => {
+    const counts = ticketCounts[itemId];
+    return counts != null && counts.success > 0;
+  };
+
+  // Count completed items eligible for ticketing (no existing splunkTicketId AND no successful ticket artifact)
   const ticketEligibleCount = items.filter(i => {
     if (i.status !== "completed") return false;
     const triage = i.triageResult as Record<string, unknown> | null;
     if (!triage || !triage.answer) return false;
     if (triage.splunkTicketId) return false;
+    if (hasSuccessfulTicketForItem(i.id)) return false;
     return true;
   }).length;
 
@@ -917,12 +973,33 @@ export default function AlertQueue() {
               ) : ticketEligibleCount > 0 ? (
                 <button
                   onClick={() => batchCreateMutation.mutate()}
-                  disabled={batchCreateMutation.isPending}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-medium hover:bg-emerald-500/20 transition-all disabled:opacity-50"
-                  title={`Create Splunk tickets for ${ticketEligibleCount} completed triage report${ticketEligibleCount > 1 ? "s" : ""}`}
+                  disabled={batchCreateMutation.isPending || !canRunTicketing}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50 ${
+                    !canRunTicketing
+                      ? "bg-white/5 border border-white/10 text-muted-foreground/50 cursor-not-allowed"
+                      : ticketingDegraded
+                      ? "bg-amber-500/10 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20"
+                      : "bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/20"
+                  }`}
+                  title={
+                    !canRunTicketing
+                      ? `Ticketing unavailable: ${ticketingReason ?? "Splunk HEC not reachable"}`
+                      : ticketingDegraded
+                      ? `Ticketing degraded (${ticketingReason}) — ${ticketEligibleCount} eligible`
+                      : `Create Splunk tickets for ${ticketEligibleCount} completed triage report${ticketEligibleCount > 1 ? "s" : ""}`
+                  }
                 >
-                  <Ticket className="h-3.5 w-3.5" />
+                  {!canRunTicketing ? (
+                    <XCircle className="h-3.5 w-3.5" />
+                  ) : ticketingDegraded ? (
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                  ) : (
+                    <Ticket className="h-3.5 w-3.5" />
+                  )}
                   Create All Tickets ({ticketEligibleCount})
+                  {ticketingDegraded && canRunTicketing && (
+                    <span className="ml-0.5 text-[9px] text-amber-400/60">(degraded)</span>
+                  )}
                 </button>
               ) : null
             )}
@@ -1030,6 +1107,10 @@ export default function AlertQueue() {
                     elapsedSeconds={processingId === item.id ? elapsedSeconds : 0}
                     canRunStructuredPipeline={canRunStructuredPipeline}
                     canRunAdHoc={canRunAdHoc}
+                    canRunTicketing={canRunTicketing}
+                    ticketingDegraded={ticketingDegraded}
+                    ticketingReason={ticketingReason}
+                    hasSuccessfulTicket={hasSuccessfulTicketForItem(item.id)}
                   />
                 ))}
               </div>
@@ -1054,6 +1135,10 @@ export default function AlertQueue() {
                     isProcessing={false}
                     canRunStructuredPipeline={canRunStructuredPipeline}
                     canRunAdHoc={canRunAdHoc}
+                    canRunTicketing={canRunTicketing}
+                    ticketingDegraded={ticketingDegraded}
+                    ticketingReason={ticketingReason}
+                    hasSuccessfulTicket={hasSuccessfulTicketForItem(item.id)}
                   />
                 ))}
               </div>

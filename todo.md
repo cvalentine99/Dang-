@@ -2515,3 +2515,21 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Updated tests in directions8-10.test.ts — also added continue- prefix test
 - [x] Zero remaining replayRunId/replayRow references in source or test files
 - [x] All 1,370 tests passing, 0 TypeScript errors
+
+### Feature: Wire canRunTicketing into Create Ticket Button
+- [x] Import useAgenticReadiness in AlertQueue.tsx (canRunTicketing, ticketingDegraded, ticketingReason)
+- [x] Disable Create Ticket button when canRunTicketing is false (both individual and batch)
+- [x] Show degraded warning tooltip/badge when ticketingDegraded is true (amber styling + "(degraded)" label)
+- [x] Show unavailable state when ticketingBlocked is true (XCircle icon + cursor-not-allowed)
+- [x] Display ticketingReason in the warning (tooltip title attribute)
+## Feature: Ticket Created Indicator on Queue Items
+- [x] Query ticket_artifacts for queue items via new ticketArtifactCountsByQueueItem endpoint
+- [x] Show a "Ticketed" badge/icon on queue item cards that have successful tickets (CheckCircle2)
+- [x] Prevent duplicate ticket creation with visual indicator + disable (hasSuccessfulTicket prop)le
+
+### Feature: Splunk Connection Settings Page
+- [x] Add Splunk settings section in AdminSettings page (already existed)
+- [x] Show current HEC host, port, token (masked), index, enabled status (already existed)
+- [x] Allow admin to update HEC configuration via tRPC mutation (already existed)
+- [x] Store settings in DB or env — persist across restarts (connectionSettings table)
+- [x] Show connection test result (reuse testSplunkConnection) (already existed)

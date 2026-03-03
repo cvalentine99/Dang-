@@ -636,6 +636,48 @@ export const splunkRouter = router({
     }),
 
   /**
+   * Batch-query ticket artifact counts for a list of queue item IDs.
+   * Returns a map of { queueItemId: { total, success, failed } }.
+   * Used by Alert Queue to show "Ticketed" badges without N+1 queries.
+   */
+  ticketArtifactCountsByQueueItem: protectedProcedure
+    .input(
+      z.object({
+        queueItemIds: z.array(z.number().int()).min(1).max(200),
+      })
+    )
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+      }
+
+      const rows = await db
+        .select({
+          queueItemId: ticketArtifacts.queueItemId,
+          total: sql<number>`COUNT(*)`,
+          success: sql<number>`SUM(CASE WHEN ${ticketArtifacts.success} = true THEN 1 ELSE 0 END)`,
+          failed: sql<number>`SUM(CASE WHEN ${ticketArtifacts.success} = false THEN 1 ELSE 0 END)`,
+        })
+        .from(ticketArtifacts)
+        .where(inArray(ticketArtifacts.queueItemId, input.queueItemIds))
+        .groupBy(ticketArtifacts.queueItemId);
+
+      const counts: Record<number, { total: number; success: number; failed: number }> = {};
+      for (const row of rows) {
+        if (row.queueItemId != null) {
+          counts[row.queueItemId] = {
+            total: Number(row.total),
+            success: Number(row.success),
+            failed: Number(row.failed),
+          };
+        }
+      }
+
+      return { counts };
+    }),
+
+  /**
    * Get a single ticket artifact by ID — full detail view for audit inspection.
    */
   getTicketArtifact: protectedProcedure
