@@ -2545,3 +2545,10 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Audit shared code and cross-cutting concerns (types, constants, env)
 - [x] Fix 3 moderate issues: canRunTicketing default, readiness rate limit group, VITE_APP_ID comment
 - [x] Run full test suite and verify (all 1396 tests passing)
+
+### Large Page Decomposition
+- [x] KnowledgeGraph.tsx: 2114→1063 lines, 10 sub-components in knowledge-graph/ (1192 lines total)
+- [x] DriftAnalytics.tsx: 1927→1033 lines, 9 sub-components in drift-analytics/ (1018 lines total)
+- [x] ITHygiene.tsx: 1614→484 lines, 11 sub-components in it-hygiene/ (715 lines total)
+- [x] All 1396 tests passing across 55 test files
+- [x] TypeScript compilation clean (0 errors)
