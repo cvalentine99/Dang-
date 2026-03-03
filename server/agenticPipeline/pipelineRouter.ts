@@ -1076,9 +1076,16 @@ export const pipelineRouter = router({
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**
-   * Replay a failed or partial pipeline run from the first failed stage.
+   * Replay a failed pipeline run from the first failed stage, or continue
+   * a partial (triage-only) run from the first pending stage.
    * Re-uses artifacts from completed stages (triage ID, correlation ID) and
-   * re-runs only the stages that failed or were not reached.
+   * re-runs only the stages that failed or were not yet reached.
+   *
+   * Stage detection priority:
+   *   1. Explicit fromStage override (if provided)
+   *   2. First failed stage (for failed runs)
+   *   3. First pending stage (for partial/triage-only runs)
+   *   4. Throws if no actionable stage found (run already completed)
    */
   replayPipelineRun: protectedProcedure
     .input(z.object({
@@ -1109,13 +1116,18 @@ export const pipelineRouter = router({
       let startStage = input.fromStage;
 
       if (!startStage) {
-        // Auto-detect: find the first failed stage
+        // Auto-detect: first check for failed stages, then pending stages
+        // Priority 1: Find the first failed stage (for failed runs)
         if (originalRun.triageStatus === "failed") startStage = "triage";
         else if (originalRun.correlationStatus === "failed") startStage = "correlation";
         else if (originalRun.hypothesisStatus === "failed") startStage = "hypothesis";
         else if (originalRun.responseActionsStatus === "failed") startStage = "hypothesis"; // re-run hypothesis to re-materialize
+        // Priority 2: Find the first pending stage (for partial/triage-only runs)
+        else if (originalRun.triageStatus === "pending") startStage = "triage";
+        else if (originalRun.correlationStatus === "pending") startStage = "correlation";
+        else if (originalRun.hypothesisStatus === "pending") startStage = "hypothesis";
         else {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No failed stage found — pipeline completed successfully" });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No actionable stage found — all stages already completed" });
         }
       }
 

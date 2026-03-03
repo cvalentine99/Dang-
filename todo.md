@@ -2472,3 +2472,13 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Added ticketing WorkflowStatus in ReadinessBanner (3-column grid: Structured Pipeline, Ad-hoc Analyst, Ticketing)
 - [x] 20 new structural tests in readinessService.test.ts — all passing
 - [x] All 1,307 tests passing across 54 test files, zero TypeScript errors
+
+## Verify/Fix: Partial-Run Continuation Backend Semantics
+
+- [x] Verified replayPipelineRun stage-detection logic — CONFIRMED BUG: only checked for failed stages, threw "No failed stage found" for partial runs
+- [x] Fixed: added Priority 2 pending-stage detection after failed-stage checks (lines 1125-1128 of pipelineRouter.ts)
+- [x] Updated error message from "No failed stage found" to "No actionable stage found — all stages already completed"
+- [x] Updated JSDoc to document 4-level stage detection priority (explicit override → failed → pending → throw)
+- [x] 30 new tests in partialRunContinuation.test.ts proving: code structure, priority ordering, simulated detection, prerequisite validation, UI language alignment
+- [x] Updated detectFirstFailedStage → detectFirstActionableStage in directions8-10.test.ts with 5 new partial-run tests
+- [x] All 1,338 tests passing across 55 test files, zero TypeScript errors

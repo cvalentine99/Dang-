@@ -174,17 +174,38 @@ describe("Direction 9: Pipeline Replay", () => {
   });
 
   describe("Replay stage detection", () => {
+    /**
+     * detectFirstActionableStage — mirrors the actual backend logic in pipelineRouter.ts
+     * Priority 1: First failed stage (for failed runs)
+     * Priority 2: First pending stage (for partial/triage-only runs)
+     * Returns null if all stages completed.
+     */
+    function detectFirstActionableStage(run: {
+      triageStatus: string;
+      correlationStatus: string;
+      hypothesisStatus: string;
+      responseActionsStatus: string;
+    }): string | null {
+      // Priority 1: failed stages
+      if (run.triageStatus === "failed") return "triage";
+      if (run.correlationStatus === "failed") return "correlation";
+      if (run.hypothesisStatus === "failed") return "hypothesis";
+      if (run.responseActionsStatus === "failed") return "hypothesis"; // re-run hypothesis
+      // Priority 2: pending stages (for partial/triage-only runs)
+      if (run.triageStatus === "pending") return "triage";
+      if (run.correlationStatus === "pending") return "correlation";
+      if (run.hypothesisStatus === "pending") return "hypothesis";
+      return null;
+    }
+
+    // Legacy alias for backward compatibility in existing tests
     function detectFirstFailedStage(run: {
       triageStatus: string;
       correlationStatus: string;
       hypothesisStatus: string;
       responseActionsStatus: string;
     }): string | null {
-      if (run.triageStatus === "failed") return "triage";
-      if (run.correlationStatus === "failed") return "correlation";
-      if (run.hypothesisStatus === "failed") return "hypothesis";
-      if (run.responseActionsStatus === "failed") return "hypothesis"; // re-run hypothesis
-      return null;
+      return detectFirstActionableStage(run);
     }
 
     it("should detect triage as first failed stage", () => {
@@ -225,6 +246,55 @@ describe("Direction 9: Pipeline Replay", () => {
 
     it("should return null for fully completed pipeline", () => {
       expect(detectFirstFailedStage({
+        triageStatus: "completed",
+        correlationStatus: "completed",
+        hypothesisStatus: "completed",
+        responseActionsStatus: "completed",
+      })).toBeNull();
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Partial-run continuation: pending stage detection
+    // ═══════════════════════════════════════════════════════════════════
+
+    it("should detect correlation as first pending stage for triage-only partial run", () => {
+      expect(detectFirstActionableStage({
+        triageStatus: "completed",
+        correlationStatus: "pending",
+        hypothesisStatus: "pending",
+        responseActionsStatus: "pending",
+      })).toBe("correlation");
+    });
+
+    it("should detect hypothesis as first pending stage when triage+correlation completed", () => {
+      expect(detectFirstActionableStage({
+        triageStatus: "completed",
+        correlationStatus: "completed",
+        hypothesisStatus: "pending",
+        responseActionsStatus: "pending",
+      })).toBe("hypothesis");
+    });
+
+    it("should prioritize failed over pending when both exist", () => {
+      expect(detectFirstActionableStage({
+        triageStatus: "completed",
+        correlationStatus: "failed",
+        hypothesisStatus: "pending",
+        responseActionsStatus: "pending",
+      })).toBe("correlation");
+    });
+
+    it("should detect triage as first pending stage for empty run", () => {
+      expect(detectFirstActionableStage({
+        triageStatus: "pending",
+        correlationStatus: "pending",
+        hypothesisStatus: "pending",
+        responseActionsStatus: "pending",
+      })).toBe("triage");
+    });
+
+    it("should return null when all stages completed (no actionable stage)", () => {
+      expect(detectFirstActionableStage({
         triageStatus: "completed",
         correlationStatus: "completed",
         hypothesisStatus: "completed",
