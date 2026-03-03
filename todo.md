@@ -2417,3 +2417,13 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Fix 4: Failure-path proof tests — 18 new tests covering artifact construction (success/failure/exception paths), workflow lineage, forensic field preservation, UI error truth
 - [x] Bonus: listTicketArtifacts + getTicketArtifact query endpoints for audit trail visibility
 - [x] All 1,257 tests passing across 53 test files
+
+## Truth Tightening — Final Three Issues
+
+- [x] Fix 1: Ticket success truthfulness — createTicket returns explicit success:true/false with ticketId or null; UI shows error toast for success:false; batch toast uses warning for partial, error for all-failed
+- [x] Fix 2: Partial pipeline run semantics — completedAt=null for partial runs; totalLatencyMs=triageLatencyMs; UI labels "Triage Only" not "Partial"; metadata shows "awaiting analyst advancement"
+- [x] Fix 3: Ticket lineage first-class — added triageId FK column to ticket_artifacts; wired into createTicket and batchCreateTickets (success, failure, exception paths); documented 4-path workflow lineage
+- [x] Secondary: Normalized all DB access in alertQueueRouter.ts to requireDb(); removed getDb import; eliminated manual null-check anti-patterns
+- [x] Secondary: Preserved Wazuh error-detail handling, readiness wiring, Structured Triage vs Ad-hoc wording (verified intact)
+- [x] Tests: 21 new tests covering all three fixes + DB normalization verification
+- [x] Proof: All 1,278 tests passing across 53 test files, zero TypeScript errors

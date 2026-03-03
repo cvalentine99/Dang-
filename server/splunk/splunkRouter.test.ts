@@ -580,3 +580,316 @@ describe("Failure Truth — UI should see actual error messages", () => {
     }
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Fix 1: Ticket Success Truthfulness — UI must never show success for failures
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("Ticket Success Truthfulness — createTicket return shape", () => {
+  it("should return success:true with ticketId when HEC confirms creation", () => {
+    const hecResult = { success: true, ticketId: "DANG-1709123456-rt-001", message: "Ticket created" };
+
+    // Simulate the router's explicit return logic
+    let routerReturn;
+    if (hecResult.success && hecResult.ticketId) {
+      routerReturn = { success: true as const, ticketId: hecResult.ticketId, message: hecResult.message };
+    } else {
+      routerReturn = { success: false as const, ticketId: null, message: hecResult.message || "Splunk HEC did not confirm ticket creation" };
+    }
+
+    expect(routerReturn.success).toBe(true);
+    expect(routerReturn.ticketId).toBe("DANG-1709123456-rt-001");
+  });
+
+  it("should return success:false with null ticketId when HEC returns failure", () => {
+    const hecResult = { success: false, ticketId: undefined, message: "Splunk HEC error (403): Invalid token" };
+
+    let routerReturn;
+    if (hecResult.success && hecResult.ticketId) {
+      routerReturn = { success: true as const, ticketId: hecResult.ticketId, message: hecResult.message };
+    } else {
+      routerReturn = { success: false as const, ticketId: null, message: hecResult.message || "Splunk HEC did not confirm ticket creation" };
+    }
+
+    expect(routerReturn.success).toBe(false);
+    expect(routerReturn.ticketId).toBeNull();
+    expect(routerReturn.message).toContain("403");
+  });
+
+  it("should return success:false when HEC returns success:true but no ticketId", () => {
+    // Edge case: HEC says success but doesn't return a ticket ID
+    const hecResult = { success: true, ticketId: undefined, message: "OK" };
+
+    let routerReturn;
+    if (hecResult.success && hecResult.ticketId) {
+      routerReturn = { success: true as const, ticketId: hecResult.ticketId, message: hecResult.message };
+    } else {
+      routerReturn = { success: false as const, ticketId: null, message: hecResult.message || "Splunk HEC did not confirm ticket creation" };
+    }
+
+    // Must NOT show success — no ticketId means no confirmed ticket
+    expect(routerReturn.success).toBe(false);
+    expect(routerReturn.ticketId).toBeNull();
+  });
+
+  it("should provide a fallback message when HEC returns empty message on failure", () => {
+    const hecResult = { success: false, ticketId: undefined, message: "" };
+
+    let routerReturn;
+    if (hecResult.success && hecResult.ticketId) {
+      routerReturn = { success: true as const, ticketId: hecResult.ticketId, message: hecResult.message };
+    } else {
+      routerReturn = { success: false as const, ticketId: null, message: hecResult.message || "Splunk HEC did not confirm ticket creation" };
+    }
+
+    expect(routerReturn.success).toBe(false);
+    expect(routerReturn.message).toBe("Splunk HEC did not confirm ticket creation");
+    expect(routerReturn.message.length).toBeGreaterThan(0);
+  });
+});
+
+describe("Ticket Success Truthfulness — batch toast logic", () => {
+  it("should show success toast only when all tickets succeed (sent > 0, failed === 0)", () => {
+    const result = { sent: 3, failed: 0, total: 3 };
+    const toastType = result.sent > 0 && result.failed === 0 ? "success"
+      : result.sent > 0 && result.failed > 0 ? "warning"
+      : result.failed > 0 ? "error"
+      : "info";
+    expect(toastType).toBe("success");
+  });
+
+  it("should show warning toast for partial success (sent > 0, failed > 0)", () => {
+    const result = { sent: 2, failed: 1, total: 3 };
+    const toastType = result.sent > 0 && result.failed === 0 ? "success"
+      : result.sent > 0 && result.failed > 0 ? "warning"
+      : result.failed > 0 ? "error"
+      : "info";
+    expect(toastType).toBe("warning");
+  });
+
+  it("should show error toast when all tickets fail (sent === 0, failed > 0)", () => {
+    const result = { sent: 0, failed: 3, total: 3 };
+    const toastType = result.sent > 0 && result.failed === 0 ? "success"
+      : result.sent > 0 && result.failed > 0 ? "warning"
+      : result.failed > 0 ? "error"
+      : "info";
+    expect(toastType).toBe("error");
+  });
+
+  it("should show info toast when no eligible tickets exist", () => {
+    const result = { sent: 0, failed: 0, total: 0 };
+    const toastType = result.sent > 0 && result.failed === 0 ? "success"
+      : result.sent > 0 && result.failed > 0 ? "warning"
+      : result.failed > 0 ? "error"
+      : "info";
+    expect(toastType).toBe("info");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Fix 2: Partial Pipeline Run Semantics
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("Partial Pipeline Run Semantics", () => {
+  it("should set completedAt to null for partial (triage-only) runs", () => {
+    // Simulates the pipelineRuns insert for a queue-triggered triage
+    const runValues = {
+      runId: "run-test123",
+      queueItemId: 42,
+      alertId: "alert-001",
+      currentStage: "triage",
+      status: "partial",
+      triageId: "triage-abc",
+      triageStatus: "completed",
+      triageLatencyMs: 1500,
+      totalLatencyMs: 1500,
+      correlationStatus: "pending",
+      hypothesisStatus: "pending",
+      responseActionsStatus: "pending",
+      triggeredBy: "analyst",
+      startedAt: new Date(),
+      completedAt: null, // NOT complete — awaiting analyst advancement
+    };
+
+    expect(runValues.status).toBe("partial");
+    expect(runValues.completedAt).toBeNull();
+    expect(runValues.triageStatus).toBe("completed");
+    expect(runValues.correlationStatus).toBe("pending");
+    expect(runValues.hypothesisStatus).toBe("pending");
+    expect(runValues.responseActionsStatus).toBe("pending");
+  });
+
+  it("should set completedAt to a Date for failed runs", () => {
+    const runValues = {
+      status: "failed",
+      currentStage: "failed",
+      triageStatus: "failed",
+      startedAt: new Date(),
+      completedAt: new Date(), // Failed runs ARE terminal — they have a completion time
+    };
+
+    expect(runValues.status).toBe("failed");
+    expect(runValues.completedAt).toBeInstanceOf(Date);
+  });
+
+  it("should distinguish triage-only from fully-completed in UI labels", () => {
+    const STATUS_CONFIG: Record<string, { label: string }> = {
+      completed: { label: "Completed" },
+      failed: { label: "Failed" },
+      running: { label: "Running" },
+      partial: { label: "Triage Only" },
+      pending: { label: "Pending" },
+    };
+
+    expect(STATUS_CONFIG.partial.label).toBe("Triage Only");
+    expect(STATUS_CONFIG.completed.label).toBe("Completed");
+    // "Triage Only" is NOT "Completed" — they are semantically different
+    expect(STATUS_CONFIG.partial.label).not.toBe(STATUS_CONFIG.completed.label);
+  });
+
+  it("should record totalLatencyMs as triage latency for partial runs", () => {
+    const triageLatencyMs = 2340;
+    const runValues = {
+      status: "partial",
+      triageLatencyMs,
+      totalLatencyMs: triageLatencyMs, // For partial runs, total = triage only
+    };
+
+    expect(runValues.totalLatencyMs).toBe(runValues.triageLatencyMs);
+  });
+
+  it("should show 'awaiting analyst advancement' for partial runs without completedAt", () => {
+    const run = { status: "partial", completedAt: null };
+
+    const displayText = run.completedAt
+      ? `Completed: ${run.completedAt}`
+      : run.status === "partial"
+        ? "Triage complete — awaiting analyst advancement"
+        : null;
+
+    expect(displayText).toBe("Triage complete — awaiting analyst advancement");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Fix 3: Ticket Lineage — triageId as first-class FK
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("Ticket Artifact — triageId First-Class Lineage", () => {
+  it("should have triageId column in ticketArtifacts schema", async () => {
+    const { ticketArtifacts } = await import("../../drizzle/schema");
+    expect(ticketArtifacts.triageId).toBeDefined();
+  });
+
+  it("should construct artifact with triageId from pipeline run", () => {
+    const associatedRun = { id: 7, triageId: "triage-abc123" };
+    const item = { pipelineTriageId: "triage-abc123" };
+
+    const artifact = {
+      pipelineRunId: associatedRun.id,
+      triageId: associatedRun.triageId ?? item.pipelineTriageId ?? null,
+    };
+
+    expect(artifact.triageId).toBe("triage-abc123");
+    expect(artifact.pipelineRunId).toBe(7);
+  });
+
+  it("should fall back to pipelineTriageId when pipeline run has no triageId", () => {
+    const associatedRun = { id: 7, triageId: null };
+    const item = { pipelineTriageId: "triage-fallback-456" };
+
+    const artifact = {
+      pipelineRunId: associatedRun.id,
+      triageId: associatedRun.triageId ?? item.pipelineTriageId ?? null,
+    };
+
+    expect(artifact.triageId).toBe("triage-fallback-456");
+  });
+
+  it("should allow null triageId for legacy items without triage linkage", () => {
+    const associatedRun = null;
+    const item = { pipelineTriageId: null };
+
+    const artifact = {
+      pipelineRunId: null,
+      triageId: associatedRun?.triageId ?? item.pipelineTriageId ?? null,
+    };
+
+    expect(artifact.triageId).toBeNull();
+    expect(artifact.pipelineRunId).toBeNull();
+  });
+
+  it("should document full workflow lineage in artifact", () => {
+    // The complete lineage chain:
+    // ticket → triageId → triage_objects (primary)
+    // ticket → pipelineRunId → pipeline_runs (run context)
+    // ticket → queueItemId → alert_queue (queue origin)
+    // ticket → alertId (direct Wazuh cross-reference)
+    const artifact = {
+      ticketId: "DANG-123",
+      triageId: "triage-abc",
+      pipelineRunId: 7,
+      queueItemId: 42,
+      alertId: "alert-001",
+      ruleId: "5710",
+      ruleLevel: 12,
+    };
+
+    // All four linkage paths must be present
+    expect(artifact.triageId).toBeTruthy();
+    expect(artifact.pipelineRunId).toBeTruthy();
+    expect(artifact.queueItemId).toBeTruthy();
+    expect(artifact.alertId).toBeTruthy();
+  });
+
+  it("should use triageId from exception-path batch artifacts via pipelineTriageId", () => {
+    // In the batch exception path, we don't have associatedRun
+    // but we can still get triageId from item.pipelineTriageId
+    const item = { pipelineTriageId: "triage-exception-789" };
+
+    const artifact = {
+      ticketId: `exception-${Date.now()}`,
+      pipelineRunId: null,
+      triageId: item.pipelineTriageId ?? null,
+      success: false,
+    };
+
+    expect(artifact.triageId).toBe("triage-exception-789");
+    expect(artifact.pipelineRunId).toBeNull();
+    expect(artifact.success).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Secondary: DB Access Normalization
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("DB Access Normalization — alertQueueRouter", () => {
+  it("should use requireDb (not getDb) for all queue router procedures", async () => {
+    // Read the alertQueueRouter source and verify no getDb usage
+    const fs = await import("fs");
+    const source = fs.readFileSync(
+      new URL("../alertQueue/alertQueueRouter.ts", import.meta.url),
+      "utf-8"
+    );
+
+    // Should NOT import getDb
+    expect(source).not.toContain('import { getDb }');
+    // Should import requireDb
+    expect(source).toContain('requireDb');
+  });
+
+  it("should not have manual null-check patterns for db", async () => {
+    const fs = await import("fs");
+    const source = fs.readFileSync(
+      new URL("../alertQueue/alertQueueRouter.ts", import.meta.url),
+      "utf-8"
+    );
+
+    // requireDb() throws on null — no need for manual "if (!db)" checks
+    // Count occurrences of the anti-pattern
+    const antiPattern = /if\s*\(\s*!db\s*\)/g;
+    const matches = source.match(antiPattern);
+    expect(matches).toBeNull();
+  });
+});

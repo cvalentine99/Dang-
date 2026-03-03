@@ -53,7 +53,7 @@ const STATUS_CONFIG: Record<string, { icon: typeof CheckCircle2; color: string; 
   completed: { icon: CheckCircle2, color: "text-emerald-400", label: "Completed" },
   failed: { icon: XCircle, color: "text-red-400", label: "Failed" },
   running: { icon: Loader2, color: "text-cyan-400", label: "Running" },
-  partial: { icon: AlertTriangle, color: "text-yellow-400", label: "Partial" },
+  partial: { icon: AlertTriangle, color: "text-yellow-400", label: "Triage Only" },
   pending: { icon: Clock, color: "text-muted-foreground/50", label: "Pending" },
   skipped: { icon: Clock, color: "text-muted-foreground/30", label: "Skipped" },
 };
@@ -95,7 +95,7 @@ export default function PipelineInspector() {
           icon={CheckCircle2}
         />
         <StatCard
-          label="Partial"
+          label="Triage Only"
           value={stats?.partial ?? 0}
           icon={AlertTriangle}
         />
@@ -120,7 +120,8 @@ export default function PipelineInspector() {
       <GlassPanel className="p-4">
         <div className="flex items-center gap-3 flex-wrap">
           <span className="text-xs text-muted-foreground/50 uppercase tracking-wider font-[Space_Grotesk]">Filter:</span>
-          {["all", "running", "completed", "partial", "failed"].map((s) => (
+          {(["all", "running", "completed", "partial", "failed"] as const).map((s) => (
+            // Display labels: "partial" → "Triage Only" for honest semantics
             <button
               key={s}
               onClick={() => { setStatusFilter(s); setPage(0); }}
@@ -130,7 +131,7 @@ export default function PipelineInspector() {
                   : "bg-white/[0.03] border border-white/[0.06] text-muted-foreground/50 hover:text-foreground/70"
               }`}
             >
-              {s.charAt(0).toUpperCase() + s.slice(1)}
+              {s === "partial" ? "Triage Only" : s.charAt(0).toUpperCase() + s.slice(1)}
             </button>
           ))}
           <button
@@ -394,7 +395,11 @@ function PipelineRunCard({ run }: { run: any }) {
             <span>Run ID: <span className="font-mono">{run.runId}</span></span>
             {run.queueItemId && <span>Queue Item: <span className="font-mono">#{run.queueItemId}</span></span>}
             <span>Started: {run.startedAt ? new Date(run.startedAt).toLocaleString() : "—"}</span>
-            {run.completedAt && <span>Completed: {new Date(run.completedAt).toLocaleString()}</span>}
+            {run.completedAt ? (
+              <span>Completed: {new Date(run.completedAt).toLocaleString()}</span>
+            ) : run.status === "partial" ? (
+              <span className="text-yellow-400/60">Triage complete — awaiting analyst advancement</span>
+            ) : null}
           </div>
         </div>
       )}

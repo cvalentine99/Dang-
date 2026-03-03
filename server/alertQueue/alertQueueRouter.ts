@@ -20,7 +20,6 @@ import { requireDb } from "../dbGuard";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../_core/trpc";
-import { getDb } from "../db";
 import { alertQueue, pipelineRuns } from "../../drizzle/schema";
 import { eq, desc, asc, sql, and, inArray, gte } from "drizzle-orm";
 import { runTriageAgent } from "../agenticPipeline/triageAgent";
@@ -87,8 +86,7 @@ export const alertQueueRouter = router({
       rawJson: z.record(z.string(), z.unknown()).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const db = await getDb();
-      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+      const db = await requireDb();
 
       // Check for duplicate (same alertId already queued/processing)
       const [existing] = await db
@@ -164,8 +162,7 @@ export const alertQueueRouter = router({
   remove: protectedProcedure
     .input(z.object({ id: z.number().int() }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+      const db = await requireDb();
 
       await db
         .update(alertQueue)
@@ -192,8 +189,7 @@ export const alertQueueRouter = router({
   process: protectedProcedure
     .input(z.object({ id: z.number().int() }))
     .mutation(async ({ input, ctx }) => {
-      const db = await getDb();
-      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+      const db = await requireDb();
 
       // Get the queue item
       const [item] = await db
@@ -264,8 +260,12 @@ export const alertQueueRouter = router({
             route: result.triageObject?.route ?? undefined,
           };
 
-          // Insert a pipelineRuns row so Pipeline Inspector can see this triage
+          // Insert a pipelineRuns row with status: "partial"
           const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+          // completedAt is NULL because the run is NOT complete —
+          // only triage is done. Downstream stages (correlation, hypothesis,
+          // response actions) are still pending and require analyst advancement.
+          // totalLatencyMs records triage latency only, not overall run time.
           await db.insert(pipelineRuns).values({
             runId,
             queueItemId: item.id,
@@ -275,12 +275,13 @@ export const alertQueueRouter = router({
             triageId: result.triageId,
             triageStatus: "completed",
             triageLatencyMs: result.latencyMs ?? null,
+            totalLatencyMs: result.latencyMs ?? null,
             correlationStatus: "pending",
             hypothesisStatus: "pending",
             responseActionsStatus: "pending",
             triggeredBy: ctx.user.name ?? ctx.user.openId ?? "queue",
             startedAt: new Date(),
-            completedAt: new Date(),
+            completedAt: null,  // NOT complete — awaiting analyst advancement
           });
 
           // Update queue item with triage link + backward-compatible result
@@ -418,8 +419,7 @@ export const alertQueueRouter = router({
    * Clear all dismissed/completed/failed items from the queue.
    */
   clearHistory: protectedProcedure.mutation(async () => {
-    const db = await getDb();
-    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+    const db = await requireDb();
 
     await db
       .delete(alertQueue)

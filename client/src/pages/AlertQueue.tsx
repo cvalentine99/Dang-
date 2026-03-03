@@ -588,19 +588,28 @@ export default function AlertQueue() {
     staleTime: 0,
   });
 
-  // Stop polling when batch completes
+  // Stop polling when batch completes — truthful toast based on actual results
   useEffect(() => {
     const status = batchProgress.data?.status;
     if (status === "completed" || status === "failed") {
       const p = batchProgress.data;
-      if (p && p.sent > 0) {
+      if (p && p.sent > 0 && p.failed === 0) {
+        // All succeeded
         toast.success(`${p.sent} Splunk ticket${p.sent > 1 ? "s" : ""} created`, {
-          description: `${p.sent} sent, ${p.failed} failed out of ${p.total} total`,
+          description: `All ${p.sent} tickets sent to Splunk ES`,
         });
-      } else if (p && status === "completed" && p.sent === 0) {
-        toast.info("No new tickets created");
-      } else if (status === "failed") {
-        toast.error("Batch ticket creation failed");
+      } else if (p && p.sent > 0 && p.failed > 0) {
+        // Partial success — show warning, not success
+        toast.warning(`${p.sent} of ${p.total} tickets created`, {
+          description: `${p.failed} ticket${p.failed > 1 ? "s" : ""} failed — check Splunk HEC connectivity`,
+        });
+      } else if (p && p.sent === 0 && p.failed > 0) {
+        // All failed
+        toast.error(`All ${p.failed} ticket${p.failed > 1 ? "s" : ""} failed`, {
+          description: "Splunk HEC rejected all events — check connection and token",
+        });
+      } else if (p && status === "completed" && p.sent === 0 && p.failed === 0) {
+        toast.info("No eligible tickets to create");
       }
       setIsBatchRunning(false);
       utils.alertQueue.list.invalidate();
@@ -615,12 +624,20 @@ export default function AlertQueue() {
       // Final toast handled by the useEffect above via batchProgress polling
       // But if the batch was so fast that polling didn't catch "running", handle here
       if (!isBatchRunning) {
-        if (result.sent > 0) {
+        if (result.sent > 0 && result.failed === 0) {
           toast.success(`${result.sent} Splunk ticket${result.sent > 1 ? "s" : ""} created`, {
             description: result.message,
           });
+        } else if (result.sent > 0 && result.failed > 0) {
+          toast.warning(`${result.sent} of ${result.total} tickets created`, {
+            description: `${result.failed} failed — ${result.message}`,
+          });
+        } else if (result.failed > 0) {
+          toast.error(`All ${result.failed} tickets failed`, {
+            description: result.message,
+          });
         } else {
-          toast.info("No new tickets to create", { description: result.message });
+          toast.info("No eligible tickets to create", { description: result.message });
         }
       }
       setIsBatchRunning(false);

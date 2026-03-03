@@ -1407,6 +1407,13 @@ export const ticketArtifacts = mysqlTable("ticket_artifacts", {
   /** FK to pipeline_runs.id — the pipeline run associated with this triage (nullable for legacy items) */
   pipelineRunId: int("pipelineRunId"),
 
+  /**
+   * FK to triage_objects.triageId — the triage that produced the data for this ticket.
+   * This is the primary workflow linkage: ticket → triage → alert.
+   * Nullable for legacy items created before this column existed.
+   */
+  triageId: varchar("triageId", { length: 64 }),
+
   /** Wazuh alert ID for cross-reference */
   alertId: varchar("alertId", { length: 128 }).notNull(),
 
@@ -1436,6 +1443,7 @@ export const ticketArtifacts = mysqlTable("ticket_artifacts", {
   index("ta_ticketId_idx").on(table.ticketId),
   index("ta_queueItemId_idx").on(table.queueItemId),
   index("ta_pipelineRunId_idx").on(table.pipelineRunId),
+  index("ta_triageId_idx").on(table.triageId),
   index("ta_alertId_idx").on(table.alertId),
   index("ta_system_idx").on(table.system),
   index("ta_createdAt_idx").on(table.createdAt),

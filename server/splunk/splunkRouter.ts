@@ -14,6 +14,12 @@
  * Every ticket is explicitly triggered by an analyst — no background automation.
  * Both success and failure are recorded in the ticket_artifacts table as forensic audit trail.
  *
+ * Workflow lineage (ticket_artifacts):
+ *   ticket → triageId → triage_objects (primary linkage to the triage that produced the ticket data)
+ *   ticket → pipelineRunId → pipeline_runs (linkage to the run that executed the triage)
+ *   ticket → queueItemId → alert_queue (linkage to the original queue item)
+ *   ticket → alertId (direct Wazuh alert cross-reference)
+ *
  * Feature-gated: createTicket/batchCreateTickets require admin role (SECURITY_ADMIN equivalent).
  */
 
@@ -215,9 +221,12 @@ export const splunkRouter = router({
         createdBy: ctx.user?.name ?? ctx.user?.email ?? "unknown",
       });
 
-      // Look up the associated pipeline run for artifact linkage
+      // Look up the associated pipeline run + triageId for first-class artifact linkage
+      // Workflow lineage: ticket → triage → alert (via triageId)
+      //                   ticket → pipelineRun (via pipelineRunId)
+      //                   ticket → queueItem (via queueItemId)
       const [associatedRun] = await db
-        .select({ id: pipelineRuns.id })
+        .select({ id: pipelineRuns.id, triageId: pipelineRuns.triageId })
         .from(pipelineRuns)
         .where(eq(pipelineRuns.queueItemId, input.queueItemId))
         .orderBy(sql`${pipelineRuns.startedAt} DESC`)
@@ -230,6 +239,7 @@ export const splunkRouter = router({
         system: "splunk_es",
         queueItemId: input.queueItemId,
         pipelineRunId: associatedRun?.id ?? null,
+        triageId: associatedRun?.triageId ?? item.pipelineTriageId ?? null,
         alertId: item.alertId,
         ruleId: item.ruleId,
         ruleLevel: item.ruleLevel,
@@ -255,7 +265,23 @@ export const splunkRouter = router({
           .where(eq(alertQueue.id, input.queueItemId));
       }
 
-      return result;
+      // Explicit success/failure return — never ambiguous
+      // The UI must be able to distinguish these without guessing
+      if (result.success && result.ticketId) {
+        return {
+          success: true as const,
+          ticketId: result.ticketId,
+          message: result.message,
+        };
+      }
+
+      // HEC returned a non-throwing failure (e.g., 403, timeout, disabled)
+      // Return success:false explicitly so the UI shows an error state
+      return {
+        success: false as const,
+        ticketId: null,
+        message: result.message || "Splunk HEC did not confirm ticket creation",
+      };
     }),
 
   /**
@@ -420,20 +446,21 @@ export const splunkRouter = router({
             createdBy: ctx.user?.name ?? ctx.user?.email ?? "unknown",
           });
 
-          // Look up associated pipeline run for artifact linkage
+          // Look up associated pipeline run + triageId for first-class artifact linkage
           const [associatedRun] = await db
-            .select({ id: pipelineRuns.id })
+            .select({ id: pipelineRuns.id, triageId: pipelineRuns.triageId })
             .from(pipelineRuns)
             .where(eq(pipelineRuns.queueItemId, item.id))
             .orderBy(sql`${pipelineRuns.startedAt} DESC`)
             .limit(1);
 
-          // Record ticket artifact — both success and failure
+          // Record ticket artifact — both success and failure, with full workflow lineage
           await db.insert(ticketArtifacts).values({
             ticketId: result.ticketId ?? `failed-${Date.now()}`,
             system: "splunk_es",
             queueItemId: item.id,
             pipelineRunId: associatedRun?.id ?? null,
+            triageId: associatedRun?.triageId ?? item.pipelineTriageId ?? null,
             alertId: item.alertId,
             ruleId: item.ruleId,
             ruleLevel: item.ruleLevel,
@@ -472,6 +499,7 @@ export const splunkRouter = router({
               system: "splunk_es",
               queueItemId: item.id,
               pipelineRunId: null,
+              triageId: item.pipelineTriageId ?? null,
               alertId: item.alertId,
               ruleId: item.ruleId,
               ruleLevel: item.ruleLevel,
