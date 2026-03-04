@@ -164,6 +164,29 @@ for (const [path, ops] of Object.entries(paths)) {
       });
     }
 
+    // RequestBody parameters (location=body)
+    if (details.requestBody) {
+      const rb = details.requestBody["$ref"]
+        ? resolveRef(spec, details.requestBody["$ref"])
+        : details.requestBody;
+      if (rb && rb.content) {
+        const jsonContent = rb.content["application/json"];
+        if (jsonContent && jsonContent.schema) {
+          const bodyParams = flattenBodySchema(spec, jsonContent.schema);
+          for (const bp of bodyParams) {
+            allParams.push({
+              endpoint_id: endpointId,
+              name: bp.name,
+              location: "body",
+              required: bp.required ? 1 : 0,
+              param_type: bp.type,
+              description: bp.description,
+            });
+          }
+        }
+      }
+    }
+
     // Responses
     const responses = details.responses || {};
     for (const [statusCode, respDetail] of Object.entries(responses)) {
@@ -188,6 +211,42 @@ function resolveRef(spec, ref) {
     if (!obj) return null;
   }
   return obj;
+}
+
+/**
+ * Flatten a requestBody JSON schema into a flat list of body parameters.
+ * Handles $ref resolution and nested object properties (dot-notation).
+ */
+function flattenBodySchema(spec, schema, prefix = "", parentRequired = []) {
+  const results = [];
+  if (!schema) return results;
+
+  // Resolve $ref
+  const resolved = schema["$ref"] ? resolveRef(spec, schema["$ref"]) : schema;
+  if (!resolved) return results;
+
+  const props = resolved.properties || {};
+  const required = resolved.required || [];
+
+  for (const [name, propSchema] of Object.entries(props)) {
+    const fullName = prefix ? `${prefix}.${name}` : name;
+    const prop = propSchema["$ref"] ? resolveRef(spec, propSchema["$ref"]) : propSchema;
+    if (!prop) continue;
+
+    if (prop.type === "object" && prop.properties) {
+      // Recurse into nested objects
+      results.push(...flattenBodySchema(spec, prop, fullName, required));
+    } else {
+      results.push({
+        name: fullName,
+        type: prop.type || "string",
+        required: required.includes(name),
+        description: (prop.description || "").slice(0, 500),
+      });
+    }
+  }
+
+  return results;
 }
 
 // ── Static data: Auth Methods ───────────────────────────────────────────────

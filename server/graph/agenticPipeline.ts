@@ -993,10 +993,158 @@ Example: {"suggestions": ["What MITRE techniques are associated with agent 001?"
   };
 }
 
+// ── Hard Gates (Directive 2) ────────────────────────────────────────────────
+
+/**
+ * Gate 2A: No KG → No plan.
+ *
+ * If graph retrieval returns zero endpoint nodes, the pipeline MUST NOT
+ * proceed to synthesis. Instead it returns a structured explanation of
+ * what is missing so the analyst knows to hydrate the KG first.
+ *
+ * Returns null when the gate passes (KG has data), or an AnalystResponse
+ * when the gate blocks (KG is empty/unreachable).
+ */
+function gateNoKgNoPlan(
+  graphSources: RetrievalSource[],
+  query: string,
+  steps: AgentStep[]
+): AnalystResponse | null {
+  // Check if any graph source contains endpoint data
+  const hasEndpointData = graphSources.some(s => {
+    if (s.type !== "graph" && s.type !== "stats") return false;
+    if (s.relevance === "error") return false;
+    const data = s.data;
+    if (!data) return false;
+    // Stats object always has endpoint count
+    if (typeof data === "object" && !Array.isArray(data) && "endpoints" in (data as Record<string, unknown>)) {
+      return ((data as Record<string, unknown>).endpoints as number) > 0;
+    }
+    // Array of graph nodes — check for endpoint type
+    if (Array.isArray(data)) {
+      return data.some((item: unknown) => {
+        if (typeof item !== "object" || item === null) return false;
+        const r = item as Record<string, unknown>;
+        return r.type === "endpoint" || (typeof r.id === "string" && (r.id as string).startsWith("endpoint-"));
+      });
+    }
+    return false;
+  });
+
+  if (hasEndpointData) return null; // gate passes
+
+  steps.push({
+    agent: "orchestrator",
+    phase: 2,
+    action: "Hard gate: No KG → No plan",
+    detail: "BLOCKED — Knowledge Graph has no endpoint data. Cannot generate a grounded plan.",
+    status: "blocked",
+    timestamp: Date.now(),
+    durationMs: 1,
+  });
+
+  return {
+    answer: `⚠️ **Knowledge Graph Not Hydrated**\n\nThe Knowledge Graph contains no endpoint data, so I cannot generate a grounded analysis plan. Without the KG, any response would be unverifiable speculation.\n\n**What's missing:**\n- Layer 1 (API Ontology): 0 endpoints loaded\n- No parameter schemas, response codes, or auth methods available\n\n**How to fix:**\n1. Run the KG seeder: \`node seed-kg.mjs --drop\`\n2. Verify with: \`node seed-kg.mjs --dry-run\` (expect ~2,611 records)\n3. Retry your query after hydration\n\nThis is a safety measure — Dang! will not fabricate API knowledge.`,
+    reasoning: "Hard gate 2A: No KG → No plan. Graph retrieval returned zero endpoint nodes.",
+    sources: graphSources,
+    suggestedFollowUps: [
+      "What is the current Knowledge Graph hydration status?",
+      "Show me the KG sync status for all layers",
+    ],
+    trustScore: 0,
+    confidence: 1.0,
+    safetyStatus: "blocked",
+    provenance: {
+      queryHash: hashQuery(query),
+      graphSourceCount: graphSources.length,
+      indexerSourceCount: 0,
+      totalDataPoints: 0,
+      blockedEndpoints: [],
+      filteredPatterns: ["no_kg_data"],
+      retrievalLatencyMs: 0,
+      synthesisLatencyMs: 0,
+    },
+    agentSteps: steps,
+  };
+}
+
+/**
+ * Gate 2B: Safe-only execution.
+ *
+ * Scans all graph retrieval sources and strips any endpoint nodes that have
+ * riskLevel !== "SAFE" or allowedForLlm === 0. This ensures the LLM synthesis
+ * phase NEVER sees MUTATING or DESTRUCTIVE endpoints in its context window.
+ *
+ * Returns the filtered sources array and a list of blocked endpoint paths.
+ */
+function gateSafeOnly(sources: RetrievalSource[]): {
+  filteredSources: RetrievalSource[];
+  blockedEndpoints: string[];
+} {
+  const blockedEndpoints: string[] = [];
+
+  const filteredSources = sources.map(source => {
+    if (source.type !== "graph" || !Array.isArray(source.data)) return source;
+
+    const filtered = (source.data as Record<string, unknown>[]).filter(item => {
+      if (typeof item !== "object" || item === null) return true;
+      const r = item as Record<string, unknown>;
+      const props = r.properties as Record<string, unknown> | undefined;
+
+      // Check if this is an endpoint node
+      const isEndpoint = r.type === "endpoint" ||
+        (typeof r.id === "string" && (r.id as string).startsWith("endpoint-"));
+
+      if (!isEndpoint) return true; // non-endpoint nodes pass through
+
+      // Check risk level in properties or top-level
+      const riskLevel = (props?.riskLevel ?? r.riskLevel ?? "") as string;
+      const allowedForLlm = props?.allowedForLlm ?? r.allowedForLlm;
+
+      if (riskLevel === "MUTATING" || riskLevel === "DESTRUCTIVE" || allowedForLlm === 0) {
+        const path = (props?.path ?? r.path ?? r.label ?? "unknown") as string;
+        const method = (props?.method ?? r.method ?? "") as string;
+        blockedEndpoints.push(`${method} ${path}`.trim());
+        return false; // strip from context
+      }
+
+      return true;
+    });
+
+    return { ...source, data: filtered };
+  });
+
+  return { filteredSources, blockedEndpoints };
+}
+
+/**
+ * Gate 2C: Provenance-required.
+ *
+ * After synthesis, validates that the provenance record contains at least one
+ * endpoint ID when graph sources were used. If graph sources existed but
+ * provenance is empty, it means the LLM response isn't grounded in KG data.
+ *
+ * Returns a warning string if provenance is insufficient, null otherwise.
+ */
+function gateProvenanceRequired(
+  graphSourceCount: number,
+  provenanceIds: { endpointIds: number[]; parameterIds: number[] }
+): string | null {
+  if (graphSourceCount === 0) return null; // no graph sources → provenance not required
+  if (provenanceIds.endpointIds.length > 0) return null; // has provenance → passes
+
+  return "provenance_gap: graph sources were used but no endpoint IDs were extracted — response may not be fully grounded in KG data";
+}
+
 // ── Main Pipeline ───────────────────────────────────────────────────────────
 
 /**
  * Execute the full 4-phase agentic analysis pipeline with trust scoring and safety rails.
+ *
+ * Hard Gates (Directive 2):
+ * - Gate 2A: No KG → No plan (blocks if graph has zero endpoints)
+ * - Gate 2B: Safe-only (strips MUTATING/DESTRUCTIVE endpoints from LLM context)
+ * - Gate 2C: Provenance-required (warns if graph-sourced answer lacks KG node IDs)
  */
 export async function runAnalystPipeline(
   query: string,
@@ -1090,8 +1238,27 @@ export async function runAnalystPipeline(
     );
   }
 
-  const allSources = (await Promise.all(retrievalPromises)).flat();
+  const allSourcesRaw = (await Promise.all(retrievalPromises)).flat();
   const retrievalLatencyMs = Date.now() - retrievalStart;
+
+  // ── Hard Gate 2A: No KG → No plan ──
+  const graphSourcesForGate = allSourcesRaw.filter(s => s.type === "graph" || s.type === "stats");
+  const noKgResult = gateNoKgNoPlan(graphSourcesForGate, query, steps);
+  if (noKgResult) return noKgResult;
+
+  // ── Hard Gate 2B: Safe-only execution ──
+  const { filteredSources: allSources, blockedEndpoints } = gateSafeOnly(allSourcesRaw);
+  if (blockedEndpoints.length > 0) {
+    steps.push({
+      agent: "safety_validator",
+      phase: 2,
+      action: "Safe-only gate",
+      detail: `Stripped ${blockedEndpoints.length} non-SAFE endpoint(s) from LLM context: ${blockedEndpoints.slice(0, 3).join(", ")}${blockedEndpoints.length > 3 ? "..." : ""}`,
+      status: "complete",
+      timestamp: Date.now(),
+      durationMs: 1,
+    });
+  }
 
   // ── Phase 4: LLM Synthesis ──
   const synthesisStart = Date.now();
@@ -1127,6 +1294,20 @@ export async function runAnalystPipeline(
   // ── Extract real KG node IDs from retrieval sources for provenance ──
   const provenanceIds = extractProvenanceIds(allSources);
 
+  // ── Hard Gate 2C: Provenance-required ──
+  const provenanceWarning = gateProvenanceRequired(graphSources.length, provenanceIds);
+  if (provenanceWarning) {
+    steps.push({
+      agent: "safety_validator",
+      phase: 4,
+      action: "Provenance gate warning",
+      detail: provenanceWarning,
+      status: "complete",
+      timestamp: Date.now(),
+      durationMs: 1,
+    });
+  }
+
   // ── Record Provenance (fire-and-forget, never blocks the response) ──
   // endpointIds and parameterIds are extracted from actual graph retrieval results.
   // docChunkIds is always [] because the current KG architecture has no document
@@ -1143,6 +1324,8 @@ export async function runAnalystPipeline(
     warnings: [
       ...(safetyResult.status === "filtered" ? [`safety_filtered: ${safetyResult.filtered.join(", ")}`] : []),
       ...(errorSources.length > 0 ? [`retrieval_errors: ${errorSources.length}`] : []),
+      ...(provenanceWarning ? [provenanceWarning] : []),
+      ...(blockedEndpoints.length > 0 ? [`safe_only_gate: stripped ${blockedEndpoints.length} non-SAFE endpoints`] : []),
     ],
   }).catch(() => { /* provenance is best-effort — never fail the pipeline */ });
 
@@ -1171,7 +1354,7 @@ export async function runAnalystPipeline(
       graphSourceCount: graphSources.length,
       indexerSourceCount: indexerSources.length,
       totalDataPoints,
-      blockedEndpoints: [],
+      blockedEndpoints,
       filteredPatterns: safetyResult.filtered,
       retrievalLatencyMs,
       synthesisLatencyMs,

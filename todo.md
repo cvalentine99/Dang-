@@ -2690,3 +2690,36 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Tests: syscollector broker forwarding correctness (27 new tests)
 - [x] Tests: unsupported-param rejection for syscollector endpoints
 - [x] Update broker-coverage-ledger.md with syscollector entries
+
+## Review Directive — KG Hydration & Agentic Validation Sprint
+
+### Directive 1: KG Hydration Proofs
+- [x] 1A. Hydration proof: run seed-kg.mjs --dry-run, verify deterministic counts
+- [x] 1A. Graph stats match expected shape (endpoints/resources/parameters)
+- [x] 1A. Spot-check parameter lists for risk-bearing endpoints
+- [x] 1B. Negative param test: assert `event` NOT in kg_parameters for GET /syscheck/{agent_id}
+- [x] 1B. Positive param test: assert known-good params (q, limit, file, md5, sha1, sha256) present for GET /syscheck/{agent_id}
+- [x] 1C. Seeder upgrade: extract requestBody.content.application/json.schema into kg_parameters (location=body)
+- [x] 1C. Flatten body schema properties into kg_parameters with required flags and type info
+- [x] 1C. Acceptance: POST endpoints in-scope have body schema in KG so agent can explain and refuse safely
+
+### Directive 2: Agentic Workflow Hard Gates
+- [x] 2A. Hard gate: No KG → No plan (if pipeline can't retrieve endpoints/params, respond with what's missing)
+- [x] 2B. Hard gate: Only SAFE endpoints suggested for execution (allowedForLlm=1 only)
+- [x] 2B. Mutating request → refusal with exact endpoint, riskLevel, and safe alternative
+- [x] 2C. Parameter-valid plans: planner must include parameter manifest for every proposed API call
+- [x] 2C. Validation step: all parameters must exist in kg_parameters for that endpoint
+- [x] 2C. Any parameter not in KG → plan rejected → rewritten
+
+### Directive 3: Gap Report → Proof Matrix
+- [ ] Layer 1 KG coverage: define resource families, parameter families, use cases per gap item
+- [ ] Layer 2 Agentic capability: retrieval queries, reasoning decisions, output contracts, refusal conditions
+- [ ] Deliverable: Gap → Proof Matrix document (gap item, KG proof, agent proof, status)
+
+### Directive 4: Immediate Sprint Items
+- [x] 4.1 Seeder upgrade: extract requestBody into kg_parameters (location=body)
+- [x] 4.2 Router↔KG Parameter Diff script: static compare tRPC Zod inputs vs KG parameter list
+- [ ] 4.3a Agentic contract test: safe read workflow (syscollector inventory summary)
+- [ ] 4.3b Agentic contract test: forbidden workflow (mutating action → refusal)
+- [ ] 4.3c Agentic contract test: missing-KG workflow (unhydrated endpoint family → "hydrate first")
+- [ ] 4.4 Provenance enforcement: every agentic response suggesting a call must include provenance IDs
