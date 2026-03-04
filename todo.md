@@ -2658,3 +2658,7 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Step 6: Write idempotent brokerOverlay.mjs script (tag endpoints, add aliases, update trust scores)
 - [x] Step 7: Run brokerOverlay.mjs against KG and spot-check with SELECT
 - [x] Step 8: Smoke-test alias resolution (query "filter by os_platform ubuntu" resolves to os.platform)
+
+### Split-Brain Walter Fix — Nav + Queue UI
+- [x] Remove /assistant from sidebar nav config (keep route, pull the link)
+- [x] Remove old alertQueue.process button from Alert Queue page (keep only pipeline.autoTriageQueueItem)

@@ -27,59 +27,11 @@ import { QueueItemCard, TicketArtifactsPanel, QueueHeader } from "./alert-queue"
 export default function AlertQueue() {
   const utils = trpc.useUtils();
   const { canRunStructuredPipeline, canRunAdHoc, canRunTicketing, ticketingDegraded, ticketingReason } = useAgenticReadiness();
-  const [processingId, setProcessingId] = useState<number | null>(null);
-  const [processingStartTime, setProcessingStartTime] = useState<number | null>(null);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [, navigate] = useLocation();
-
-  // Elapsed time ticker for the processing indicator
-  useEffect(() => {
-    if (!processingStartTime) {
-      setElapsedSeconds(0);
-      return;
-    }
-    const interval = setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - processingStartTime) / 1000));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [processingStartTime]);
 
   const listQuery = trpc.alertQueue.list.useQuery(undefined, {
     refetchInterval: 10_000,
     staleTime: 5_000,
-  });
-
-  const processMutation = trpc.alertQueue.process.useMutation({
-    onMutate: ({ id }) => {
-      setProcessingId(id);
-      setProcessingStartTime(Date.now());
-    },
-    onSuccess: (result) => {
-      if (result.success && result.triageId) {
-        toast.success("Structured triage complete", {
-          description: `Triage ID: ${result.triageId} — view on Triage Pipeline page`,
-          action: {
-            label: "View Triage",
-            onClick: () => navigate("/triage"),
-          },
-        });
-      } else if (result.success && result.alreadyTriaged) {
-        toast.info("Already triaged", {
-          description: `Triage ID: ${result.triageId}`,
-        });
-      } else {
-        toast.error("Triage failed", { description: (result as any).error ?? "Unknown error" });
-      }
-      utils.alertQueue.list.invalidate();
-      utils.alertQueue.count.invalidate();
-    },
-    onError: (err) => {
-      toast.error("Analysis failed", { description: err.message });
-    },
-    onSettled: () => {
-      setProcessingId(null);
-      setProcessingStartTime(null);
-    },
   });
 
   const dismissMutation = trpc.alertQueue.remove.useMutation({
@@ -165,10 +117,6 @@ export default function AlertQueue() {
       toast.error("Batch ticket creation failed", { description: err.message });
     },
   });
-
-  const handleAnalyze = useCallback((id: number) => {
-    processMutation.mutate({ id });
-  }, [processMutation]);
 
   const handleDismiss = useCallback((id: number) => {
     dismissMutation.mutate({ id });
@@ -269,10 +217,7 @@ export default function AlertQueue() {
                   <QueueItemCard
                     key={item.id}
                     item={item as any}
-                    onAnalyze={handleAnalyze}
                     onDismiss={handleDismiss}
-                    isProcessing={processingId === item.id || processMutation.isPending}
-                    elapsedSeconds={processingId === item.id ? elapsedSeconds : 0}
                     canRunStructuredPipeline={canRunStructuredPipeline}
                     canRunAdHoc={canRunAdHoc}
                     canRunTicketing={canRunTicketing}
@@ -298,9 +243,7 @@ export default function AlertQueue() {
                   <QueueItemCard
                     key={item.id}
                     item={item as any}
-                    onAnalyze={handleAnalyze}
                     onDismiss={handleDismiss}
-                    isProcessing={false}
                     canRunStructuredPipeline={canRunStructuredPipeline}
                     canRunAdHoc={canRunAdHoc}
                     canRunTicketing={canRunTicketing}

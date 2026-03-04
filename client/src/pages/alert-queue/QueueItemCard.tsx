@@ -24,10 +24,7 @@ import type { QueueItem, TriageData } from "./types";
 
 interface QueueItemCardProps {
   item: QueueItem;
-  onAnalyze: (id: number) => void;
   onDismiss: (id: number) => void;
-  isProcessing: boolean;
-  elapsedSeconds?: number;
   canRunStructuredPipeline?: boolean;
   canRunAdHoc?: boolean;
   canRunTicketing?: boolean;
@@ -38,10 +35,7 @@ interface QueueItemCardProps {
 
 export function QueueItemCard({
   item,
-  onAnalyze,
   onDismiss,
-  isProcessing,
-  elapsedSeconds = 0,
   canRunStructuredPipeline = true,
   canRunAdHoc = true,
   canRunTicketing = false,
@@ -49,7 +43,6 @@ export function QueueItemCard({
   ticketingReason = null,
   hasSuccessfulTicket = false,
 }: QueueItemCardProps) {
-  const elapsedDisplay = elapsedSeconds;
   const [expanded, setExpanded] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const [, navigate] = useLocation();
@@ -172,27 +165,24 @@ export function QueueItemCard({
           {item.status === "queued" && (
             <>
               {!item.pipelineTriageId && item.autoTriageStatus !== "running" && (
-                isProcessing ? (
+                autoTriageMutation.isPending ? (
                   <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-500/20 border border-purple-500/40 shadow-[0_0_12px_rgba(168,85,247,0.15)] animate-pulse-subtle">
                     <Loader2 className="h-3.5 w-3.5 text-purple-300 animate-spin" />
-                    <span className="text-xs font-medium text-purple-200">Analyzing…</span>
-                    <span className="text-[10px] font-mono text-purple-400/70 tabular-nums">
-                      {elapsedDisplay}s
-                    </span>
+                    <span className="text-xs font-medium text-purple-200">Triaging…</span>
                   </div>
                 ) : (
                   <button
-                    onClick={() => onAnalyze(item.id)}
-                    disabled={!canRunStructuredPipeline}
+                    onClick={() => autoTriageMutation.mutate({ queueItemId: item.id })}
+                    disabled={!canRunStructuredPipeline || autoTriageMutation.isPending}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                       canRunStructuredPipeline
                         ? "bg-purple-500/15 border border-purple-500/30 text-purple-300 hover:bg-purple-500/25 hover:shadow-[0_0_10px_rgba(168,85,247,0.15)]"
                         : "bg-white/5 border border-white/10 text-muted-foreground/50 cursor-not-allowed"
                     }`}
-                    title={canRunStructuredPipeline ? "Run structured triage pipeline" : "Pipeline blocked — check readiness banner for details"}
+                    title={canRunStructuredPipeline ? "Send to Triage Pipeline (creates structured triage artifacts)" : "Pipeline blocked — check readiness banner for details"}
                   >
                     <Sparkles className="h-3.5 w-3.5" />
-                    Structured Triage
+                    Send to Triage Pipeline
                   </button>
                 )
               )}
@@ -289,7 +279,7 @@ export function QueueItemCard({
       </div>
 
       {/* Processing indicator */}
-      {(item.status === "processing" || isProcessing) && (
+      {(item.status === "processing" || item.autoTriageStatus === "running" || autoTriageMutation.isPending) && (
         <div className="px-4 pb-3 pt-1">
           <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
             <div className="h-full rounded-full bg-gradient-to-r from-purple-500 via-cyan-500 to-purple-500 animate-shimmer-slide" style={{ width: "80%", backgroundSize: "200% 100%" }} />
@@ -301,10 +291,9 @@ export function QueueItemCard({
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500" />
               </span>
               <p className="text-[10px] text-purple-300 font-mono">
-                {elapsedDisplay < 3 ? "Preparing triage pipeline…" : elapsedDisplay < 8 ? "Running structured triage agent…" : elapsedDisplay < 15 ? "Analyzing alert context & MITRE mapping…" : "Finalizing triage assessment…"}
+                Running triage pipeline…
               </p>
             </div>
-            <span className="text-[10px] font-mono text-purple-400/60 tabular-nums">{elapsedDisplay}s</span>
           </div>
         </div>
       )}

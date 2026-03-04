@@ -201,7 +201,8 @@ const menuItems = [
   { icon: UserCog, label: "User Management", path: "/admin/users", group: "Admin" },
   { icon: Settings, label: "Connection Settings", path: "/admin/settings", group: "Admin" },
   { icon: StickyNote, label: "Analyst Notes", path: "/notes", group: "Tools" },
-  { icon: Bot, label: "AI Assistant", path: "/assistant", group: "Tools" },
+  // Removed: /assistant (generic LLM chat without Wazuh KG context) — use /analyst instead
+  // { icon: Bot, label: "AI Assistant", path: "/assistant", group: "Tools" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -408,7 +409,7 @@ function DashboardLayoutContent({
                           {(item as typeof menuItems[number] & { hasAnomalyBadge?: boolean }).hasAnomalyBadge && (
                             <AnomalyBadge />
                           )}
-                          {(item.path === "/analyst" || item.path === "/assistant") && (
+                          {item.path === "/analyst" && (
                             <LLMHealthDot />
                           )}
                         </SidebarMenuButton>
