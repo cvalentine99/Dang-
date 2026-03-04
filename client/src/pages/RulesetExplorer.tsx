@@ -13,6 +13,7 @@ import {
   Search, Shield, FileText, Terminal, ChevronDown, ChevronRight,
   ExternalLink, Copy, X, BookOpen, Code, Filter, Layers,
   AlertTriangle, Eye, Hash, Cpu, Database, Globe, Activity,
+  ChevronUp, Scale,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -141,14 +142,67 @@ export default function RulesetExplorer() {
   const [showRawJson, setShowRawJson] = useState<number | string | null>(null);
   const [sortField, setSortField] = useState<"id" | "level">("level");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [showComplianceFilters, setShowComplianceFilters] = useState(false);
+  const [filenameFilter, setFilenameFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  // Compliance framework filters — each holds a requirement string or empty
+  const [pciDssFilter, setPciDssFilter] = useState("");
+  const [gdprFilter, setGdprFilter] = useState("");
+  const [hipaaFilter, setHipaaFilter] = useState("");
+  const [nist80053Filter, setNist80053Filter] = useState("");
+  const [tscFilter, setTscFilter] = useState("");
+  const [gpg13Filter, setGpg13Filter] = useState("");
+  const [mitreFilter, setMitreFilter] = useState("");
 
   // ─── API Queries ─────────────────────────────────────────────────────────
   const statusQ = trpc.wazuh.status.useQuery();
   const isConfigured = !!(statusQ.data as Record<string, unknown>)?.configured;
 
+  // ─── Server-side query params (broker-wired) ─────────────────────────────
+  const rulesQueryParams = useMemo(() => {
+    const params: Record<string, unknown> = { limit: 500, offset: 0 };
+
+    // Sort — server-side via broker
+    if (sortField && sortDir) {
+      params.sort = `${sortDir === "desc" ? "-" : "+"}${sortField === "id" ? "id" : "level"}`;
+    }
+
+    // Search — forwarded as native Wazuh search (not q=name~)
+    if (searchQuery.trim()) {
+      params.search = searchQuery.trim();
+    }
+
+    // Group filter — server-side
+    if (groupFilter !== "all") {
+      params.group = groupFilter;
+    }
+
+    // Filename filter — server-side
+    if (filenameFilter !== "all") {
+      params.filename = filenameFilter;
+    }
+
+    // Status filter — server-side
+    if (statusFilter !== "all") {
+      params.status = statusFilter;
+    }
+
+    // Compliance filters — server-side via broker
+    if (pciDssFilter) params.pci_dss = pciDssFilter;
+    if (gdprFilter) params.gdpr = gdprFilter;
+    if (hipaaFilter) params.hipaa = hipaaFilter;
+    if (nist80053Filter) params["nist-800-53"] = nist80053Filter;
+    if (tscFilter) params.tsc = tscFilter;
+    if (gpg13Filter) params.gpg13 = gpg13Filter;
+    if (mitreFilter) params.mitre = mitreFilter;
+
+    return params;
+  }, [sortField, sortDir, searchQuery, groupFilter, filenameFilter, statusFilter, pciDssFilter, gdprFilter, hipaaFilter, nist80053Filter, tscFilter, gpg13Filter, mitreFilter]);
+
   const rulesQ = trpc.wazuh.rules.useQuery(
-    { limit: 500, offset: 0 },
-    { enabled: isConfigured }
+    rulesQueryParams as any,
+    { enabled: isConfigured, placeholderData: (prev: unknown) => prev }
   );
   const decodersQ = trpc.wazuh.decoders.useQuery(
     { limit: 500, offset: 0 },
@@ -200,41 +254,19 @@ export default function RulesetExplorer() {
     (ruleGroupsRaw as Record<string, unknown>)?.data as Record<string, unknown> | undefined
   )?.affected_items as unknown[] ?? []).map((g) => String(g ?? "")).filter(Boolean);
 
-  // ─── Filtering: Rules ────────────────────────────────────────────────────
+  // ─── Filtering: Rules (client-side refinement for severity bucket) ───────
   const filteredRules = useMemo(() => {
     let result = [...rules];
 
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (r) =>
-          r.description.toLowerCase().includes(q) ||
-          r.id.toString().includes(q) ||
-          r.groups.some((g) => g.toLowerCase().includes(q)) ||
-          r.filename.toLowerCase().includes(q) ||
-          (r.mitre.id || []).some((id) => id.toLowerCase().includes(q)) ||
-          (r.mitre.technique || []).some((t) => t.toLowerCase().includes(q))
-      );
-    }
-
+    // Level/severity is a client-side bucket filter since Wazuh level is numeric
+    // and our severity mapping (critical/high/medium/low/info) is app-defined
     if (levelFilter !== "all") {
       const severity = levelFilter;
       result = result.filter((r) => LEVEL_TO_SEVERITY(r.level) === severity);
     }
 
-    if (groupFilter !== "all") {
-      result = result.filter((r) => r.groups.includes(groupFilter));
-    }
-
-    result.sort((a, b) => {
-      if (sortField === "id") {
-        return sortDir === "desc" ? b.id - a.id : a.id - b.id;
-      }
-      return sortDir === "desc" ? b.level - a.level : a.level - b.level;
-    });
-
     return result;
-  }, [rules, searchQuery, levelFilter, groupFilter, sortField, sortDir]);
+  }, [rules, levelFilter]);
 
   // ─── Filtering: Decoders ─────────────────────────────────────────────────
   const filteredDecoders = useMemo(() => {
@@ -297,13 +329,30 @@ export default function RulesetExplorer() {
   const mitreRuleCount = rules.filter((r) => r.mitre.id.length > 0).length;
   const complianceRuleCount = rules.filter((r) => r.pci_dss.length > 0 || r.gdpr.length > 0 || r.hipaa.length > 0).length;
 
+  // ─── Unique filenames for dropdown ────────────────────────────────────────
+  const ruleFilenames = useMemo(() => {
+    const fnames = new Set<string>();
+    rules.forEach((r) => { if (r.filename) fnames.add(r.filename); });
+    return Array.from(fnames).sort();
+  }, [rules]);
+
   const clearFilters = () => {
     setSearchQuery("");
     setLevelFilter("all");
     setGroupFilter("all");
+    setFilenameFilter("all");
+    setStatusFilter("all");
+    setPciDssFilter("");
+    setGdprFilter("");
+    setHipaaFilter("");
+    setNist80053Filter("");
+    setTscFilter("");
+    setGpg13Filter("");
+    setMitreFilter("");
   };
 
-  const activeFilters = [levelFilter, groupFilter].filter((f) => f !== "all").length;
+  const complianceFiltersActive = [pciDssFilter, gdprFilter, hipaaFilter, nist80053Filter, tscFilter, gpg13Filter, mitreFilter].filter(Boolean).length;
+  const activeFilters = [levelFilter, groupFilter, filenameFilter, statusFilter].filter((f) => f !== "all").length + complianceFiltersActive + (searchQuery.trim() ? 1 : 0);
 
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
@@ -524,6 +573,45 @@ export default function RulesetExplorer() {
                   </option>
                 ))}
               </select>
+
+              <select
+                value={filenameFilter}
+                onChange={(e) => setFilenameFilter(e.target.value)}
+                className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-slate-200 focus:outline-none focus:border-violet-500/50 max-w-[180px]"
+              >
+                <option value="all">All Files</option>
+                {ruleFilenames.map((f) => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-slate-200 focus:outline-none focus:border-violet-500/50"
+              >
+                <option value="all">All Status</option>
+                <option value="enabled">Enabled</option>
+                <option value="disabled">Disabled</option>
+              </select>
+
+              <button
+                onClick={() => setShowComplianceFilters(!showComplianceFilters)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border transition-colors ${
+                  showComplianceFilters || complianceFiltersActive > 0
+                    ? "bg-violet-500/20 border-violet-500/40 text-violet-300"
+                    : "bg-white/5 border-white/10 text-slate-400 hover:text-slate-200 hover:border-white/20"
+                }`}
+              >
+                <Scale className="h-3.5 w-3.5" />
+                Compliance
+                {complianceFiltersActive > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 bg-violet-500/30 rounded-full text-[10px] font-bold">
+                    {complianceFiltersActive}
+                  </span>
+                )}
+                {showComplianceFilters ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              </button>
             </>
           )}
 
@@ -567,10 +655,54 @@ export default function RulesetExplorer() {
           )}
         </div>
 
-        {/* Result count */}
-        <div className="text-xs text-slate-500">
+        {/* Compliance Filter Panel */}
+        {activeTab === "rules" && showComplianceFilters && (
+          <div className="mt-3 p-4 bg-white/[0.03] border border-white/10 rounded-lg space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-semibold text-violet-300 uppercase tracking-wider">Compliance Framework Filters</h4>
+              <span className="text-[10px] text-slate-500">Enter a requirement ID to filter (e.g., "10.6.1" for PCI DSS)</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+              {[
+                { label: "PCI DSS", value: pciDssFilter, setter: setPciDssFilter, placeholder: "e.g. 10.6.1",
+                  labelClass: "text-blue-400", activeClass: "border-blue-500/40 focus:border-blue-500/60 ring-1 ring-blue-500/20" },
+                { label: "GDPR", value: gdprFilter, setter: setGdprFilter, placeholder: "e.g. IV_35.7.d",
+                  labelClass: "text-emerald-400", activeClass: "border-emerald-500/40 focus:border-emerald-500/60 ring-1 ring-emerald-500/20" },
+                { label: "HIPAA", value: hipaaFilter, setter: setHipaaFilter, placeholder: "e.g. 164.312.b",
+                  labelClass: "text-amber-400", activeClass: "border-amber-500/40 focus:border-amber-500/60 ring-1 ring-amber-500/20" },
+                { label: "NIST 800-53", value: nist80053Filter, setter: setNist80053Filter, placeholder: "e.g. AU.6",
+                  labelClass: "text-cyan-400", activeClass: "border-cyan-500/40 focus:border-cyan-500/60 ring-1 ring-cyan-500/20" },
+                { label: "TSC", value: tscFilter, setter: setTscFilter, placeholder: "e.g. CC7.2",
+                  labelClass: "text-rose-400", activeClass: "border-rose-500/40 focus:border-rose-500/60 ring-1 ring-rose-500/20" },
+                { label: "GPG13", value: gpg13Filter, setter: setGpg13Filter, placeholder: "e.g. 4.12",
+                  labelClass: "text-orange-400", activeClass: "border-orange-500/40 focus:border-orange-500/60 ring-1 ring-orange-500/20" },
+                { label: "MITRE", value: mitreFilter, setter: setMitreFilter, placeholder: "e.g. T1110",
+                  labelClass: "text-purple-400", activeClass: "border-purple-500/40 focus:border-purple-500/60 ring-1 ring-purple-500/20" },
+              ].map(({ label, value, setter, placeholder, labelClass, activeClass }) => (
+                <div key={label} className="space-y-1">
+                  <label className={`text-[10px] font-semibold uppercase tracking-wider ${labelClass}`}>{label}</label>
+                  <input
+                    type="text"
+                    value={value}
+                    onChange={(e) => setter(e.target.value)}
+                    placeholder={placeholder}
+                    className={`w-full px-2.5 py-1.5 bg-white/5 border rounded text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none transition-colors ${
+                      value ? activeClass : "border-white/10 focus:border-violet-500/50"
+                    }`}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Result count + loading indicator */}
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          {rulesQ.isFetching && (
+            <div className="h-3 w-3 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
+          )}
           {activeTab === "rules"
-            ? `${filteredRules.length} rules found`
+            ? `${filteredRules.length} rules found${complianceFiltersActive > 0 ? " (compliance-filtered)" : ""}`
             : `${filteredDecoders.length} decoders found`}
         </div>
       </GlassPanel>

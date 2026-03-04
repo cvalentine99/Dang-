@@ -2662,3 +2662,10 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 ### Split-Brain Walter Fix — Nav + Queue UI
 - [x] Remove /assistant from sidebar nav config (keep route, pull the link)
 - [x] Remove old alertQueue.process button from Alert Queue page (keep only pipeline.autoTriageQueueItem)
+
+### Ruleset Explorer — Compliance Filter UI
+- [x] Add compliance filter panel (pci_dss, gdpr, hipaa, nist-800-53, tsc, gpg13, mitre)
+- [x] Add severity/group/classification filter controls (level, group, filename, status)
+- [x] Wire filter state into wazuh.rules tRPC query params
+- [x] Preserve Amethyst Nexus glass-morphism styling for filter controls
+- [x] Tests: verify filter params are passed through to query
