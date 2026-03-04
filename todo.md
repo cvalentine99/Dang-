@@ -2619,3 +2619,20 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Tests: /agents os.platform forwarded correctly
 - [x] Tests: /agents search and q are distinct and not conflated
 - [x] Tests: all 5 wired endpoints forward accepted params and reject unsupported ones
+
+### Phase 2 — Broker Parameter Family Expansion
+- [x] Expand /rules broker config: compliance filters (pci_dss, gdpr, hipaa, nist-800-53, tsc, gpg13, mitre)
+- [x] Expand /rules broker config: severity/group/classification filters (level, group, filename, relative_dirname, status)
+- [x] Add /manager/configuration broker config with precision params (section, field, raw)
+- [x] Wire /manager/configuration into wazuhRouter.ts via broker
+- [x] Expand /sca/{agent_id} broker config with highest-value field filters
+- [x] Expand /sca/{agent_id}/checks/{policy_id} broker config with highest-value field filters
+- [x] Verify universal query family (offset, limit, sort, select, distinct) across all Phase 2 endpoints
+- [x] Tests: /rules compliance filter forwarding correctness
+- [x] Tests: /manager/configuration precision param forwarding
+- [x] Tests: SCA expanded filter forwarding
+- [x] Tests: unsupported-param rejection for all Phase 2 endpoints
+- [x] Tests: search vs q remains distinct wherever applicable
+- [x] Update coverage ledger (what is wired vs out of scope)
+- [x] No syscollector expansion (Phase 3)
+- [x] No UI claims beyond what is broker-wired

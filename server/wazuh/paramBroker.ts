@@ -466,6 +466,43 @@ export const SCA_POLICIES_CONFIG: EndpointParamConfig = {
 };
 
 /**
+ * GET /manager/configuration — Manager configuration
+ * Spec ref: operationId api.controllers.manager_controller.get_configuration
+ *
+ * Precision params: section, field, raw.
+ * Per spec: "section and field will be ignored if raw is provided."
+ * The broker does not enforce that constraint — it forwards all recognized params
+ * and lets Wazuh apply its own precedence rules.
+ *
+ * Note: This endpoint does NOT support offset, limit, sort, search, select, or q.
+ * It only supports raw, section, field, and distinct per the spec.
+ */
+export const MANAGER_CONFIG: EndpointParamConfig = {
+  endpoint: "/manager/configuration",
+  params: {
+    // Only distinct from universal family — offset/limit/sort/search/select/q are NOT in the spec for this endpoint
+    distinct: UNIVERSAL_PARAMS.distinct,
+
+    // Endpoint-specific precision params
+    section: {
+      wazuhName: "section",
+      description: "Indicates the wazuh configuration section (e.g. global, alerts, syscheck, ruleset, etc.)",
+      type: "string",
+    },
+    field: {
+      wazuhName: "field",
+      description: "Indicate a section child. E.g, fields for ruleset section are: decoder_dir, rule_dir, etc",
+      type: "string",
+    },
+    raw: {
+      wazuhName: "raw",
+      description: "Format response in plain text. When true, section and field are ignored by Wazuh",
+      type: "boolean",
+    },
+  },
+};
+
+/**
  * GET /sca/{agent_id}/checks/{policy_id} — SCA checks for a policy
  * Spec ref: operationId api.controllers.sca_controller.get_sca_checks
  */

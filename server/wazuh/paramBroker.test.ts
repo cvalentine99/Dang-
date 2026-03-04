@@ -9,7 +9,7 @@
  *   - Empty/null/undefined values are omitted (not forwarded as empty strings)
  *
  * Also proves the endpoint-specific configs for all 5 wired endpoints:
- *   /agents, /rules, /groups, /cluster/nodes, /sca/{agent_id}
+ *   /agents, /rules, /groups, /cluster/nodes, /sca/{agent_id}, /manager/configuration
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -20,6 +20,7 @@ import {
   CLUSTER_NODES_CONFIG,
   SCA_POLICIES_CONFIG,
   SCA_CHECKS_CONFIG,
+  MANAGER_CONFIG,
   UNIVERSAL_PARAMS,
 } from "./paramBroker";
 
@@ -490,4 +491,394 @@ describe("universal params present in all configs", () => {
       });
     }
   }
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 2 — /rules compliance filter family
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("/rules compliance filter family", () => {
+  const complianceFilters = [
+    { key: "pci_dss", value: "10.6.1", wazuhName: "pci_dss" },
+    { key: "gdpr", value: "IV_35.7.d", wazuhName: "gdpr" },
+    { key: "hipaa", value: "164.312.b", wazuhName: "hipaa" },
+    { key: "nist-800-53", value: "AU.6", wazuhName: "nist-800-53" },
+    { key: "tsc", value: "CC7.2", wazuhName: "tsc" },
+    { key: "gpg13", value: "7.1", wazuhName: "gpg13" },
+    { key: "mitre", value: "T1059", wazuhName: "mitre" },
+  ];
+
+  for (const { key, value, wazuhName } of complianceFilters) {
+    it(`forwards ${key} as ${wazuhName}`, () => {
+      const result = brokerParams(RULES_CONFIG, { [key]: value });
+      expect(result.forwardedQuery[wazuhName]).toBe(value);
+      expect(result.recognizedParams).toContain(key);
+      expect(result.unsupportedParams).toHaveLength(0);
+    });
+  }
+
+  it("forwards nist_800_53 alias to nist-800-53", () => {
+    const result = brokerParams(RULES_CONFIG, { nist_800_53: "AU.6" });
+    expect(result.forwardedQuery["nist-800-53"]).toBe("AU.6");
+    expect(result.recognizedParams).toContain("nist_800_53");
+  });
+
+  it("forwards all 7 compliance filters simultaneously", () => {
+    const input: Record<string, string> = {};
+    for (const { key, value } of complianceFilters) {
+      input[key] = value;
+    }
+    const result = brokerParams(RULES_CONFIG, input);
+    expect(result.recognizedParams.length).toBe(complianceFilters.length);
+    expect(result.unsupportedParams).toHaveLength(0);
+    for (const { wazuhName, value } of complianceFilters) {
+      expect(result.forwardedQuery[wazuhName]).toBe(value);
+    }
+  });
+
+  it("compliance filters do NOT leak to /agents", () => {
+    for (const { key, value } of complianceFilters) {
+      const result = brokerParams(AGENTS_CONFIG, { [key]: value });
+      expect(result.unsupportedParams).toContain(key);
+    }
+  });
+
+  it("compliance filters do NOT leak to /groups", () => {
+    for (const { key, value } of complianceFilters) {
+      const result = brokerParams(GROUPS_CONFIG, { [key]: value });
+      expect(result.unsupportedParams).toContain(key);
+    }
+  });
+
+  it("compliance filters do NOT leak to /cluster/nodes", () => {
+    for (const { key, value } of complianceFilters) {
+      const result = brokerParams(CLUSTER_NODES_CONFIG, { [key]: value });
+      expect(result.unsupportedParams).toContain(key);
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 2 — /rules severity/group/classification filters
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("/rules severity/group/classification filters", () => {
+  it("forwards level as string", () => {
+    const result = brokerParams(RULES_CONFIG, { level: "4-8" });
+    expect(result.forwardedQuery.level).toBe("4-8");
+    expect(result.recognizedParams).toContain("level");
+  });
+
+  it("forwards group filter", () => {
+    const result = brokerParams(RULES_CONFIG, { group: "syslog" });
+    expect(result.forwardedQuery.group).toBe("syslog");
+  });
+
+  it("forwards filename filter", () => {
+    const result = brokerParams(RULES_CONFIG, { filename: "0010-rules_config.xml" });
+    expect(result.forwardedQuery.filename).toBe("0010-rules_config.xml");
+  });
+
+  it("forwards relative_dirname filter", () => {
+    const result = brokerParams(RULES_CONFIG, { relative_dirname: "ruleset/rules" });
+    expect(result.forwardedQuery.relative_dirname).toBe("ruleset/rules");
+  });
+
+  it("maps relativeDirname alias to relative_dirname", () => {
+    const result = brokerParams(RULES_CONFIG, { relativeDirname: "ruleset/rules" });
+    expect(result.forwardedQuery.relative_dirname).toBe("ruleset/rules");
+  });
+
+  it("forwards status filter (enabled/disabled/all)", () => {
+    const result = brokerParams(RULES_CONFIG, { status: "enabled" });
+    expect(result.forwardedQuery.status).toBe("enabled");
+  });
+
+  it("level does NOT leak to /agents", () => {
+    const result = brokerParams(AGENTS_CONFIG, { level: "4" });
+    expect(result.unsupportedParams).toContain("level");
+  });
+
+  it("filename does NOT leak to /agents", () => {
+    const result = brokerParams(AGENTS_CONFIG, { filename: "rules.xml" });
+    expect(result.unsupportedParams).toContain("filename");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 2 — /manager/configuration precision params
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("/manager/configuration precision params", () => {
+  it("forwards section param", () => {
+    const result = brokerParams(MANAGER_CONFIG, { section: "global" });
+    expect(result.forwardedQuery.section).toBe("global");
+    expect(result.recognizedParams).toContain("section");
+    expect(result.unsupportedParams).toHaveLength(0);
+  });
+
+  it("forwards field param", () => {
+    const result = brokerParams(MANAGER_CONFIG, { field: "jsonout_output" });
+    expect(result.forwardedQuery.field).toBe("jsonout_output");
+    expect(result.recognizedParams).toContain("field");
+  });
+
+  it("forwards raw as boolean", () => {
+    const result = brokerParams(MANAGER_CONFIG, { raw: true });
+    expect(result.forwardedQuery.raw).toBe("true");
+    expect(result.recognizedParams).toContain("raw");
+  });
+
+  it("forwards distinct param", () => {
+    const result = brokerParams(MANAGER_CONFIG, { distinct: true });
+    expect(result.forwardedQuery.distinct).toBe("true");
+    expect(result.recognizedParams).toContain("distinct");
+  });
+
+  it("forwards section + field together for precise fetch", () => {
+    const result = brokerParams(MANAGER_CONFIG, {
+      section: "ruleset",
+      field: "decoder_dir",
+    });
+    expect(result.forwardedQuery.section).toBe("ruleset");
+    expect(result.forwardedQuery.field).toBe("decoder_dir");
+    expect(result.recognizedParams).toContain("section");
+    expect(result.recognizedParams).toContain("field");
+    expect(result.unsupportedParams).toHaveLength(0);
+  });
+
+  it("forwards all three precision params simultaneously", () => {
+    const result = brokerParams(MANAGER_CONFIG, {
+      section: "alerts",
+      field: "log_alert_level",
+      raw: false,
+    });
+    expect(result.forwardedQuery.section).toBe("alerts");
+    expect(result.forwardedQuery.field).toBe("log_alert_level");
+    expect(result.forwardedQuery.raw).toBe("false");
+    expect(result.recognizedParams.length).toBe(3);
+  });
+
+  it("rejects universal query params NOT in the spec for this endpoint", () => {
+    const result = brokerParams(MANAGER_CONFIG, {
+      offset: 0,
+      limit: 10,
+      sort: "+name",
+      search: "global",
+      select: "section",
+      q: "section=global",
+    });
+    expect(result.unsupportedParams).toContain("offset");
+    expect(result.unsupportedParams).toContain("limit");
+    expect(result.unsupportedParams).toContain("sort");
+    expect(result.unsupportedParams).toContain("search");
+    expect(result.unsupportedParams).toContain("select");
+    expect(result.unsupportedParams).toContain("q");
+    expect(Object.keys(result.forwardedQuery)).toHaveLength(0);
+  });
+
+  it("rejects agent-specific params", () => {
+    const result = brokerParams(MANAGER_CONFIG, {
+      "os.platform": "ubuntu",
+      status: "active",
+      ip: "192.168.1.1",
+    });
+    expect(result.unsupportedParams).toContain("os.platform");
+    expect(result.unsupportedParams).toContain("status");
+    expect(result.unsupportedParams).toContain("ip");
+  });
+
+  it("rejects rules-specific params", () => {
+    const result = brokerParams(MANAGER_CONFIG, {
+      level: "4",
+      pci_dss: "10.6.1",
+      mitre: "T1059",
+    });
+    expect(result.unsupportedParams).toContain("level");
+    expect(result.unsupportedParams).toContain("pci_dss");
+    expect(result.unsupportedParams).toContain("mitre");
+  });
+
+  it("returns empty forwarded query for empty input", () => {
+    const result = brokerParams(MANAGER_CONFIG, {});
+    expect(result.forwardedQuery).toEqual({});
+    expect(result.recognizedParams).toHaveLength(0);
+    expect(result.unsupportedParams).toHaveLength(0);
+  });
+
+  it("accepts all valid section enum values", () => {
+    const validSections = [
+      "active-response", "agentless", "alerts", "auth", "client", "client_buffer",
+      "cluster", "command", "database_output", "email_alerts", "global", "integration",
+      "labels", "localfile", "logging", "remote", "reports", "rootcheck", "ruleset",
+      "sca", "socket", "syscheck", "syslog_output", "vulnerability-detection", "indexer",
+      "aws-s3", "azure-logs", "cis-cat", "docker-listener", "open-scap", "osquery", "syscollector",
+    ];
+    for (const section of validSections) {
+      const result = brokerParams(MANAGER_CONFIG, { section });
+      expect(result.forwardedQuery.section).toBe(section);
+      expect(result.recognizedParams).toContain("section");
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 2 — SCA expanded filter verification
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("/sca/{agent_id} expanded filters", () => {
+  it("forwards name filter", () => {
+    const result = brokerParams(SCA_POLICIES_CONFIG, { name: "CIS Benchmark for Debian 10" });
+    expect(result.forwardedQuery.name).toBe("CIS Benchmark for Debian 10");
+  });
+
+  it("forwards description filter", () => {
+    const result = brokerParams(SCA_POLICIES_CONFIG, { description: "security hardening" });
+    expect(result.forwardedQuery.description).toBe("security hardening");
+  });
+
+  it("forwards references filter", () => {
+    const result = brokerParams(SCA_POLICIES_CONFIG, { references: "https://www.cisecurity.org" });
+    expect(result.forwardedQuery.references).toBe("https://www.cisecurity.org");
+  });
+
+  it("maps policyName alias to name", () => {
+    const result = brokerParams(SCA_POLICIES_CONFIG, { policyName: "CIS Ubuntu" });
+    expect(result.forwardedQuery.name).toBe("CIS Ubuntu");
+    expect(result.recognizedParams).toContain("policyName");
+  });
+
+  it("supports all universal params", () => {
+    const result = brokerParams(SCA_POLICIES_CONFIG, {
+      offset: 0,
+      limit: 50,
+      sort: "+name",
+      search: "cis",
+      q: "name~CIS",
+      select: ["name", "description"],
+      distinct: true,
+    });
+    expect(result.unsupportedParams).toHaveLength(0);
+    expect(result.forwardedQuery.offset).toBe("0");
+    expect(result.forwardedQuery.limit).toBe("50");
+    expect(result.forwardedQuery.sort).toBe("+name");
+    expect(result.forwardedQuery.search).toBe("cis");
+    expect(result.forwardedQuery.q).toBe("name~CIS");
+    expect(result.forwardedQuery.select).toBe("name,description");
+    expect(result.forwardedQuery.distinct).toBe("true");
+  });
+});
+
+describe("/sca/{agent_id}/checks/{policy_id} expanded filters", () => {
+  const checkFilters = [
+    { key: "title", value: "Ensure password expiration" },
+    { key: "description", value: "password policy" },
+    { key: "rationale", value: "security best practice" },
+    { key: "remediation", value: "Set PASS_MAX_DAYS" },
+    { key: "command", value: "grep PASS_MAX_DAYS" },
+    { key: "reason", value: "not configured" },
+    { key: "file", value: "/etc/login.defs" },
+    { key: "process", value: "sshd" },
+    { key: "directory", value: "/etc/ssh" },
+    { key: "registry", value: "HKLM\\Software" },
+    { key: "references", value: "CIS 5.4.1.1" },
+    { key: "result", value: "failed" },
+    { key: "condition", value: "all" },
+  ];
+
+  for (const { key, value } of checkFilters) {
+    it(`forwards ${key} filter`, () => {
+      const result = brokerParams(SCA_CHECKS_CONFIG, { [key]: value });
+      expect(result.forwardedQuery[key]).toBe(value);
+      expect(result.recognizedParams).toContain(key);
+      expect(result.unsupportedParams).toHaveLength(0);
+    });
+  }
+
+  it("maps full_path alias to file", () => {
+    const result = brokerParams(SCA_CHECKS_CONFIG, { full_path: "/etc/passwd" });
+    expect(result.forwardedQuery.file).toBe("/etc/passwd");
+    expect(result.recognizedParams).toContain("full_path");
+  });
+
+  it("forwards all check filters simultaneously", () => {
+    const input: Record<string, string> = {};
+    for (const { key, value } of checkFilters) {
+      input[key] = value;
+    }
+    const result = brokerParams(SCA_CHECKS_CONFIG, input);
+    expect(result.recognizedParams.length).toBe(checkFilters.length);
+    expect(result.unsupportedParams).toHaveLength(0);
+  });
+
+  it("search and q remain distinct in SCA checks", () => {
+    const result = brokerParams(SCA_CHECKS_CONFIG, {
+      search: "password",
+      q: "result=failed",
+    });
+    expect(result.forwardedQuery.search).toBe("password");
+    expect(result.forwardedQuery.q).toBe("result=failed");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 2 — /manager/configuration does NOT have universal query family
+// (This is a spec-truth test: the endpoint only supports distinct, not the full set)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("/manager/configuration universal param scoping", () => {
+  it("has distinct but NOT offset/limit/sort/search/select/q", () => {
+    expect(MANAGER_CONFIG.params).toHaveProperty("distinct");
+    expect(MANAGER_CONFIG.params).not.toHaveProperty("offset");
+    expect(MANAGER_CONFIG.params).not.toHaveProperty("limit");
+    expect(MANAGER_CONFIG.params).not.toHaveProperty("sort");
+    expect(MANAGER_CONFIG.params).not.toHaveProperty("search");
+    expect(MANAGER_CONFIG.params).not.toHaveProperty("select");
+    expect(MANAGER_CONFIG.params).not.toHaveProperty("q");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 2 — Cross-endpoint isolation updated with MANAGER_CONFIG
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("Phase 2 cross-endpoint isolation", () => {
+  it("/manager/configuration rejects all /agents params", () => {
+    const agentParams = { "os.platform": "ubuntu", status: "active", ip: "1.2.3.4", registerIP: "1.2.3.4", group_config_status: "synced" };
+    const result = brokerParams(MANAGER_CONFIG, agentParams);
+    for (const key of Object.keys(agentParams)) {
+      expect(result.unsupportedParams).toContain(key);
+    }
+  });
+
+  it("/manager/configuration rejects all /rules params", () => {
+    const rulesParams = { level: "4", filename: "rules.xml", pci_dss: "10.6.1", gdpr: "IV_35.7.d", mitre: "T1059" };
+    const result = brokerParams(MANAGER_CONFIG, rulesParams);
+    for (const key of Object.keys(rulesParams)) {
+      expect(result.unsupportedParams).toContain(key);
+    }
+  });
+
+  it("/manager/configuration rejects all /sca params", () => {
+    const scaParams = { title: "test", rationale: "reason", remediation: "fix", command: "cmd" };
+    const result = brokerParams(MANAGER_CONFIG, scaParams);
+    for (const key of Object.keys(scaParams)) {
+      expect(result.unsupportedParams).toContain(key);
+    }
+  });
+
+  it("/agents rejects /manager/configuration precision params", () => {
+    const result = brokerParams(AGENTS_CONFIG, { section: "global", field: "jsonout_output", raw: true });
+    expect(result.unsupportedParams).toContain("section");
+    expect(result.unsupportedParams).toContain("field");
+    expect(result.unsupportedParams).toContain("raw");
+  });
+
+  it("/rules rejects /manager/configuration precision params", () => {
+    const result = brokerParams(RULES_CONFIG, { section: "global", field: "jsonout_output", raw: true });
+    expect(result.unsupportedParams).toContain("section");
+    expect(result.unsupportedParams).toContain("field");
+    expect(result.unsupportedParams).toContain("raw");
+  });
 });

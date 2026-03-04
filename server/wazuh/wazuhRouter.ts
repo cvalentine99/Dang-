@@ -14,6 +14,7 @@ import { getWazuhConfig, isWazuhConfigured, wazuhGet, getEffectiveWazuhConfig, i
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
   brokerParams,
+  MANAGER_CONFIG,
   AGENTS_CONFIG,
   RULES_CONFIG,
   GROUPS_CONFIG,
@@ -112,7 +113,33 @@ export const wazuhRouter = router({
   // ══════════════════════════════════════════════════════════════════════════════
   managerInfo: wazuhProcedure.query(() => proxyGet("/manager/info")),
   managerStatus: wazuhProcedure.query(() => proxyGet("/manager/status")),
-  managerConfiguration: wazuhProcedure.query(() => proxyGet("/manager/configuration")),
+  /**
+   * GET /manager/configuration — Manager configuration (broker-wired)
+   *
+   * Precision params: section, field, raw.
+   * Per spec: section and field are ignored when raw=true.
+   * This endpoint does NOT support offset/limit/sort/search/select/q.
+   */
+  managerConfiguration: wazuhProcedure
+    .input(
+      z.object({
+        section: z.string().optional(),
+        field: z.string().optional(),
+        raw: z.boolean().optional(),
+        distinct: z.boolean().optional(),
+      }).optional()
+    )
+    .query(({ input }) => {
+      const params = input ?? {};
+      const { forwardedQuery, unsupportedParams } = brokerParams(MANAGER_CONFIG, params);
+      if (unsupportedParams.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Unsupported parameters for /manager/configuration: ${unsupportedParams.join(", ")}`,
+        });
+      }
+      return proxyGet("/manager/configuration", forwardedQuery);
+    }),
   managerConfigValidation: wazuhProcedure.query(() => proxyGet("/manager/configuration/validation")),
 
   // ── Manager stats ─────────────────────────────────────────────────────────
