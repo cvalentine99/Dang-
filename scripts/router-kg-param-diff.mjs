@@ -33,6 +33,8 @@ if (!DB_URL) {
 // ── Step 1: Parse router Zod inputs statically ─────────────────────────────
 // We map each tRPC procedure to the Wazuh API path it calls, and list the
 // Zod input parameter names. This is a static declaration, not dynamic parsing.
+//
+// Updated after KG-only param wiring campaign — all endpoints now broker-wired.
 
 const ROUTER_ENDPOINTS = [
   {
@@ -44,13 +46,19 @@ const ROUTER_ENDPOINTS = [
   {
     procedure: "managerLogs",
     wazuhPath: "/manager/logs",
-    zodParams: ["limit", "offset", "level", "tag", "search"],
-    brokerWired: false,
+    zodParams: [
+      "limit", "offset", "level", "tag", "search",
+      "sort", "q", "select", "distinct",
+    ],
+    brokerWired: true,
   },
   {
     procedure: "clusterNodes",
     wazuhPath: "/cluster/nodes",
-    zodParams: ["limit", "offset", "search", "sort", "q", "select", "distinct", "type"],
+    zodParams: [
+      "limit", "offset", "search", "sort", "q", "select", "distinct",
+      "type", "nodes_list",
+    ],
     brokerWired: true,
   },
   {
@@ -60,20 +68,27 @@ const ROUTER_ENDPOINTS = [
       "limit", "offset", "status", "os_platform", "search", "group", "sort", "q",
       "select", "distinct", "os.name", "os.version", "older_than", "manager_host",
       "version", "node_name", "name", "ip", "registerIP", "group_config_status",
+      "manager",
     ],
     brokerWired: true,
   },
   {
     procedure: "agentGroups",
     wazuhPath: "/groups",
-    zodParams: ["limit", "offset", "search", "sort", "q", "select", "distinct", "hash"],
+    zodParams: [
+      "limit", "offset", "search", "sort", "q", "select", "distinct",
+      "hash", "groups_list",
+    ],
     brokerWired: true,
   },
   {
     procedure: "groupAgents",
     wazuhPath: "/groups/{group_id}/agents",
-    zodParams: ["groupId", "limit", "offset"],
-    brokerWired: false,
+    zodParams: [
+      "groupId", "limit", "offset", "search", "sort", "q", "select", "distinct",
+      "status",
+    ],
+    brokerWired: true,
   },
   {
     procedure: "rules",
@@ -81,14 +96,17 @@ const ROUTER_ENDPOINTS = [
     zodParams: [
       "limit", "offset", "level", "search", "group", "sort", "q", "select", "distinct",
       "status", "filename", "relative_dirname", "pci_dss", "gdpr", "gpg13", "hipaa",
-      "nist-800-53", "tsc", "mitre",
+      "nist-800-53", "tsc", "mitre", "rule_ids",
     ],
     brokerWired: true,
   },
   {
     procedure: "scaPolicies",
     wazuhPath: "/sca/{agent_id}",
-    zodParams: ["agentId", "limit", "offset", "search", "sort", "q", "select", "distinct", "name", "description", "references"],
+    zodParams: [
+      "agentId", "limit", "offset", "search", "sort", "q", "select", "distinct",
+      "name", "description", "references",
+    ],
     brokerWired: true,
   },
   {
@@ -104,8 +122,12 @@ const ROUTER_ENDPOINTS = [
   {
     procedure: "syscheckFiles",
     wazuhPath: "/syscheck/{agent_id}",
-    zodParams: ["agentId", "type", "search", "hash", "file", "limit", "offset"],
-    brokerWired: false,
+    zodParams: [
+      "agentId", "type", "search", "hash", "file", "limit", "offset",
+      "sort", "select", "q", "distinct",
+      "arch", "value.name", "value.type", "summary", "md5", "sha1", "sha256",
+    ],
+    brokerWired: true,
   },
   {
     procedure: "agentPackages",
@@ -144,47 +166,79 @@ const ROUTER_ENDPOINTS = [
   {
     procedure: "mitreTechniques",
     wazuhPath: "/mitre/techniques",
-    zodParams: ["limit", "offset", "search"],
-    brokerWired: false,
+    zodParams: [
+      "limit", "offset", "search", "sort", "select", "q", "distinct",
+      "technique_ids",
+    ],
+    brokerWired: true,
   },
   {
     procedure: "decoders",
     wazuhPath: "/decoders",
-    zodParams: ["limit", "offset", "search"],
-    brokerWired: false,
+    zodParams: [
+      "limit", "offset", "search", "sort", "select", "q", "distinct",
+      "decoder_names", "filename", "relative_dirname", "status",
+    ],
+    brokerWired: true,
   },
   {
     procedure: "rootcheckResults",
     wazuhPath: "/rootcheck/{agent_id}",
-    zodParams: ["agentId", "limit", "offset"],
-    brokerWired: false,
+    zodParams: [
+      "agentId", "limit", "offset",
+      "sort", "search", "select", "q", "distinct",
+      "status", "pci_dss", "cis",
+    ],
+    brokerWired: true,
   },
   {
     procedure: "ciscatResults",
     wazuhPath: "/ciscat/{agent_id}/results",
-    zodParams: ["agentId", "limit", "offset"],
-    brokerWired: false,
+    zodParams: [
+      "agentId", "limit", "offset",
+      "sort", "search", "select", "q", "distinct",
+      "benchmark", "profile", "pass", "fail", "error", "notchecked", "unknown", "score",
+    ],
+    brokerWired: true,
   },
 ];
 
-// Parameters that are internal to the router (not Wazuh API params)
+// Parameters that are internal to the router (not Wazuh API params).
+// Path segments are extracted from the URL, not sent as query params.
+// Aliases are broker-mapped to their canonical Wazuh names.
 const INTERNAL_PARAMS = new Set([
-  "agentId",    // path segment, not a query param
-  "policyId",   // path segment
-  "groupId",    // path segment
-  "os_platform", // alias → mapped to os.platform by broker
-  "manager_host", // alias → mapped to manager by broker
-  "local_ip",   // alias → mapped to local.ip by broker
-  "local_port",  // alias → mapped to local.port by broker
-  "remote_ip",   // alias → mapped to remote.ip by broker
-  "tx_queue",    // alias → mapped to tx_queue by broker (already correct)
+  // Path segments
+  "agentId",    // → {agent_id} in URL
+  "policyId",   // → {policy_id} in URL
+  "groupId",    // → {group_id} in URL
+]);
+
+// Router Zod param name → canonical Wazuh KG param name.
+// The broker maps these aliases automatically; the diff script must
+// recognize them as "matched" against the KG canonical name.
+const ALIAS_TO_CANONICAL = {
+  os_platform: "os.platform",
+  manager_host: "manager",
+  local_ip: "local.ip",
+  local_port: "local.port",
+  remote_ip: "remote.ip",
+  tx_queue: "tx_queue",
+};
+
+// KG path params that correspond to URL path segments (not query params).
+// These exist in kg_parameters with location='path' but are handled by the
+// router via URL interpolation, not as Zod query inputs.
+const KG_PATH_PARAMS = new Set([
+  "agent_id",
+  "policy_id",
+  "group_id",
 ]);
 
 // ── Step 2: Query KG parameters from database ──────────────────────────────
 
 const conn = await mysql.createConnection(DB_URL);
 
-// Build a map: wazuhPath → Set of KG param names (query + path only, skip body)
+// Build a map: wazuhPath → Set of KG param names (query only, skip body and path)
 const kgParamMap = new Map();
 
 const [endpoints] = await conn.execute(
@@ -193,7 +247,7 @@ const [endpoints] = await conn.execute(
 
 for (const ep of endpoints) {
   const [params] = await conn.execute(
-    "SELECT name, location FROM kg_parameters WHERE endpoint_id = ? AND location IN ('query', 'path')",
+    "SELECT name, location FROM kg_parameters WHERE endpoint_id = ? AND location = 'query'",
     [ep.id]
   );
   kgParamMap.set(ep.path, new Set(params.map(p => p.name)));
@@ -225,12 +279,23 @@ for (const entry of ROUTER_ENDPOINTS) {
     entry.zodParams.filter(p => !INTERNAL_PARAMS.has(p))
   );
 
+  // Build a set of canonical KG names that the router covers
+  // (includes both direct matches and alias-resolved names)
+  const routerCanonicalNames = new Set();
+  for (const p of routerParams) {
+    if (ALIAS_TO_CANONICAL[p]) {
+      routerCanonicalNames.add(ALIAS_TO_CANONICAL[p]);
+    }
+    routerCanonicalNames.add(p);
+  }
+
   const matched = [];
   const routerOnly = [];
   const kgOnly = [];
 
   for (const p of routerParams) {
-    if (kgParams.has(p)) {
+    const canonical = ALIAS_TO_CANONICAL[p] || p;
+    if (kgParams.has(canonical) || kgParams.has(p)) {
       matched.push(p);
     } else {
       routerOnly.push(p);
@@ -238,9 +303,10 @@ for (const entry of ROUTER_ENDPOINTS) {
   }
 
   // KG params not in router (excluding universal params like pretty, wait_for_complete)
+  // Also exclude path params that are handled via URL interpolation
   const UNIVERSAL_SKIP = new Set(["pretty", "wait_for_complete", "agents_list"]);
   for (const p of kgParams) {
-    if (!routerParams.has(p) && !INTERNAL_PARAMS.has(p) && !UNIVERSAL_SKIP.has(p)) {
+    if (!routerCanonicalNames.has(p) && !INTERNAL_PARAMS.has(p) && !UNIVERSAL_SKIP.has(p) && !KG_PATH_PARAMS.has(p)) {
       kgOnly.push(p);
     }
   }
@@ -290,5 +356,11 @@ console.log(`  Router-only:       ${totalRouterOnly} (aliases or broker-mapped)`
 console.log(`  KG-only:           ${totalKgOnly} (available in spec, not yet in router)`);
 console.log("───────────────────────────────────────────────────────────────");
 
-// Exit with 0 if no unexpected gaps
+// Exit with 1 if there are KG-only params remaining
+if (totalKgOnly > 0) {
+  console.log(`\n⚠ ${totalKgOnly} KG-only params still need wiring into the router.`);
+  process.exit(1);
+}
+
+console.log("\n✓ All KG query params are wired into the router. Zero gaps.");
 process.exit(0);

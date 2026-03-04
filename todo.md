@@ -2723,3 +2723,28 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [ ] 4.3b Agentic contract test: forbidden workflow (mutating action → refusal)
 - [ ] 4.3c Agentic contract test: missing-KG workflow (unhydrated endpoint family → "hydrate first")
 - [ ] 4.4 Provenance enforcement: every agentic response suggesting a call must include provenance IDs
+
+## KG-Only Param Wiring Campaign (73 params → 0)
+
+### Batch 1: Add missing params to existing broker configs
+- [x] agents: add `manager` param to AGENTS_CONFIG + Zod schema
+- [x] clusterNodes: add `nodes_list` param to CLUSTER_NODES_CONFIG + Zod schema
+- [x] agentGroups: add `groups_list` param to GROUPS_CONFIG + Zod schema
+- [x] rules: add `rule_ids` param to RULES_CONFIG + Zod schema
+
+### Batch 2: Create new broker configs for un-brokered endpoints
+- [x] managerLogs: create MANAGER_LOGS_CONFIG (sort, q, select, distinct) + wire broker
+- [x] groupAgents: create GROUP_AGENTS_CONFIG (select, sort, search, status, q, distinct) + wire broker
+- [x] syscheckFiles: create SYSCHECK_CONFIG (sort, select, arch, value.name, value.type, summary, md5, sha1, sha256, distinct, q) + wire broker
+- [x] mitreTechniques: create MITRE_TECHNIQUES_CONFIG (technique_ids, sort, select, q, distinct) + wire broker
+- [x] decoders: create DECODERS_CONFIG (decoder_names, select, sort, q, filename, relative_dirname, status, distinct) + wire broker
+- [x] rootcheckResults: create ROOTCHECK_CONFIG (sort, search, select, q, distinct, status, pci_dss, cis) + wire broker
+- [x] ciscatResults: create CISCAT_CONFIG (sort, search, select, benchmark, profile, pass, fail, error, notchecked, unknown, score, q) + wire broker
+
+### Batch 3: Fix diff script false positives
+- [x] Update diff script to recognize path params and aliases (agent_id, policy_id, group_id, os_platform→os.platform, etc.) as matched
+
+### Verification
+- [x] Re-run diff script: 0 KG-only params, 225 matched, exit 0
+- [x] All tests pass (1,830 tests across 63 files)
+- [x] TypeScript clean (tsc --noEmit exit 0)

@@ -1355,3 +1355,470 @@ describe("Phase 3: Universal params present in all syscollector configs", () => 
     });
   }
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// KG-ONLY PARAM WIRING — Batch 1: New params in existing configs
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import {
+  MANAGER_LOGS_CONFIG,
+  GROUP_AGENTS_CONFIG,
+  SYSCHECK_CONFIG,
+  MITRE_TECHNIQUES_CONFIG,
+  DECODERS_CONFIG,
+  ROOTCHECK_CONFIG,
+  CISCAT_CONFIG,
+} from "./paramBroker";
+
+describe("KG wiring: agents — manager param", () => {
+  it("forwards manager hostname filter", () => {
+    const result = brokerParams(AGENTS_CONFIG, { manager: "wazuh-manager-01" });
+    expect(result.forwardedQuery.manager).toBe("wazuh-manager-01");
+    expect(result.recognizedParams).toContain("manager");
+    expect(result.unsupportedParams).toHaveLength(0);
+  });
+});
+
+describe("KG wiring: rules — rule_ids param", () => {
+  it("forwards rule_ids as csv string", () => {
+    const result = brokerParams(RULES_CONFIG, { rule_ids: "100,200,300" });
+    expect(result.forwardedQuery.rule_ids).toBe("100,200,300");
+    expect(result.recognizedParams).toContain("rule_ids");
+  });
+
+  it("forwards rule_ids array as csv", () => {
+    const result = brokerParams(RULES_CONFIG, { rule_ids: ["100", "200"] });
+    expect(result.forwardedQuery.rule_ids).toBe("100,200");
+  });
+
+  it("maps ruleIds alias to rule_ids", () => {
+    const result = brokerParams(RULES_CONFIG, { ruleIds: "500" });
+    expect(result.forwardedQuery.rule_ids).toBe("500");
+    expect(result.recognizedParams).toContain("ruleIds");
+  });
+});
+
+describe("KG wiring: groups — groups_list param", () => {
+  it("forwards groups_list as csv string", () => {
+    const result = brokerParams(GROUPS_CONFIG, { groups_list: "default,webservers" });
+    expect(result.forwardedQuery.groups_list).toBe("default,webservers");
+    expect(result.recognizedParams).toContain("groups_list");
+  });
+
+  it("forwards groups_list array as csv", () => {
+    const result = brokerParams(GROUPS_CONFIG, { groups_list: ["default", "dmz"] });
+    expect(result.forwardedQuery.groups_list).toBe("default,dmz");
+  });
+
+  it("maps groupsList alias to groups_list", () => {
+    const result = brokerParams(GROUPS_CONFIG, { groupsList: "default" });
+    expect(result.forwardedQuery.groups_list).toBe("default");
+  });
+});
+
+describe("KG wiring: clusterNodes — nodes_list param", () => {
+  it("forwards nodes_list as csv string", () => {
+    const result = brokerParams(CLUSTER_NODES_CONFIG, { nodes_list: "node01,node02" });
+    expect(result.forwardedQuery.nodes_list).toBe("node01,node02");
+    expect(result.recognizedParams).toContain("nodes_list");
+  });
+
+  it("forwards nodes_list array as csv", () => {
+    const result = brokerParams(CLUSTER_NODES_CONFIG, { nodes_list: ["master", "worker01"] });
+    expect(result.forwardedQuery.nodes_list).toBe("master,worker01");
+  });
+
+  it("maps nodesList alias to nodes_list", () => {
+    const result = brokerParams(CLUSTER_NODES_CONFIG, { nodesList: "master" });
+    expect(result.forwardedQuery.nodes_list).toBe("master");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// KG-ONLY PARAM WIRING — Batch 2: New broker configs
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("KG wiring: MANAGER_LOGS_CONFIG", () => {
+  it("forwards level and tag filters", () => {
+    const result = brokerParams(MANAGER_LOGS_CONFIG, {
+      level: "error",
+      tag: "wazuh-modulesd:syscollector",
+    });
+    expect(result.forwardedQuery.level).toBe("error");
+    expect(result.forwardedQuery.tag).toBe("wazuh-modulesd:syscollector");
+    expect(result.unsupportedParams).toHaveLength(0);
+  });
+
+  it("includes all universal params", () => {
+    const universalKeys = Object.keys(UNIVERSAL_PARAMS);
+    for (const key of universalKeys) {
+      expect(MANAGER_LOGS_CONFIG.params).toHaveProperty(key);
+    }
+  });
+
+  it("rejects foreign params", () => {
+    const result = brokerParams(MANAGER_LOGS_CONFIG, {
+      "os.platform": "ubuntu",
+      benchmark: "CIS",
+    });
+    expect(result.unsupportedParams).toContain("os.platform");
+    expect(result.unsupportedParams).toContain("benchmark");
+  });
+});
+
+describe("KG wiring: GROUP_AGENTS_CONFIG", () => {
+  it("forwards status filter as csv", () => {
+    const result = brokerParams(GROUP_AGENTS_CONFIG, {
+      status: "active,disconnected",
+    });
+    expect(result.forwardedQuery.status).toBe("active,disconnected");
+    expect(result.recognizedParams).toContain("status");
+  });
+
+  it("forwards status array as csv", () => {
+    const result = brokerParams(GROUP_AGENTS_CONFIG, {
+      status: ["active", "pending"],
+    });
+    expect(result.forwardedQuery.status).toBe("active,pending");
+  });
+
+  it("includes all universal params", () => {
+    const universalKeys = Object.keys(UNIVERSAL_PARAMS);
+    for (const key of universalKeys) {
+      expect(GROUP_AGENTS_CONFIG.params).toHaveProperty(key);
+    }
+  });
+
+  it("rejects foreign params", () => {
+    const result = brokerParams(GROUP_AGENTS_CONFIG, {
+      level: "4",
+      benchmark: "CIS",
+    });
+    expect(result.unsupportedParams).toContain("level");
+    expect(result.unsupportedParams).toContain("benchmark");
+  });
+});
+
+describe("KG wiring: SYSCHECK_CONFIG", () => {
+  it("forwards all field-specific filters", () => {
+    const result = brokerParams(SYSCHECK_CONFIG, {
+      type: "file",
+      hash: "abc123",
+      file: "/etc/passwd",
+      arch: "x64",
+      "value.name": "Start",
+      "value.type": "REG_DWORD",
+      summary: true,
+      md5: "d41d8cd98f00b204e9800998ecf8427e",
+      sha1: "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+      sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    });
+    expect(result.forwardedQuery.type).toBe("file");
+    expect(result.forwardedQuery.hash).toBe("abc123");
+    expect(result.forwardedQuery.file).toBe("/etc/passwd");
+    expect(result.forwardedQuery.arch).toBe("x64");
+    expect(result.forwardedQuery["value.name"]).toBe("Start");
+    expect(result.forwardedQuery["value.type"]).toBe("REG_DWORD");
+    expect(result.forwardedQuery.summary).toBe("true");
+    expect(result.forwardedQuery.md5).toBe("d41d8cd98f00b204e9800998ecf8427e");
+    expect(result.forwardedQuery.sha1).toBe("da39a3ee5e6b4b0d3255bfef95601890afd80709");
+    expect(result.forwardedQuery.sha256).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    expect(result.unsupportedParams).toHaveLength(0);
+  });
+
+  it("maps full_path alias to file", () => {
+    const result = brokerParams(SYSCHECK_CONFIG, { full_path: "/var/log/syslog" });
+    expect(result.forwardedQuery.file).toBe("/var/log/syslog");
+  });
+
+  it("maps valueName alias to value.name", () => {
+    const result = brokerParams(SYSCHECK_CONFIG, { valueName: "ImagePath" });
+    expect(result.forwardedQuery["value.name"]).toBe("ImagePath");
+  });
+
+  it("maps valueType alias to value.type", () => {
+    const result = brokerParams(SYSCHECK_CONFIG, { valueType: "REG_SZ" });
+    expect(result.forwardedQuery["value.type"]).toBe("REG_SZ");
+  });
+
+  it("maps architecture alias to arch", () => {
+    const result = brokerParams(SYSCHECK_CONFIG, { architecture: "x86" });
+    expect(result.forwardedQuery.arch).toBe("x86");
+  });
+
+  it("includes all universal params", () => {
+    const universalKeys = Object.keys(UNIVERSAL_PARAMS);
+    for (const key of universalKeys) {
+      expect(SYSCHECK_CONFIG.params).toHaveProperty(key);
+    }
+  });
+
+  it("rejects foreign params", () => {
+    const result = brokerParams(SYSCHECK_CONFIG, {
+      "os.platform": "ubuntu",
+      benchmark: "CIS",
+      vendor: "Canonical",
+    });
+    expect(result.unsupportedParams).toContain("os.platform");
+    expect(result.unsupportedParams).toContain("benchmark");
+    expect(result.unsupportedParams).toContain("vendor");
+  });
+});
+
+describe("KG wiring: MITRE_TECHNIQUES_CONFIG", () => {
+  it("forwards technique_ids as csv string", () => {
+    const result = brokerParams(MITRE_TECHNIQUES_CONFIG, {
+      technique_ids: "T1059,T1078,T1548",
+    });
+    expect(result.forwardedQuery.technique_ids).toBe("T1059,T1078,T1548");
+    expect(result.recognizedParams).toContain("technique_ids");
+  });
+
+  it("forwards technique_ids array as csv", () => {
+    const result = brokerParams(MITRE_TECHNIQUES_CONFIG, {
+      technique_ids: ["T1059", "T1078"],
+    });
+    expect(result.forwardedQuery.technique_ids).toBe("T1059,T1078");
+  });
+
+  it("maps techniqueIds alias to technique_ids", () => {
+    const result = brokerParams(MITRE_TECHNIQUES_CONFIG, { techniqueIds: "T1059" });
+    expect(result.forwardedQuery.technique_ids).toBe("T1059");
+  });
+
+  it("includes all universal params", () => {
+    const universalKeys = Object.keys(UNIVERSAL_PARAMS);
+    for (const key of universalKeys) {
+      expect(MITRE_TECHNIQUES_CONFIG.params).toHaveProperty(key);
+    }
+  });
+
+  it("rejects foreign params", () => {
+    const result = brokerParams(MITRE_TECHNIQUES_CONFIG, {
+      "os.platform": "ubuntu",
+      level: "4",
+    });
+    expect(result.unsupportedParams).toContain("os.platform");
+    expect(result.unsupportedParams).toContain("level");
+  });
+});
+
+describe("KG wiring: DECODERS_CONFIG", () => {
+  it("forwards all field-specific filters", () => {
+    const result = brokerParams(DECODERS_CONFIG, {
+      decoder_names: "syslog,json",
+      filename: "0005-wazuh_decoders.xml",
+      relative_dirname: "ruleset/decoders",
+      status: "enabled",
+    });
+    expect(result.forwardedQuery.decoder_names).toBe("syslog,json");
+    expect(result.forwardedQuery.filename).toBe("0005-wazuh_decoders.xml");
+    expect(result.forwardedQuery.relative_dirname).toBe("ruleset/decoders");
+    expect(result.forwardedQuery.status).toBe("enabled");
+    expect(result.unsupportedParams).toHaveLength(0);
+  });
+
+  it("forwards decoder_names array as csv", () => {
+    const result = brokerParams(DECODERS_CONFIG, {
+      decoder_names: ["syslog", "json", "ossec"],
+    });
+    expect(result.forwardedQuery.decoder_names).toBe("syslog,json,ossec");
+  });
+
+  it("maps decoderNames alias to decoder_names", () => {
+    const result = brokerParams(DECODERS_CONFIG, { decoderNames: "syslog" });
+    expect(result.forwardedQuery.decoder_names).toBe("syslog");
+  });
+
+  it("maps relativeDirname alias to relative_dirname", () => {
+    const result = brokerParams(DECODERS_CONFIG, { relativeDirname: "etc/decoders" });
+    expect(result.forwardedQuery.relative_dirname).toBe("etc/decoders");
+  });
+
+  it("includes all universal params", () => {
+    const universalKeys = Object.keys(UNIVERSAL_PARAMS);
+    for (const key of universalKeys) {
+      expect(DECODERS_CONFIG.params).toHaveProperty(key);
+    }
+  });
+
+  it("rejects foreign params", () => {
+    const result = brokerParams(DECODERS_CONFIG, {
+      "os.platform": "ubuntu",
+      benchmark: "CIS",
+      level: "4",
+    });
+    expect(result.unsupportedParams).toContain("os.platform");
+    expect(result.unsupportedParams).toContain("benchmark");
+    expect(result.unsupportedParams).toContain("level");
+  });
+});
+
+describe("KG wiring: ROOTCHECK_CONFIG", () => {
+  it("forwards all field-specific filters", () => {
+    const result = brokerParams(ROOTCHECK_CONFIG, {
+      status: "outstanding",
+      pci_dss: "2.2",
+      cis: "1.4",
+    });
+    expect(result.forwardedQuery.status).toBe("outstanding");
+    expect(result.forwardedQuery.pci_dss).toBe("2.2");
+    expect(result.forwardedQuery.cis).toBe("1.4");
+    expect(result.unsupportedParams).toHaveLength(0);
+  });
+
+  it("includes all universal params", () => {
+    const universalKeys = Object.keys(UNIVERSAL_PARAMS);
+    for (const key of universalKeys) {
+      expect(ROOTCHECK_CONFIG.params).toHaveProperty(key);
+    }
+  });
+
+  it("rejects foreign params", () => {
+    const result = brokerParams(ROOTCHECK_CONFIG, {
+      "os.platform": "ubuntu",
+      benchmark: "CIS",
+      vendor: "Canonical",
+    });
+    expect(result.unsupportedParams).toContain("os.platform");
+    expect(result.unsupportedParams).toContain("benchmark");
+    expect(result.unsupportedParams).toContain("vendor");
+  });
+});
+
+describe("KG wiring: CISCAT_CONFIG", () => {
+  it("forwards all field-specific filters", () => {
+    const result = brokerParams(CISCAT_CONFIG, {
+      benchmark: "CIS Ubuntu Linux 22.04 LTS Benchmark",
+      profile: "xccdf_org.cisecurity.benchmarks_profile_Level_1",
+      pass: 85,
+      fail: 10,
+      error: 2,
+      notchecked: 3,
+      unknown: 0,
+      score: 85,
+    });
+    expect(result.forwardedQuery.benchmark).toBe("CIS Ubuntu Linux 22.04 LTS Benchmark");
+    expect(result.forwardedQuery.profile).toBe("xccdf_org.cisecurity.benchmarks_profile_Level_1");
+    expect(result.forwardedQuery.pass).toBe("85");
+    expect(result.forwardedQuery.fail).toBe("10");
+    expect(result.forwardedQuery.error).toBe("2");
+    expect(result.forwardedQuery.notchecked).toBe("3");
+    expect(result.forwardedQuery.unknown).toBe("0");
+    expect(result.forwardedQuery.score).toBe("85");
+    expect(result.unsupportedParams).toHaveLength(0);
+  });
+
+  it("includes all universal params", () => {
+    const universalKeys = Object.keys(UNIVERSAL_PARAMS);
+    for (const key of universalKeys) {
+      expect(CISCAT_CONFIG.params).toHaveProperty(key);
+    }
+  });
+
+  it("rejects foreign params", () => {
+    const result = brokerParams(CISCAT_CONFIG, {
+      "os.platform": "ubuntu",
+      level: "4",
+      vendor: "Canonical",
+    });
+    expect(result.unsupportedParams).toContain("os.platform");
+    expect(result.unsupportedParams).toContain("level");
+    expect(result.unsupportedParams).toContain("vendor");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// KG wiring: Universal params present in ALL new configs
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("KG wiring: universal params in all new configs", () => {
+  const newConfigs = [
+    { name: "/manager/logs", config: MANAGER_LOGS_CONFIG },
+    { name: "/groups/{group_id}/agents", config: GROUP_AGENTS_CONFIG },
+    { name: "/syscheck/{agent_id}", config: SYSCHECK_CONFIG },
+    { name: "/mitre/techniques", config: MITRE_TECHNIQUES_CONFIG },
+    { name: "/decoders", config: DECODERS_CONFIG },
+    { name: "/rootcheck/{agent_id}", config: ROOTCHECK_CONFIG },
+    { name: "/ciscat/{agent_id}/results", config: CISCAT_CONFIG },
+  ];
+
+  const universalKeys = Object.keys(UNIVERSAL_PARAMS);
+
+  for (const { name, config } of newConfigs) {
+    for (const key of universalKeys) {
+      it(`${name} includes universal param "${key}"`, () => {
+        expect(config.params).toHaveProperty(key);
+        expect(config.params[key].wazuhName).toBe(
+          UNIVERSAL_PARAMS[key as keyof typeof UNIVERSAL_PARAMS].wazuhName
+        );
+      });
+    }
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// KG wiring: Cross-endpoint isolation — new configs
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("KG wiring: cross-endpoint isolation — new configs", () => {
+  it("MANAGER_LOGS rejects agents-specific params", () => {
+    const result = brokerParams(MANAGER_LOGS_CONFIG, {
+      "os.platform": "ubuntu",
+      registerIP: "1.2.3.4",
+      manager: "wazuh-01",
+    });
+    expect(result.unsupportedParams).toContain("os.platform");
+    expect(result.unsupportedParams).toContain("registerIP");
+    expect(result.unsupportedParams).toContain("manager");
+  });
+
+  it("SYSCHECK rejects rules-specific params", () => {
+    const result = brokerParams(SYSCHECK_CONFIG, {
+      level: "4",
+      pci_dss: "10.6.1",
+      rule_ids: "100",
+    });
+    expect(result.unsupportedParams).toContain("level");
+    expect(result.unsupportedParams).toContain("pci_dss");
+    expect(result.unsupportedParams).toContain("rule_ids");
+  });
+
+  it("DECODERS rejects syscheck-specific params", () => {
+    const result = brokerParams(DECODERS_CONFIG, {
+      arch: "x64",
+      md5: "abc",
+      sha256: "def",
+    });
+    expect(result.unsupportedParams).toContain("arch");
+    expect(result.unsupportedParams).toContain("md5");
+    expect(result.unsupportedParams).toContain("sha256");
+  });
+
+  it("ROOTCHECK rejects ciscat-specific params", () => {
+    const result = brokerParams(ROOTCHECK_CONFIG, {
+      benchmark: "CIS",
+      profile: "Level_1",
+      score: 85,
+    });
+    expect(result.unsupportedParams).toContain("benchmark");
+    expect(result.unsupportedParams).toContain("profile");
+    expect(result.unsupportedParams).toContain("score");
+  });
+
+  it("CISCAT rejects rootcheck-specific params", () => {
+    const result = brokerParams(CISCAT_CONFIG, {
+      cis: "1.4",
+    });
+    expect(result.unsupportedParams).toContain("cis");
+  });
+
+  it("MITRE_TECHNIQUES rejects decoders-specific params", () => {
+    const result = brokerParams(MITRE_TECHNIQUES_CONFIG, {
+      decoder_names: "syslog",
+      relative_dirname: "ruleset/decoders",
+    });
+    expect(result.unsupportedParams).toContain("decoder_names");
+    expect(result.unsupportedParams).toContain("relative_dirname");
+  });
+});

@@ -329,6 +329,11 @@ export const AGENTS_CONFIG: EndpointParamConfig = {
       type: "string",
       aliases: ["groupConfigStatus"],
     },
+    manager: {
+      wazuhName: "manager",
+      description: "Filter by manager hostname the agent reports to",
+      type: "string",
+    },
   },
 };
 
@@ -424,6 +429,12 @@ export const RULES_CONFIG: EndpointParamConfig = {
       description: "Filter by MITRE technique ID",
       type: "string",
     },
+    rule_ids: {
+      wazuhName: "rule_ids",
+      description: "Filter by rule IDs (comma-separated list)",
+      type: "csv",
+      aliases: ["ruleIds"],
+    },
   },
 };
 
@@ -448,6 +459,12 @@ export const GROUPS_CONFIG: EndpointParamConfig = {
       wazuhName: "hash",
       description: "Select algorithm to generate the returned checksums",
       type: "string",
+    },
+    groups_list: {
+      wazuhName: "groups_list",
+      description: "Filter by group names (comma-separated list)",
+      type: "csv",
+      aliases: ["groupsList"],
     },
   },
 };
@@ -474,6 +491,12 @@ export const CLUSTER_NODES_CONFIG: EndpointParamConfig = {
       description: "Filter by node type (worker | master)",
       type: "string",
       aliases: ["node_type", "nodeType"],
+    },
+    nodes_list: {
+      wazuhName: "nodes_list",
+      description: "Filter by node names (comma-separated list)",
+      type: "csv",
+      aliases: ["nodesList"],
     },
   },
 };
@@ -872,5 +895,322 @@ export const SYSCOLLECTOR_SERVICES_CONFIG: EndpointParamConfig = {
     select: UNIVERSAL_PARAMS.select,
     q: UNIVERSAL_PARAMS.q,
     distinct: UNIVERSAL_PARAMS.distinct,
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// KG-Only Param Wiring — New Broker Configs
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /manager/logs — Manager logs
+ * Spec ref: operationId api.controllers.manager_controller.get_log
+ *
+ * Previously un-brokered (manual param forwarding). Now supports universal
+ * params plus endpoint-specific level and tag filters.
+ */
+export const MANAGER_LOGS_CONFIG: EndpointParamConfig = {
+  endpoint: "/manager/logs",
+  params: {
+    // Universal params
+    offset: UNIVERSAL_PARAMS.offset,
+    limit: UNIVERSAL_PARAMS.limit,
+    sort: UNIVERSAL_PARAMS.sort,
+    search: UNIVERSAL_PARAMS.search,
+    select: UNIVERSAL_PARAMS.select,
+    q: UNIVERSAL_PARAMS.q,
+    distinct: UNIVERSAL_PARAMS.distinct,
+
+    // Endpoint-specific
+    level: {
+      wazuhName: "level",
+      description: "Filter by log level (info, error, warning, debug)",
+      type: "string",
+    },
+    tag: {
+      wazuhName: "tag",
+      description: "Filter by log tag (e.g. wazuh-modulesd:syscollector)",
+      type: "string",
+    },
+  },
+};
+
+/**
+ * GET /groups/{group_id}/agents — Agents in a group
+ * Spec ref: operationId api.controllers.agent_controller.get_agents_in_group
+ *
+ * Previously un-brokered (only forwarded limit/offset). Now supports
+ * universal params plus status filter.
+ */
+export const GROUP_AGENTS_CONFIG: EndpointParamConfig = {
+  endpoint: "/groups/{group_id}/agents",
+  params: {
+    // Universal params
+    offset: UNIVERSAL_PARAMS.offset,
+    limit: UNIVERSAL_PARAMS.limit,
+    sort: UNIVERSAL_PARAMS.sort,
+    search: UNIVERSAL_PARAMS.search,
+    select: UNIVERSAL_PARAMS.select,
+    q: UNIVERSAL_PARAMS.q,
+    distinct: UNIVERSAL_PARAMS.distinct,
+
+    // Endpoint-specific
+    status: {
+      wazuhName: "status",
+      description: "Filter by agent status (active, disconnected, never_connected, pending)",
+      type: "csv",
+    },
+  },
+};
+
+/**
+ * GET /syscheck/{agent_id} — FIM/Syscheck files
+ * Spec ref: operationId api.controllers.syscheck_controller.get_syscheck_agent
+ *
+ * Previously un-brokered (manual param forwarding). Now supports universal
+ * params plus all field-specific filters from the spec.
+ */
+export const SYSCHECK_CONFIG: EndpointParamConfig = {
+  endpoint: "/syscheck/{agent_id}",
+  params: {
+    // Universal params
+    offset: UNIVERSAL_PARAMS.offset,
+    limit: UNIVERSAL_PARAMS.limit,
+    sort: UNIVERSAL_PARAMS.sort,
+    search: UNIVERSAL_PARAMS.search,
+    select: UNIVERSAL_PARAMS.select,
+    q: UNIVERSAL_PARAMS.q,
+    distinct: UNIVERSAL_PARAMS.distinct,
+
+    // Endpoint-specific field filters
+    type: {
+      wazuhName: "type",
+      description: "Filter by file type (file | registry)",
+      type: "string",
+    },
+    hash: {
+      wazuhName: "hash",
+      description: "Filter by any hash (MD5, SHA1, or SHA256)",
+      type: "string",
+    },
+    file: {
+      wazuhName: "file",
+      description: "Filter by file path",
+      type: "string",
+      aliases: ["full_path"],
+    },
+    arch: {
+      wazuhName: "arch",
+      description: "Filter by registry architecture (x86 | x64) — registry type only",
+      type: "string",
+      aliases: ["architecture"],
+    },
+    "value.name": {
+      wazuhName: "value.name",
+      description: "Filter by registry value name — registry type only",
+      type: "string",
+      aliases: ["valueName", "value_name"],
+    },
+    "value.type": {
+      wazuhName: "value.type",
+      description: "Filter by registry value type — registry type only",
+      type: "string",
+      aliases: ["valueType", "value_type"],
+    },
+    summary: {
+      wazuhName: "summary",
+      description: "Return only a summary of changes (true/false)",
+      type: "boolean",
+    },
+    md5: {
+      wazuhName: "md5",
+      description: "Filter by MD5 hash",
+      type: "string",
+    },
+    sha1: {
+      wazuhName: "sha1",
+      description: "Filter by SHA1 hash",
+      type: "string",
+    },
+    sha256: {
+      wazuhName: "sha256",
+      description: "Filter by SHA256 hash",
+      type: "string",
+    },
+  },
+};
+
+/**
+ * GET /mitre/techniques — MITRE ATT&CK techniques
+ * Spec ref: operationId api.controllers.mitre_controller.get_attack
+ *
+ * Previously un-brokered (only forwarded limit/offset/search). Now supports
+ * universal params plus technique_ids filter.
+ */
+export const MITRE_TECHNIQUES_CONFIG: EndpointParamConfig = {
+  endpoint: "/mitre/techniques",
+  params: {
+    // Universal params
+    offset: UNIVERSAL_PARAMS.offset,
+    limit: UNIVERSAL_PARAMS.limit,
+    sort: UNIVERSAL_PARAMS.sort,
+    search: UNIVERSAL_PARAMS.search,
+    select: UNIVERSAL_PARAMS.select,
+    q: UNIVERSAL_PARAMS.q,
+    distinct: UNIVERSAL_PARAMS.distinct,
+
+    // Endpoint-specific
+    technique_ids: {
+      wazuhName: "technique_ids",
+      description: "Filter by MITRE technique IDs (comma-separated list, e.g. T1059,T1078)",
+      type: "csv",
+      aliases: ["techniqueIds"],
+    },
+  },
+};
+
+/**
+ * GET /decoders — List decoders
+ * Spec ref: operationId api.controllers.decoder_controller.get_decoders
+ *
+ * Previously un-brokered (only forwarded limit/offset/search). Now supports
+ * universal params plus all field-specific filters.
+ */
+export const DECODERS_CONFIG: EndpointParamConfig = {
+  endpoint: "/decoders",
+  params: {
+    // Universal params
+    offset: UNIVERSAL_PARAMS.offset,
+    limit: UNIVERSAL_PARAMS.limit,
+    sort: UNIVERSAL_PARAMS.sort,
+    search: UNIVERSAL_PARAMS.search,
+    select: UNIVERSAL_PARAMS.select,
+    q: UNIVERSAL_PARAMS.q,
+    distinct: UNIVERSAL_PARAMS.distinct,
+
+    // Endpoint-specific
+    decoder_names: {
+      wazuhName: "decoder_names",
+      description: "Filter by decoder names (comma-separated list)",
+      type: "csv",
+      aliases: ["decoderNames"],
+    },
+    filename: {
+      wazuhName: "filename",
+      description: "Filter by decoder filename",
+      type: "string",
+    },
+    relative_dirname: {
+      wazuhName: "relative_dirname",
+      description: "Filter by relative directory name",
+      type: "string",
+      aliases: ["relativeDirname"],
+    },
+    status: {
+      wazuhName: "status",
+      description: "Filter by decoder status (enabled | disabled | all)",
+      type: "string",
+    },
+  },
+};
+
+/**
+ * GET /rootcheck/{agent_id} — Rootcheck results
+ * Spec ref: operationId api.controllers.rootcheck_controller.get_rootcheck_agent
+ *
+ * Previously un-brokered (only forwarded limit/offset). Now supports
+ * universal params plus compliance and status filters.
+ */
+export const ROOTCHECK_CONFIG: EndpointParamConfig = {
+  endpoint: "/rootcheck/{agent_id}",
+  params: {
+    // Universal params
+    offset: UNIVERSAL_PARAMS.offset,
+    limit: UNIVERSAL_PARAMS.limit,
+    sort: UNIVERSAL_PARAMS.sort,
+    search: UNIVERSAL_PARAMS.search,
+    select: UNIVERSAL_PARAMS.select,
+    q: UNIVERSAL_PARAMS.q,
+    distinct: UNIVERSAL_PARAMS.distinct,
+
+    // Endpoint-specific
+    status: {
+      wazuhName: "status",
+      description: "Filter by rootcheck status",
+      type: "string",
+    },
+    pci_dss: {
+      wazuhName: "pci_dss",
+      description: "Filter by PCI DSS requirement",
+      type: "string",
+    },
+    cis: {
+      wazuhName: "cis",
+      description: "Filter by CIS benchmark",
+      type: "string",
+    },
+  },
+};
+
+/**
+ * GET /ciscat/{agent_id}/results — CIS-CAT results
+ * Spec ref: operationId api.controllers.ciscat_controller.get_agents_ciscat_results
+ *
+ * Previously un-brokered (only forwarded limit/offset). Now supports
+ * universal params plus all CIS-CAT field-specific filters.
+ */
+export const CISCAT_CONFIG: EndpointParamConfig = {
+  endpoint: "/ciscat/{agent_id}/results",
+  params: {
+    // Universal params
+    offset: UNIVERSAL_PARAMS.offset,
+    limit: UNIVERSAL_PARAMS.limit,
+    sort: UNIVERSAL_PARAMS.sort,
+    search: UNIVERSAL_PARAMS.search,
+    select: UNIVERSAL_PARAMS.select,
+    q: UNIVERSAL_PARAMS.q,
+    distinct: UNIVERSAL_PARAMS.distinct,
+
+    // Endpoint-specific field filters
+    benchmark: {
+      wazuhName: "benchmark",
+      description: "Filter by CIS-CAT benchmark name",
+      type: "string",
+    },
+    profile: {
+      wazuhName: "profile",
+      description: "Filter by CIS-CAT profile",
+      type: "string",
+    },
+    pass: {
+      wazuhName: "pass",
+      description: "Filter by number of passed checks",
+      type: "number",
+    },
+    fail: {
+      wazuhName: "fail",
+      description: "Filter by number of failed checks",
+      type: "number",
+    },
+    error: {
+      wazuhName: "error",
+      description: "Filter by number of errors",
+      type: "number",
+    },
+    notchecked: {
+      wazuhName: "notchecked",
+      description: "Filter by number of not-checked items",
+      type: "number",
+    },
+    unknown: {
+      wazuhName: "unknown",
+      description: "Filter by number of unknown items",
+      type: "number",
+    },
+    score: {
+      wazuhName: "score",
+      description: "Filter by CIS-CAT score",
+      type: "number",
+    },
   },
 };

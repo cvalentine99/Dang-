@@ -15,12 +15,19 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import {
   brokerParams,
   MANAGER_CONFIG,
+  MANAGER_LOGS_CONFIG,
   AGENTS_CONFIG,
   RULES_CONFIG,
   GROUPS_CONFIG,
+  GROUP_AGENTS_CONFIG,
   CLUSTER_NODES_CONFIG,
   SCA_POLICIES_CONFIG,
   SCA_CHECKS_CONFIG,
+  SYSCHECK_CONFIG,
+  MITRE_TECHNIQUES_CONFIG,
+  DECODERS_CONFIG,
+  ROOTCHECK_CONFIG,
+  CISCAT_CONFIG,
   SYSCOLLECTOR_PACKAGES_CONFIG,
   SYSCOLLECTOR_PORTS_CONFIG,
   SYSCOLLECTOR_PROCESSES_CONFIG,
@@ -163,23 +170,34 @@ export const wazuhRouter = router({
     ),
 
   // ── Manager logs ──────────────────────────────────────────────────────────
+  /**
+   * GET /manager/logs — Manager logs (broker-wired)
+   *
+   * Expanded to support universal params (sort, q, select, distinct)
+   * plus endpoint-specific level and tag filters.
+   */
   managerLogs: wazuhProcedure
     .input(
       paginationSchema.extend({
         level: z.enum(["info", "error", "warning", "debug"]).optional(),
         tag: z.string().optional(),
         search: z.string().optional(),
+        sort: z.string().optional(),
+        q: z.string().optional(),
+        select: z.union([z.string(), z.array(z.string())]).optional(),
+        distinct: z.boolean().optional(),
       })
     )
-    .query(({ input }) =>
-      proxyGet("/manager/logs", {
-        limit: input.limit,
-        offset: input.offset,
-        level: input.level,
-        tag: input.tag,
-        search: input.search,
-      }, "alerts")
-    ),
+    .query(({ input }) => {
+      const { forwardedQuery, unsupportedParams } = brokerParams(MANAGER_LOGS_CONFIG, input);
+      if (unsupportedParams.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Unsupported parameters for /manager/logs: ${unsupportedParams.join(", ")}`,
+        });
+      }
+      return proxyGet("/manager/logs", forwardedQuery, "alerts");
+    }),
 
   managerLogsSummary: wazuhProcedure.query(() =>
     proxyGet("/manager/logs/summary", {}, "alerts")
@@ -204,6 +222,7 @@ export const wazuhRouter = router({
         select: z.union([z.string(), z.array(z.string())]).optional(),
         distinct: z.boolean().optional(),
         type: z.enum(["worker", "master"]).optional(),
+        nodes_list: z.union([z.string(), z.array(z.string())]).optional(),
       }).optional()
     )
     .query(({ input }) => {
@@ -271,6 +290,7 @@ export const wazuhRouter = router({
         ip: z.string().optional(),
         registerIP: z.string().optional(),
         group_config_status: z.string().optional(),
+        manager: z.string().optional(),
       })
     )
     .query(({ input }) => {
@@ -345,6 +365,7 @@ export const wazuhRouter = router({
         select: z.union([z.string(), z.array(z.string())]).optional(),
         distinct: z.boolean().optional(),
         hash: z.string().optional(),
+        groups_list: z.union([z.string(), z.array(z.string())]).optional(),
       }).optional()
     )
     .query(({ input }) => {
@@ -380,14 +401,34 @@ export const wazuhRouter = router({
       proxyGet("/agents/stats/distinct", { fields: input.fields })
     ),
 
+  /**
+   * GET /groups/{group_id}/agents — Agents in a group (broker-wired)
+   *
+   * Expanded to support universal params (sort, search, select, q, distinct)
+   * plus endpoint-specific status filter.
+   */
   agentGroupMembers: wazuhProcedure
-    .input(z.object({ groupId: z.string(), ...paginationSchema.shape }))
-    .query(({ input }) =>
-      proxyGet(`/groups/${input.groupId}/agents`, {
-        limit: input.limit,
-        offset: input.offset,
-      })
-    ),
+    .input(z.object({
+      groupId: z.string(),
+      ...paginationSchema.shape,
+      search: z.string().optional(),
+      sort: z.string().optional(),
+      q: z.string().optional(),
+      select: z.union([z.string(), z.array(z.string())]).optional(),
+      distinct: z.boolean().optional(),
+      status: z.union([z.string(), z.array(z.string())]).optional(),
+    }))
+    .query(({ input }) => {
+      const { groupId, ...rest } = input;
+      const { forwardedQuery, unsupportedParams } = brokerParams(GROUP_AGENTS_CONFIG, rest);
+      if (unsupportedParams.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Unsupported parameters for /groups/{group_id}/agents: ${unsupportedParams.join(", ")}`,
+        });
+      }
+      return proxyGet(`/groups/${groupId}/agents`, forwardedQuery);
+    }),
 
   // ══════════════════════════════════════════════════════════════════════════════
   // SYSCOLLECTOR (IT Hygiene)
@@ -619,6 +660,7 @@ export const wazuhRouter = router({
         "nist-800-53": z.string().optional(),
         tsc: z.string().optional(),
         mitre: z.string().optional(),
+        rule_ids: z.union([z.string(), z.array(z.string())]).optional(),
       })
     )
     .query(({ input }) => {
@@ -660,15 +702,31 @@ export const wazuhRouter = router({
     proxyGet("/mitre/tactics")
   ),
 
+  /**
+   * GET /mitre/techniques — MITRE ATT&CK techniques (broker-wired)
+   *
+   * Expanded to support universal params (sort, select, q, distinct)
+   * plus technique_ids filter.
+   */
   mitreTechniques: wazuhProcedure
-    .input(paginationSchema.extend({ search: z.string().optional() }))
-    .query(({ input }) =>
-      proxyGet("/mitre/techniques", {
-        limit: input.limit,
-        offset: input.offset,
-        search: input.search,
-      })
-    ),
+    .input(paginationSchema.extend({
+      search: z.string().optional(),
+      sort: z.string().optional(),
+      select: z.union([z.string(), z.array(z.string())]).optional(),
+      q: z.string().optional(),
+      distinct: z.boolean().optional(),
+      technique_ids: z.union([z.string(), z.array(z.string())]).optional(),
+    }))
+    .query(({ input }) => {
+      const { forwardedQuery, unsupportedParams } = brokerParams(MITRE_TECHNIQUES_CONFIG, input);
+      if (unsupportedParams.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Unsupported parameters for /mitre/techniques: ${unsupportedParams.join(", ")}`,
+        });
+      }
+      return proxyGet("/mitre/techniques", forwardedQuery);
+    }),
 
   mitreMitigations: wazuhProcedure
     .input(paginationSchema)
@@ -783,18 +841,53 @@ export const wazuhRouter = router({
       return proxyGet(`/sca/${agentId}/checks/${policyId}`, forwardedQuery);
     }),
 
+  /**
+   * GET /ciscat/{agent_id}/results — CIS-CAT results (broker-wired)
+   *
+   * Expanded to support universal params (sort, search, select, q, distinct)
+   * plus all CIS-CAT field-specific filters: benchmark, profile, pass, fail,
+   * error, notchecked, unknown, score.
+   */
   ciscatResults: wazuhProcedure
-    .input(z.object({ agentId: agentIdSchema, ...paginationSchema.shape }))
-    .query(({ input }) =>
-      proxyGet(`/ciscat/${input.agentId}/results`, {
-        limit: input.limit,
-        offset: input.offset,
-      })
-    ),
+    .input(z.object({
+      agentId: agentIdSchema,
+      ...paginationSchema.shape,
+      sort: z.string().optional(),
+      search: z.string().optional(),
+      select: z.union([z.string(), z.array(z.string())]).optional(),
+      q: z.string().optional(),
+      distinct: z.boolean().optional(),
+      benchmark: z.string().optional(),
+      profile: z.string().optional(),
+      pass: z.number().optional(),
+      fail: z.number().optional(),
+      error: z.number().optional(),
+      notchecked: z.number().optional(),
+      unknown: z.number().optional(),
+      score: z.number().optional(),
+    }))
+    .query(({ input }) => {
+      const { agentId, ...rest } = input;
+      const { forwardedQuery, unsupportedParams } = brokerParams(CISCAT_CONFIG, rest);
+      if (unsupportedParams.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Unsupported parameters for /ciscat/{agent_id}/results: ${unsupportedParams.join(", ")}`,
+        });
+      }
+      return proxyGet(`/ciscat/${agentId}/results`, forwardedQuery);
+    }),
 
   // ══════════════════════════════════════════════════════════════════════════════
   // FIM / SYSCHECK
   // ══════════════════════════════════════════════════════════════════════════════
+  /**
+   * GET /syscheck/{agent_id} — FIM/Syscheck files (broker-wired)
+   *
+   * Expanded to support universal params (sort, select, q, distinct)
+   * plus all field-specific filters: arch, value.name, value.type, summary,
+   * md5, sha1, sha256.
+   */
   syscheckFiles: wazuhProcedure
     .input(
       z.object({
@@ -803,23 +896,31 @@ export const wazuhRouter = router({
         search: z.string().optional(),
         hash: z.string().optional(),
         file: z.string().optional(),
+        sort: z.string().optional(),
+        select: z.union([z.string(), z.array(z.string())]).optional(),
+        q: z.string().optional(),
+        distinct: z.boolean().optional(),
+        arch: z.string().optional(),
+        "value.name": z.string().optional(),
+        "value.type": z.string().optional(),
+        summary: z.boolean().optional(),
+        md5: z.string().optional(),
+        sha1: z.string().optional(),
+        sha256: z.string().optional(),
         ...paginationSchema.shape,
       })
     )
-    .query(({ input }) =>
-      proxyGet(
-        `/syscheck/${input.agentId}`,
-        {
-          limit: input.limit,
-          offset: input.offset,
-          type: input.type,
-          search: input.search,
-          hash: input.hash,
-          file: input.file,
-        },
-        "syscheck"
-      )
-    ),
+    .query(({ input }) => {
+      const { agentId, ...rest } = input;
+      const { forwardedQuery, unsupportedParams } = brokerParams(SYSCHECK_CONFIG, rest);
+      if (unsupportedParams.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Unsupported parameters for /syscheck/{agent_id}: ${unsupportedParams.join(", ")}`,
+        });
+      }
+      return proxyGet(`/syscheck/${agentId}`, forwardedQuery, "syscheck");
+    }),
 
   syscheckLastScan: wazuhProcedure
     .input(z.object({ agentId: agentIdSchema }))
@@ -830,14 +931,36 @@ export const wazuhRouter = router({
   // ══════════════════════════════════════════════════════════════════════════════
   // ROOTCHECK
   // ══════════════════════════════════════════════════════════════════════════════
+  /**
+   * GET /rootcheck/{agent_id} — Rootcheck results (broker-wired)
+   *
+   * Expanded to support universal params (sort, search, select, q, distinct)
+   * plus status, pci_dss, cis compliance filters.
+   */
   rootcheckResults: wazuhProcedure
-    .input(z.object({ agentId: agentIdSchema, ...paginationSchema.shape }))
-    .query(({ input }) =>
-      proxyGet(`/rootcheck/${input.agentId}`, {
-        limit: input.limit,
-        offset: input.offset,
-      })
-    ),
+    .input(z.object({
+      agentId: agentIdSchema,
+      ...paginationSchema.shape,
+      sort: z.string().optional(),
+      search: z.string().optional(),
+      select: z.union([z.string(), z.array(z.string())]).optional(),
+      q: z.string().optional(),
+      distinct: z.boolean().optional(),
+      status: z.string().optional(),
+      pci_dss: z.string().optional(),
+      cis: z.string().optional(),
+    }))
+    .query(({ input }) => {
+      const { agentId, ...rest } = input;
+      const { forwardedQuery, unsupportedParams } = brokerParams(ROOTCHECK_CONFIG, rest);
+      if (unsupportedParams.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Unsupported parameters for /rootcheck/{agent_id}: ${unsupportedParams.join(", ")}`,
+        });
+      }
+      return proxyGet(`/rootcheck/${agentId}`, forwardedQuery);
+    }),
 
   rootcheckLastScan: wazuhProcedure
     .input(z.object({ agentId: agentIdSchema }))
@@ -848,11 +971,34 @@ export const wazuhRouter = router({
   // ══════════════════════════════════════════════════════════════════════════════
   // DECODERS
   // ══════════════════════════════════════════════════════════════════════════════
+  /**
+   * GET /decoders — List decoders (broker-wired)
+   *
+   * Expanded to support universal params (sort, select, q, distinct)
+   * plus decoder_names, filename, relative_dirname, status filters.
+   */
   decoders: wazuhProcedure
-    .input(paginationSchema.extend({ search: z.string().optional() }))
-    .query(({ input }) =>
-      proxyGet("/decoders", { limit: input.limit, offset: input.offset, search: input.search })
-    ),
+    .input(paginationSchema.extend({
+      search: z.string().optional(),
+      sort: z.string().optional(),
+      select: z.union([z.string(), z.array(z.string())]).optional(),
+      q: z.string().optional(),
+      distinct: z.boolean().optional(),
+      decoder_names: z.union([z.string(), z.array(z.string())]).optional(),
+      filename: z.string().optional(),
+      relative_dirname: z.string().optional(),
+      status: z.enum(["enabled", "disabled", "all"]).optional(),
+    }))
+    .query(({ input }) => {
+      const { forwardedQuery, unsupportedParams } = brokerParams(DECODERS_CONFIG, input);
+      if (unsupportedParams.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Unsupported parameters for /decoders: ${unsupportedParams.join(", ")}`,
+        });
+      }
+      return proxyGet("/decoders", forwardedQuery);
+    }),
 
   decoderFiles: wazuhProcedure
     .input(paginationSchema)
