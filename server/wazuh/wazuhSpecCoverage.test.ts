@@ -127,8 +127,10 @@ describe("Wazuh API Spec v4.14.3 — Full Coverage Endpoints", () => {
       for (const proc of procedures) {
         const lower = proc.toLowerCase();
         for (const pattern of writePatterns) {
-          // Allow "agentsOutdated" which contains "update" substring
-          if (lower === "agentsoutdated") continue;
+          // Allow read-only procedures that contain write-pattern substrings
+          if (lower === "agentsoutdated") continue; // contains "update"
+          if (lower === "agentsupgraderesult") continue; // GET /agents/upgrade_result (reads result, not a write)
+          if (lower === "agentsuninstallpermission") continue; // GET /agents/uninstall (permission check, not a write)
           expect(
             lower.includes(pattern),
             `Procedure "${proc}" appears to be a write operation (contains "${pattern}")`

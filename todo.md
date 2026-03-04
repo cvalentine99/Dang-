@@ -2712,17 +2712,17 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] 2C. Any parameter not in KG → plan rejected → rewritten
 
 ### Directive 3: Gap Report → Proof Matrix
-- [ ] Layer 1 KG coverage: define resource families, parameter families, use cases per gap item
-- [ ] Layer 2 Agentic capability: retrieval queries, reasoning decisions, output contracts, refusal conditions
-- [ ] Deliverable: Gap → Proof Matrix document (gap item, KG proof, agent proof, status)
+- [x] Layer 1 KG coverage: define resource families, parameter families, use cases per gap item (see docs/gap-proof-matrix.md + docs/gap-closure-matrix.md)
+- [x] Layer 2 Agentic capability: retrieval queries, reasoning decisions, output contracts, refusal conditions (see docs/gap-proof-matrix.md §3-4)
+- [x] Deliverable: Gap → Proof Matrix document (gap item, KG proof, agent proof, status) (see docs/gap-closure-matrix.md)
 
 ### Directive 4: Immediate Sprint Items
 - [x] 4.1 Seeder upgrade: extract requestBody into kg_parameters (location=body)
 - [x] 4.2 Router↔KG Parameter Diff script: static compare tRPC Zod inputs vs KG parameter list
-- [ ] 4.3a Agentic contract test: safe read workflow (syscollector inventory summary)
-- [ ] 4.3b Agentic contract test: forbidden workflow (mutating action → refusal)
-- [ ] 4.3c Agentic contract test: missing-KG workflow (unhydrated endpoint family → "hydrate first")
-- [ ] 4.4 Provenance enforcement: every agentic response suggesting a call must include provenance IDs
+- [x] 4.3a Agentic contract test: safe read workflow (syscollector inventory summary) — server/graph/agenticGates.test.ts
+- [x] 4.3b Agentic contract test: forbidden workflow (mutating action → refusal) — server/graph/agenticGates.test.ts
+- [x] 4.3c Agentic contract test: missing-KG workflow (unhydrated endpoint family → "hydrate first") — server/graph/agenticGates.test.ts
+- [x] 4.4 Provenance enforcement: every agentic response suggesting a call must include provenance IDs — server/graph/agenticGates.test.ts
 
 ## KG-Only Param Wiring Campaign (73 params → 0)
 
@@ -2865,34 +2865,34 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Cluster per-node: GET /cluster/{node_id}/configuration/{component}/{configuration} → wazuh.clusterNodeComponentConfig
 
 ### [P1] Objective 2 — Dashboard and UI Parameter Propagation
-- [ ] Verify PUT /active-response body params visible in API Explorer endpoint detail
-- [ ] Verify POST /agents body params visible in API Explorer endpoint detail
-- [ ] Verify one syscollector endpoint params visible in dashboard/API Explorer
-- [ ] Verify one dashboard-consumed endpoint params match KG truth
-- [ ] Document source-of-truth for each verified param (KG / router / hardcoded)
+- [x] Verify PUT /active-response body params visible in API Explorer endpoint detail
+- [x] Verify POST /agents body params visible in API Explorer endpoint detail
+- [x] Verify one syscollector endpoint params visible in dashboard/API Explorer
+- [x] Verify one dashboard-consumed endpoint params match KG truth
+- [x] Document source-of-truth for each verified param (KG / router / hardcoded)
 
 ### [P1] Objective 3 — Agent Introspection Parity
-- [ ] Verify agentic pipeline parameter introspection reflects updated KG shapes
-- [ ] Confirm no stale cached parameter list overrides live KG
-- [ ] Add agent introspection test proving payload construction is correct post-correction
+- [x] Verify agentic pipeline parameter introspection reflects updated KG shapes
+- [x] Confirm no stale cached parameter list overrides live KG
+- [x] Add agent introspection test proving payload construction is correct post-correction
 
 ### [P1] Objective 4 — Auth/RBAC Negative Tests on Security Endpoints
-- [ ] GET /security/rules — negative auth test (unauthenticated → 401/403)
-- [ ] GET /security/actions — negative auth test
-- [ ] GET /security/resources — negative auth test
-- [ ] GET /security/users/me/policies — negative auth test
+- [x] GET /security/rules — negative auth test (unauthenticated → UNAUTHORIZED)
+- [x] GET /security/actions — negative auth test
+- [x] GET /security/resources — negative auth test
+- [x] GET /security/users/me/policies — negative auth test
 
 ### [P1] Objective 5 — Regression Fixture for Phase 1/2 Closed Gaps
-- [ ] Create JSON fixture of known-good endpoint contracts for Phase 1/2 gaps
-- [ ] Wire fixture into CI so future hydration regressions fail the build
-- [ ] Backend metadata test — server response includes new parameters
-- [ ] UI/component test — dashboard/API explorer consumes updated metadata
+- [x] Create JSON fixture of known-good endpoint contracts for Phase 1/2 gaps (27 contracts)
+- [x] Wire fixture into CI so future hydration regressions fail the build (vitest regression suite)
+- [x] Backend metadata test — server response includes new parameters
+- [x] UI/component test — dashboard/API explorer consumes updated metadata
 
 ### [P2] Objective 6 — KG Schema Versioning (Hardening — Deferred)
-- [ ] Document deferral rationale in Gap Closure Matrix
+- [x] Document deferral rationale in Gap Closure Matrix (see docs/gap-closure-matrix.md §7.1)
 
 ### [P2] Objective 7 — Full Error Contract Parity (Hardening — Deferred)
-- [ ] Document deferral rationale in Gap Closure Matrix
+- [x] Document deferral rationale in Gap Closure Matrix (see docs/gap-closure-matrix.md §7.2)
 
 ### [P2] Objective 8 — Syscollector Staleness/TTL UX (Hardening — Deferred)
-- [ ] Document deferral rationale in Gap Closure Matrix
+- [x] Document deferral rationale in Gap Closure Matrix (see docs/gap-closure-matrix.md §7.3)
