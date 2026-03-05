@@ -199,11 +199,61 @@ jobs:
           echo "| SSE auth middleware | ✓ |" >> $GITHUB_STEP_SUMMARY
           echo "| SSRF host validation | ✓ |" >> $GITHUB_STEP_SUMMARY
 
-  # ── Build Verification ───────────────────────────────────────────────────
+  # ── UI → Router Schema Parity Gate ─────────────────────────────────────────
+  ui-parity:
+    name: UI Parity Audit
+    runs-on: ubuntu-latest
+    needs: [typecheck]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run UI parity audit
+        run: pnpm audit:ui-parity --ci
+
+      - name: Verify parity report is committed (no drift)
+        run: |
+          echo "Checking for uncommitted parity report changes..."
+          if ! git diff --exit-code docs/ui-param-parity-report.md docs/ui-param-parity.json; then
+            echo "::error::Parity report is stale. Run 'pnpm audit:ui-parity' locally and commit the updated docs/ui-param-parity-report.md and docs/ui-param-parity.json."
+            exit 1
+          fi
+          echo "✓ Parity report is up-to-date"
+
+      - name: Parity audit summary
+        if: always()
+        run: |
+          echo "## UI → Router Schema Parity" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f docs/ui-param-parity.json ]; then
+            CALLSITES=$(node -e "console.log(require('./docs/ui-param-parity.json').callsiteCount)")
+            PROCS=$(node -e "console.log(require('./docs/ui-param-parity.json').consumedProcedures.length)")
+            TOTAL=$(node -e "console.log(require('./docs/ui-param-parity.json').procedureCount)")
+            VIOLATIONS=$(node -e "console.log(require('./docs/ui-param-parity.json').violations.length)")
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Callsites | $CALLSITES |" >> $GITHUB_STEP_SUMMARY
+            echo "| Procedures consumed | $PROCS / $TOTAL |" >> $GITHUB_STEP_SUMMARY
+            echo "| Violations | $VIOLATIONS |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # ── Build Verification ───────────────────────────────────────────────────────
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [typecheck, test, contract-audit]
+    needs: [typecheck, test, contract-audit, ui-parity]
     env:
       DATABASE_URL: "mysql://test:test@localhost:3306/test"
       JWT_SECRET: "ci-test-secret-not-for-production"

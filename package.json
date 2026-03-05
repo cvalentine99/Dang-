@@ -12,7 +12,8 @@
     "test": "vitest run",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "audit:ui-parity": "node scripts/audit-ui-param-parity.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.999.0",

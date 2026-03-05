@@ -2969,3 +2969,12 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 
 ### P2-D: Remaining Gap Disposition
 - [x] Classify all 49 unconsumed procedures — 45 planned future UI, 3 covered by equivalent route, 1 internal-only (see gap-closure-matrix.md §13)
+
+## CI Parity Gate — Enforcement (Mar 5, 2026)
+
+- [x] Add "audit:ui-parity" script to package.json
+- [x] Create .github/workflows/ci.yml with ui-parity job + drift detection step (needs: [typecheck], build needs: [..., ui-parity])
+- [x] Enhance audit script to exit non-zero on violations, unclassified params, or unresolved dynamic inputs
+- [x] Verify CI gate passes on clean state (exit 0, 0 violations, 0 unclassified, 0 unresolved)
+- [x] Verify CI gate fails on simulated drift (git diff --exit-code catches tampered report)
+- [x] Verify CI gate fails on unknown key injection (1 violation detected, exit 1)

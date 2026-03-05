@@ -676,6 +676,8 @@ function generateReport(callsites, schemas) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+const CI_MODE = process.env.CI === "true" || process.argv.includes("--ci");
+
 const schemas = parseRouterSchemas();
 console.log(`Parsed ${schemas.size} router procedures`);
 
@@ -685,8 +687,6 @@ console.log(`Found ${callsites.length} UI callsites across ${new Set(callsites.m
 resolveDynamicInputs(callsites);
 
 const report = generateReport(callsites, schemas);
-writeFileSync(OUTPUT_FILE, report);
-console.log(`Report written to ${OUTPUT_FILE}`);
 
 // Also output a machine-readable JSON for CI
 const jsonOutput = {
@@ -694,6 +694,7 @@ const jsonOutput = {
   callsiteCount: callsites.length,
   procedureCount: schemas.size,
   consumedProcedures: [...new Set(callsites.map(c => c.procedure))].sort(),
+  violations: [],
   callsites: callsites.map(cs => ({
     file: cs.file,
     line: cs.line,
@@ -713,5 +714,88 @@ const jsonOutput = {
     ])
   ),
 };
+
+// ── CI Enforcement Checks ────────────────────────────────────────────────────
+
+let exitCode = 0;
+const failures = [];
+
+// Check 1: Violations (unknown keys, missing required, schema not found)
+const violationMatch = report.match(/\| Violations \| (\d+) \|/);
+const violationCount = violationMatch ? parseInt(violationMatch[1]) : 0;
+if (violationCount > 0) {
+  failures.push(`FAIL: ${violationCount} violation(s) found (unknown keys, missing required params, or schema mismatches)`);
+  exitCode = 1;
+}
+
+// Check 2: Unclassified parameters (any param that isn't Surfaced / Constant / Not supported)
+// In the report, every param row must contain one of: **Surfaced**, **Constant**, **Not supported**, **MISSING REQUIRED**, **UNKNOWN KEY**
+// The latter two are violations (caught above). If we find a row without any classification, it's unclassified.
+const reportLines = report.split("\n");
+let unclassifiedCount = 0;
+for (const line of reportLines) {
+  // Only check table rows (start with |)
+  if (!line.startsWith("|") || line.startsWith("|-") || line.includes("Parameter")) continue;
+  // Skip summary table rows and unconsumed procedure rows
+  if (line.includes("Metric") || line.includes("Backend-only") || line.includes("Total callsites")) continue;
+  // Check if this is a param classification row (has 5 columns)
+  const cols = line.split("|").filter(c => c.trim());
+  if (cols.length >= 5) {
+    const classification = cols[4].trim();
+    if (!classification.includes("Surfaced") && 
+        !classification.includes("Constant") && 
+        !classification.includes("Not supported") &&
+        !classification.includes("MISSING REQUIRED") &&
+        !classification.includes("UNKNOWN KEY")) {
+      unclassifiedCount++;
+      failures.push(`FAIL: Unclassified parameter in row: ${line.trim()}`);
+    }
+  }
+}
+if (unclassifiedCount > 0) {
+  exitCode = 1;
+}
+
+// Check 3: Dynamic inputs that couldn't be resolved
+// "dynamic" and "dynamic-spread" are resolved from helper functions (e.g., qInput()) — acceptable.
+// "DYNAMIC_UNRESOLVED" means the script couldn't trace the input at all — fail.
+const dynamicUnresolved = callsites.filter(cs => {
+  for (const [key, val] of cs.passedKeys) {
+    if (val === "DYNAMIC_UNRESOLVED") return true;
+  }
+  return false;
+});
+if (dynamicUnresolved.length > 0) {
+  failures.push(`FAIL: ${dynamicUnresolved.length} callsite(s) have truly unresolved dynamic inputs (could not trace input source)`);
+  exitCode = 1;
+}
+
+// Store violations in JSON for downstream consumption
+jsonOutput.violations = failures;
+
+// Write outputs
+writeFileSync(OUTPUT_FILE, report);
+console.log(`Report written to ${OUTPUT_FILE}`);
 writeFileSync(join(ROOT, "docs/ui-param-parity.json"), JSON.stringify(jsonOutput, null, 2));
 console.log("JSON artifact written to docs/ui-param-parity.json");
+
+// ── CI Summary ───────────────────────────────────────────────────────────────
+
+console.log("");
+console.log("═══════════════════════════════════════════════════");
+console.log("  UI → Router Schema Parity Audit");
+console.log("═══════════════════════════════════════════════════");
+console.log(`  Callsites:       ${callsites.length}`);
+console.log(`  Procedures:      ${new Set(callsites.map(c => c.procedure)).size} / ${schemas.size}`);
+console.log(`  Violations:      ${violationCount}`);
+console.log(`  Unclassified:    ${unclassifiedCount}`);
+console.log(`  Unresolved:      ${dynamicUnresolved.length}`);
+console.log(`  Status:          ${exitCode === 0 ? "✓ PASS" : "✗ FAIL"}`);
+console.log("═══════════════════════════════════════════════════");
+
+if (failures.length > 0) {
+  console.log("");
+  for (const f of failures) console.error(f);
+}
+
+process.exit(exitCode);
