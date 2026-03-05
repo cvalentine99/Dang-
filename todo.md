@@ -3084,3 +3084,27 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] 1 failure: OTX API Key Validation network timeout (pre-existing, env-dependent — OTX_API_KEY set but OTX API unreachable)
 - [x] Generated ci-proof-artifact.md from vitest.json via generate-ci-proof.mjs — PHYSICS MATCH
 - [x] UI parity audit: 121 callsites, 71/113 procedures, 0 violations
+
+## Trust Doc Sprint (Mar 5, 2026 — Chase directive)
+### Item 1: OTX test preflight ping
+- [x] Add canReachOtx preflight ping helper (HEAD to otx.alienvault.com, 3s timeout)
+- [x] Wrap network-dependent test with it.skipIf(!canReachOtx)
+- [x] Also added hasOtxKey skipIf for key-dependent tests
+- [x] Suite fully green: 12/12 when OTX reachable, graceful skip when not
+### Item 2: System Status page
+- [x] Wire managerVersionCheck into Status page (WazuhApiIntelligence component)
+- [x] Wire securityConfig into Status page
+- [x] Wire apiInfo into Status page
+- [x] Added to existing /status route (no new route needed — Status page already existed)
+- [x] BrokerWarnings + RawJsonViewer on all 3 panels
+- [x] Loading/error/empty states for each panel
+### Item 3: Sensitive Access Audit date-range filtering
+- [x] Date-range UI already existed (startDate/endDate state + date inputs)
+- [x] Added labeled From/To date inputs with Calendar icons for clarity
+- [x] Backend already supports startDate/endDate with gte/lte conditions
+- [x] clearFilters resets dates, hasActiveFilters includes date checks
+### Proof artifacts
+- [x] Generated vitest.json: 73 files, 604 suites, 2208 tests — ALL PASSING (success: true)
+- [x] Generated ci-proof-artifact.md from vitest.json — PHYSICS MATCH
+- [x] UI parity audit: 124 callsites, 74/113 procedures, 0 violations
+- [x] 39 new trustDocSprint.test.ts tests — all passing

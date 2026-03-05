@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { GlassPanel } from "@/components/shared/GlassPanel";
+import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
+import { BrokerWarnings } from "@/components/shared/BrokerWarnings";
 import { Button } from "@/components/ui/button";
 import {
   Database,
@@ -21,6 +24,9 @@ import {
   Zap,
   Timer,
   TimerOff,
+  Info,
+  ShieldCheck,
+  GitBranch,
   type LucideIcon,
 } from "lucide-react";
 
@@ -516,8 +522,194 @@ export default function Status() {
             </div>
           </GlassPanel>
         )}
+
+      {/* ── Wazuh API Intelligence ─────────────────────────────────────── */}
+      <WazuhApiIntelligence />
     </div>
   );
+}
+
+// ── Wazuh API Intelligence Component ────────────────────────────────────────
+
+function WazuhApiIntelligence() {
+  const apiInfoQ = trpc.wazuh.apiInfo.useQuery(undefined, {
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  const versionCheckQ = trpc.wazuh.managerVersionCheck.useQuery(undefined, {
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  const securityConfigQ = trpc.wazuh.securityConfig.useQuery(undefined, {
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  const isLoading = apiInfoQ.isLoading || versionCheckQ.isLoading || securityConfigQ.isLoading;
+
+  return (
+    <div className="space-y-5">
+      <h2 className="text-lg font-semibold text-foreground font-[Space_Grotesk] flex items-center gap-2">
+        <Info className="w-5 h-5 text-[oklch(0.7_0.15_286)]" />
+        Wazuh API Intelligence
+      </h2>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* API Info — GET / */}
+        <GlassPanel className="p-0 overflow-hidden">
+          <div className="px-5 py-4 border-b border-[oklch(0.3_0.04_286/20%)]">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground font-[Space_Grotesk] flex items-center gap-2">
+                <Info className="w-4 h-4 text-[oklch(0.7_0.15_286)]" />
+                API Info
+              </h3>
+              {apiInfoQ.data ? <RawJsonViewer data={apiInfoQ.data} title="API Info JSON" /> : null}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">GET / — Root endpoint metadata</p>
+          </div>
+          <BrokerWarnings data={apiInfoQ.data} context="apiInfo" />
+          <div className="px-5 py-3">
+            {apiInfoQ.isLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-violet-400" />
+              </div>
+            ) : apiInfoQ.isError ? (
+              <div className="flex items-center gap-2 text-red-400 text-xs">
+                <XCircle className="w-4 h-4" />
+                <span>{apiInfoQ.error.message}</span>
+              </div>
+            ) : apiInfoQ.data ? (
+              <div className="space-y-2">
+                {extractKeyValues(apiInfoQ.data).map(([key, value]) => (
+                  <div key={key} className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground capitalize">{formatKey(key)}</span>
+                    <span className="font-mono text-foreground truncate max-w-[60%] text-right">{String(value)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground italic">No data available</p>
+            )}
+          </div>
+        </GlassPanel>
+
+        {/* Version Check — GET /manager/version/check */}
+        <GlassPanel className="p-0 overflow-hidden">
+          <div className="px-5 py-4 border-b border-[oklch(0.3_0.04_286/20%)]">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground font-[Space_Grotesk] flex items-center gap-2">
+                <GitBranch className="w-4 h-4 text-[oklch(0.7_0.15_286)]" />
+                Version Check
+              </h3>
+              {versionCheckQ.data ? <RawJsonViewer data={versionCheckQ.data} title="Version Check JSON" /> : null}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">GET /manager/version/check — CTI version status</p>
+          </div>
+          <BrokerWarnings data={versionCheckQ.data} context="managerVersionCheck" />
+          <div className="px-5 py-3">
+            {versionCheckQ.isLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-violet-400" />
+              </div>
+            ) : versionCheckQ.isError ? (
+              <div className="flex items-center gap-2 text-red-400 text-xs">
+                <XCircle className="w-4 h-4" />
+                <span>{versionCheckQ.error.message}</span>
+              </div>
+            ) : versionCheckQ.data ? (
+              <div className="space-y-2">
+                {extractKeyValues(versionCheckQ.data).map(([key, value]) => (
+                  <div key={key} className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground capitalize">{formatKey(key)}</span>
+                    <span className="font-mono text-foreground truncate max-w-[60%] text-right">{String(value)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground italic">No data available</p>
+            )}
+          </div>
+        </GlassPanel>
+
+        {/* Security Config — GET /security/config */}
+        <GlassPanel className="p-0 overflow-hidden">
+          <div className="px-5 py-4 border-b border-[oklch(0.3_0.04_286/20%)]">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground font-[Space_Grotesk] flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-[oklch(0.7_0.15_286)]" />
+                Security Config
+              </h3>
+              {securityConfigQ.data ? <RawJsonViewer data={securityConfigQ.data} title="Security Config JSON" /> : null}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">GET /security/config — Auth & RBAC settings</p>
+          </div>
+          <BrokerWarnings data={securityConfigQ.data} context="securityConfig" />
+          <div className="px-5 py-3">
+            {securityConfigQ.isLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-violet-400" />
+              </div>
+            ) : securityConfigQ.isError ? (
+              <div className="flex items-center gap-2 text-red-400 text-xs">
+                <XCircle className="w-4 h-4" />
+                <span>{securityConfigQ.error.message}</span>
+              </div>
+            ) : securityConfigQ.data ? (
+              <div className="space-y-2">
+                {extractKeyValues(securityConfigQ.data).map(([key, value]) => (
+                  <div key={key} className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground capitalize">{formatKey(key)}</span>
+                    <span className="font-mono text-foreground truncate max-w-[60%] text-right">{String(value)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground italic">No data available</p>
+            )}
+          </div>
+        </GlassPanel>
+      </div>
+    </div>
+  );
+}
+
+/** Extract flat key-value pairs from a Wazuh response, skipping nested objects and _brokerWarnings */
+function extractKeyValues(data: unknown): [string, string | number | boolean][] {
+  if (!data || typeof data !== "object") return [];
+  const obj = data as Record<string, unknown>;
+  // If there's a nested data.data or data.data.affected_items, unwrap
+  const inner = (obj.data && typeof obj.data === "object")
+    ? (obj.data as Record<string, unknown>)
+    : obj;
+  const result: [string, string | number | boolean][] = [];
+  for (const [key, value] of Object.entries(inner)) {
+    if (key === "_brokerWarnings" || key === "error") continue;
+    if (value === null || value === undefined) continue;
+    if (typeof value === "object" && !Array.isArray(value)) {
+      // Flatten one level of nested objects
+      for (const [subKey, subValue] of Object.entries(value as Record<string, unknown>)) {
+        if (subValue !== null && subValue !== undefined && typeof subValue !== "object") {
+          result.push([`${key}.${subKey}`, subValue as string | number | boolean]);
+        }
+      }
+    } else if (Array.isArray(value)) {
+      result.push([key, `[${value.length} items]`]);
+    } else {
+      result.push([key, value as string | number | boolean]);
+    }
+  }
+  return result.slice(0, 20); // Cap at 20 rows
+}
+
+/** Format a camelCase or dot-separated key into a human-readable label */
+function formatKey(key: string): string {
+  return key
+    .replace(/\./g, " \u203A ")
+    .replace(/([A-Z])/g, " $1")
+    .replace(/_/g, " ")
+    .trim();
 }
 
 // ── Helper Components ────────────────────────────────────────────────────────

@@ -2,8 +2,8 @@
 
 **Generated:** 2026-03-05  
 **Script:** `scripts/audit-ui-param-parity.mjs`  
-**Callsites audited:** 121  
-**Unique procedures consumed:** 71 of 113 total  
+**Callsites audited:** 124  
+**Unique procedures consumed:** 74 of 113 total  
 
 ---
 
@@ -12,12 +12,12 @@
 
 | Metric | Count |
 |--------|-------|
-| Total callsites | 121 |
-| Unique procedures consumed | 71 |
+| Total callsites | 124 |
+| Unique procedures consumed | 74 |
 | Router procedures available | 113 |
 | Parameters surfaced in UI | 75 |
 | Parameters hardcoded/constant | 88 |
-| Parameters not supported (classified) | 550 |
+| Parameters not supported (classified) | 551 |
 | Violations | 0 |
 
 **No violations found.** All UI callsites pass only schema-valid keys, all required params are present, and every optional param is classified.
@@ -32,7 +32,6 @@
 | `agentsSummary` | agents_list | Backend-only / Not yet wired to UI |
 | `agentsUninstallPermission` | (void) | Backend-only / Not yet wired to UI |
 | `agentsUpgradeResult` | agents_list, q, os_platform, os_version, os_name, manager, version, group, node_name, name, ip, registerIP | Backend-only / Not yet wired to UI |
-| `apiInfo` | (void) | Backend-only / Not yet wired to UI |
 | `ciscatResults` | limit, offset, agentId, sort, search, select, q, distinct, benchmark, profile, pass, fail, error, notchecked, unknown, score | Backend-only / Not yet wired to UI |
 | `clusterHealthcheck` | (void) | Backend-only / Not yet wired to UI |
 | `clusterLocalConfig` | (void) | Backend-only / Not yet wired to UI |
@@ -52,7 +51,6 @@
 | `listsFiles` | limit, offset | Backend-only / Not yet wired to UI |
 | `managerComponentConfig` | component, configuration | Backend-only / Not yet wired to UI |
 | `managerStats` | (void) | Backend-only / Not yet wired to UI |
-| `managerVersionCheck` | force_query | Backend-only / Not yet wired to UI |
 | `mitreMetadata` | (void) | Backend-only / Not yet wired to UI |
 | `mitreMitigations` | limit, offset | Backend-only / Not yet wired to UI |
 | `mitreReferences` | limit, offset | Backend-only / Not yet wired to UI |
@@ -62,7 +60,6 @@
 | `rootcheckResults` | limit, offset, agentId, sort, search, select, q, distinct, status, pci_dss, cis | Backend-only / Not yet wired to UI |
 | `rulesByRequirement` | requirement | Backend-only / Not yet wired to UI |
 | `rulesFiles` | limit, offset | Backend-only / Not yet wired to UI |
-| `securityConfig` | (void) | Backend-only / Not yet wired to UI |
 | `securityCurrentUser` | (void) | Backend-only / Not yet wired to UI |
 | `securityPolicies` | (void) | Backend-only / Not yet wired to UI |
 | `securityRoles` | (void) | Backend-only / Not yet wired to UI |
@@ -1328,6 +1325,22 @@ Input: void (no parameters) — **OK**
 | `status` | Optional | No | — | **Not supported** — optional, not exposed in this view |
 | `version` | Optional | No | — | **Not supported** — optional, not exposed in this view |
 
+## client/src/pages/Status.tsx
+
+### Line 535: `wazuh.apiInfo`
+
+Input: void (no parameters) — **OK**
+
+### Line 540: `wazuh.managerVersionCheck`
+
+| Parameter | Router | Required | UI Status | Classification |
+|-----------|--------|----------|-----------|----------------|
+| `force_query` | Optional | No | — | **Not supported** — optional, not exposed in this view |
+
+### Line 545: `wazuh.securityConfig`
+
+Input: void (no parameters) — **OK**
+
 ## client/src/pages/ThreatHunting.tsx
 
 ### Line 248: `wazuh.agentSummaryStatus`
@@ -1387,9 +1400,6 @@ Input: void (no parameters) — **OK**
 | `sort` | Optional | No | — | **Not supported** — optional, not exposed in this view |
 | `status` | Optional | No | Passed | **Constant** (hardcoded: `"active"`) |
 | `version` | Optional | No | — | **Not supported** — optional, not exposed in this view |
-
-
-
 
 
 

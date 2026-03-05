@@ -10,29 +10,28 @@
 | Field | Value |
 |-------|-------|
 | JSON artifact | `test-output/vitest.json` |
-| Generated at | 2026-03-05T13:58:03.979Z |
-| Test run started | 2026-03-05T13:56:32.467Z |
-| Overall success | false |
+| Generated at | 2026-03-05T15:48:45.936Z |
+| Test run started | 2026-03-05T15:48:02.884Z |
+| Overall success | true |
 
 ## Summary
 
 | Metric | Count |
 |--------|-------|
-| Test files | 72 |
-| Passed files | 71 |
-| Failed files | 1 |
-| Describe blocks (vitest suites) | 597 |
-| Passed suites | 595 |
-| Failed suites | 2 |
-| Total tests | 2168 |
-| Passed tests | 2167 |
-| Failed tests | 1 |
+| Test files | 73 |
+| Passed files | 73 |
+| Failed files | 0 |
+| Describe blocks (vitest suites) | 604 |
+| Passed suites | 604 |
+| Failed suites | 0 |
+| Total tests | 2208 |
+| Passed tests | 2208 |
+| Failed tests | 0 |
 
 ## Per-File Breakdown
 
 | Status | File | Total | Passed | Failed |
 |--------|------|-------|--------|--------|
-| FAIL | `server/securityHardening.test.ts` | 19 | 18 | 1 |
 | PASS | `server/admin/adminUsers.test.ts` | 16 | 16 | 0 |
 | PASS | `server/admin/connectionSettings.test.ts` | 15 | 15 | 0 |
 | PASS | `server/admin/hostValidation.test.ts` | 19 | 19 | 0 |
@@ -81,15 +80,17 @@
 | PASS | `server/llm/llmService.test.ts` | 13 | 13 | 0 |
 | PASS | `server/localAuth/localAuth.test.ts` | 11 | 11 | 0 |
 | PASS | `server/notes/notesRouter.test.ts` | 21 | 21 | 0 |
-| PASS | `server/otx/otxRouter.test.ts` | 11 | 11 | 0 |
+| PASS | `server/otx/otxRouter.test.ts` | 12 | 12 | 0 |
 | PASS | `server/partialRunContinuation.test.ts` | 26 | 26 | 0 |
 | PASS | `server/pipelineHandoff.test.ts` | 110 | 110 | 0 |
 | PASS | `server/responseActions.test.ts` | 44 | 44 | 0 |
 | PASS | `server/savedSearches/savedSearchesRouter.test.ts` | 15 | 15 | 0 |
+| PASS | `server/securityHardening.test.ts` | 19 | 19 | 0 |
 | PASS | `server/soundEngine.test.ts` | 11 | 11 | 0 |
 | PASS | `server/splunk/splunkConfig.test.ts` | 5 | 5 | 0 |
 | PASS | `server/splunk/splunkRouter.test.ts` | 124 | 124 | 0 |
 | PASS | `server/sse/alertStreamService.test.ts` | 10 | 10 | 0 |
+| PASS | `server/trustDocSprint.test.ts` | 39 | 39 | 0 |
 | PASS | `server/wazuh/brokerWarnings.test.ts` | 11 | 11 | 0 |
 | PASS | `server/wazuh/configStatsTab.test.ts` | 97 | 97 | 0 |
 | PASS | `server/wazuh/paramBroker.test.ts` | 289 | 289 | 0 |
@@ -104,20 +105,6 @@
 | PASS | `server/wazuh/wazuhRouter.test.ts` | 47 | 47 | 0 |
 | PASS | `server/wazuh/wazuhSpecCoverage.test.ts` | 11 | 11 | 0 |
 | PASS | `server/workflowTruth.test.ts` | 23 | 23 | 0 |
-
-## Failed Test Details
-
-### `server/securityHardening.test.ts`
-
-**Test:** OTX Router — All endpoints require authentication otx.status succeeds for authenticated callers
-
-```
-Error: Test timed out in 15000ms.
-If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
-    at Timeout.<anonymous> (file:///home/ubuntu/dang/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:44:18)
-    at listOnTimeout (node:internal/timers:594:17)
-    at processTimers (node:internal/timers:529:7)
-```
 
 ## Reproduction Commands
 

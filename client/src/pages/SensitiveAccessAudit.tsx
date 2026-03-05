@@ -186,21 +186,29 @@ export default function SensitiveAccessAudit() {
             className="bg-background/40 border-white/10"
           />
 
-          <Input
-            type="date"
-            value={startDate}
-            onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-            className="bg-background/40 border-white/10"
-            placeholder="Start date"
-          />
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+              <Calendar className="w-3 h-3" /> From
+            </label>
+            <Input
+              type="date"
+              value={startDate}
+              onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+              className="bg-background/40 border-white/10"
+            />
+          </div>
 
-          <Input
-            type="date"
-            value={endDate}
-            onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
-            className="bg-background/40 border-white/10"
-            placeholder="End date"
-          />
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+              <Calendar className="w-3 h-3" /> To
+            </label>
+            <Input
+              type="date"
+              value={endDate}
+              onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+              className="bg-background/40 border-white/10"
+            />
+          </div>
         </div>
       </GlassPanel>
 
