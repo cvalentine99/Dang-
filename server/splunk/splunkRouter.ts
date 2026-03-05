@@ -1,16 +1,30 @@
 /**
- * Splunk Router — tRPC procedures for Splunk ES Mission Control integration.
+ * Splunk Router — tRPC procedures for Splunk ES ticket creation.
  *
  * Provides:
  * - testConnection: Test Splunk HEC connectivity
- * - createTicket: Push a Walter triage report as a notable event to Splunk ES
- * - getConfig: Get current Splunk configuration (masked token)
+ * - createTicket: Manually create a single Splunk ES notable event from a completed triage
+ * - batchCreateTickets: Manually batch-create Splunk tickets for all eligible completed triages
+ * - getBatchProgress: Poll batch operation progress
+ * - getConfig: Get current Splunk configuration (token masked)
+ * - listTicketArtifacts: Query the audit trail of all ticket creation attempts (success + failure)
+ * - getTicketArtifact: Get a single ticket artifact by ID
  *
- * Feature-gated: createTicket requires admin role (SECURITY_ADMIN equivalent).
+ * This is manual ticket creation from completed triage reports.
+ * Every ticket is explicitly triggered by an analyst — no background automation.
+ * Both success and failure are recorded in the ticket_artifacts table as forensic audit trail.
+ *
+ * Workflow lineage (ticket_artifacts):
+ *   ticket → triageId → triage_objects (primary linkage to the triage that produced the ticket data)
+ *   ticket → pipelineRunId → pipeline_runs (linkage to the run that executed the triage)
+ *   ticket → queueItemId → alert_queue (linkage to the original queue item)
+ *   ticket → alertId (direct Wazuh alert cross-reference)
+ *
+ * Feature-gated: createTicket/batchCreateTickets require admin role.
  */
 
 import { z } from "zod";
-import { router, protectedProcedure } from "../_core/trpc";
+import { router, protectedProcedure, adminProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import {
   testSplunkConnection,
@@ -19,7 +33,7 @@ import {
   isSplunkEnabled,
 } from "./splunkService";
 import { getDb } from "../db";
-import { alertQueue } from "../../drizzle/schema";
+import { alertQueue, ticketArtifacts, pipelineRuns } from "../../drizzle/schema";
 import { eq, and, inArray, isNull, sql } from "drizzle-orm";
 
 /**
@@ -118,10 +132,12 @@ export const splunkRouter = router({
   }),
 
   /**
-   * Create a Splunk ES ticket from a Walter triage report.
-   * Requires admin role (SECURITY_ADMIN equivalent).
+   * Create a Splunk ES ticket from a completed triage report.
+   * Manual trigger only — analyst clicks "Create Ticket" in the UI.
+   * Records a ticket_artifact row for both success and failure (audit trail).
+   * Requires admin role (ticket creation is a privileged action).
    */
-  createTicket: protectedProcedure
+  createTicket: adminProcedure
     .input(
       z.object({
         /** Alert queue item ID */
@@ -129,13 +145,6 @@ export const splunkRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      // Feature gate: require admin role
-      if (ctx.user?.role !== "admin") {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Creating Splunk tickets requires SECURITY_ADMIN role",
-        });
-      }
 
       // Check if Splunk is enabled
       const enabled = await isSplunkEnabled();
@@ -205,7 +214,36 @@ export const splunkRouter = router({
         createdBy: ctx.user?.name ?? ctx.user?.email ?? "unknown",
       });
 
-      // If successful, update the queue item with ticket info
+      // Look up the associated pipeline run + triageId for first-class artifact linkage
+      // Workflow lineage: ticket → triage → alert (via triageId)
+      //                   ticket → pipelineRun (via pipelineRunId)
+      //                   ticket → queueItem (via queueItemId)
+      const [associatedRun] = await db
+        .select({ id: pipelineRuns.id, triageId: pipelineRuns.triageId })
+        .from(pipelineRuns)
+        .where(eq(pipelineRuns.queueItemId, input.queueItemId))
+        .orderBy(sql`${pipelineRuns.startedAt} DESC`)
+        .limit(1);
+
+      // Record the ticket artifact — both success and failure get recorded
+      // This is the first-class audit trail for ticket creation
+      await db.insert(ticketArtifacts).values({
+        ticketId: result.ticketId ?? `failed-${Date.now()}`,
+        system: "splunk_es",
+        queueItemId: input.queueItemId,
+        pipelineRunId: associatedRun?.id ?? null,
+        triageId: associatedRun?.triageId ?? item.pipelineTriageId ?? null,
+        alertId: item.alertId,
+        ruleId: item.ruleId,
+        ruleLevel: item.ruleLevel,
+        createdBy: ctx.user?.name ?? ctx.user?.email ?? "unknown",
+        success: result.success === true && !!result.ticketId,
+        statusMessage: result.message,
+        rawResponse: { ticketId: result.ticketId, message: result.message },
+        httpStatusCode: null,
+      });
+
+      // If successful, also update the queue item with ticket info (legacy linkage)
       if (result.success && result.ticketId) {
         const existingTriage = (item.triageResult as Record<string, unknown>) ?? {};
         const updatedTriage = {
@@ -220,7 +258,23 @@ export const splunkRouter = router({
           .where(eq(alertQueue.id, input.queueItemId));
       }
 
-      return result;
+      // Explicit success/failure return — never ambiguous
+      // The UI must be able to distinguish these without guessing
+      if (result.success && result.ticketId) {
+        return {
+          success: true as const,
+          ticketId: result.ticketId,
+          message: result.message,
+        };
+      }
+
+      // HEC returned a non-throwing failure (e.g., 403, timeout, disabled)
+      // Return success:false explicitly so the UI shows an error state
+      return {
+        success: false as const,
+        ticketId: null,
+        message: result.message || "Splunk HEC did not confirm ticket creation",
+      };
     }),
 
   /**
@@ -272,15 +326,8 @@ export const splunkRouter = router({
    * that don't already have a ticket. Requires admin role.
    * Updates in-memory progress tracker for real-time polling.
    */
-  batchCreateTickets: protectedProcedure
+  batchCreateTickets: adminProcedure
     .mutation(async ({ ctx }) => {
-      // Feature gate: require admin role
-      if (ctx.user?.role !== "admin") {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Creating Splunk tickets requires SECURITY_ADMIN role",
-        });
-      }
 
       // Prevent concurrent batches
       if (currentBatch.status === "running") {
@@ -385,6 +432,31 @@ export const splunkRouter = router({
             createdBy: ctx.user?.name ?? ctx.user?.email ?? "unknown",
           });
 
+          // Look up associated pipeline run + triageId for first-class artifact linkage
+          const [associatedRun] = await db
+            .select({ id: pipelineRuns.id, triageId: pipelineRuns.triageId })
+            .from(pipelineRuns)
+            .where(eq(pipelineRuns.queueItemId, item.id))
+            .orderBy(sql`${pipelineRuns.startedAt} DESC`)
+            .limit(1);
+
+          // Record ticket artifact — both success and failure, with full workflow lineage
+          await db.insert(ticketArtifacts).values({
+            ticketId: result.ticketId ?? `failed-${Date.now()}`,
+            system: "splunk_es",
+            queueItemId: item.id,
+            pipelineRunId: associatedRun?.id ?? null,
+            triageId: associatedRun?.triageId ?? item.pipelineTriageId ?? null,
+            alertId: item.alertId,
+            ruleId: item.ruleId,
+            ruleLevel: item.ruleLevel,
+            createdBy: ctx.user?.name ?? ctx.user?.email ?? "unknown",
+            success: result.success === true && !!result.ticketId,
+            statusMessage: result.message,
+            rawResponse: { ticketId: result.ticketId, message: result.message },
+            httpStatusCode: null,
+          });
+
           if (result.success && result.ticketId) {
             const updatedTriage = {
               ...triage,
@@ -406,6 +478,25 @@ export const splunkRouter = router({
             currentBatch.failed = failed;
           }
         } catch (err) {
+          // Record failed ticket artifact for exception-path failures too
+          try {
+            await db.insert(ticketArtifacts).values({
+              ticketId: `exception-${Date.now()}`,
+              system: "splunk_es",
+              queueItemId: item.id,
+              pipelineRunId: null,
+              triageId: item.pipelineTriageId ?? null,
+              alertId: item.alertId,
+              ruleId: item.ruleId,
+              ruleLevel: item.ruleLevel,
+              createdBy: ctx.user?.name ?? ctx.user?.email ?? "unknown",
+              success: false,
+              statusMessage: err instanceof Error ? err.message : "Unknown error",
+              rawResponse: null,
+              httpStatusCode: null,
+            });
+          } catch { /* don't let artifact recording break the batch loop */ }
+
           failed++;
           results.push({
             id: item.id,
@@ -437,5 +528,162 @@ export const splunkRouter = router({
         message: `Batch complete: ${sent} tickets created, ${skipped} skipped (already ticketed), ${failed} failed`,
         results,
       };
+    }),
+
+  /**
+   * List ticket artifacts — the audit trail for all ticket creation attempts.
+   * Returns both successful and failed ticket creation records with workflow lineage.
+   * Ordered by most recent first.
+   */
+  listTicketArtifacts: protectedProcedure
+    .input(
+      z.object({
+        /** Filter by queue item ID */
+        queueItemId: z.number().int().optional(),
+        /** Filter by system */
+        system: z.enum(["splunk_es", "jira", "servicenow", "custom"]).optional(),
+        /** Filter by success/failure */
+        success: z.boolean().optional(),
+        /** Pagination */
+        limit: z.number().int().min(1).max(200).default(50),
+        offset: z.number().int().min(0).default(0),
+      })
+    )
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+      }
+
+      const conditions = [];
+      if (input.queueItemId !== undefined) {
+        conditions.push(eq(ticketArtifacts.queueItemId, input.queueItemId));
+      }
+      if (input.system !== undefined) {
+        conditions.push(eq(ticketArtifacts.system, input.system));
+      }
+      if (input.success !== undefined) {
+        conditions.push(eq(ticketArtifacts.success, input.success));
+      }
+
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+      const rows = await db
+        .select()
+        .from(ticketArtifacts)
+        .where(whereClause)
+        .orderBy(sql`${ticketArtifacts.createdAt} DESC`)
+        .limit(input.limit)
+        .offset(input.offset);
+
+      return { artifacts: rows, count: rows.length };
+    }),
+
+  /**
+   * Batch-query ticket artifact counts for a list of pipeline run IDs.
+   * Returns a map of { pipelineRunId: { total, success, failed } }.
+   * Used by Pipeline Inspector to show Tickets badges without N+1 queries.
+   */
+  ticketArtifactCounts: protectedProcedure
+    .input(
+      z.object({
+        pipelineRunIds: z.array(z.number().int()).min(1).max(200),
+      })
+    )
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+      }
+
+      const rows = await db
+        .select({
+          pipelineRunId: ticketArtifacts.pipelineRunId,
+          total: sql<number>`COUNT(*)`,
+          success: sql<number>`SUM(CASE WHEN ${ticketArtifacts.success} = true THEN 1 ELSE 0 END)`,
+          failed: sql<number>`SUM(CASE WHEN ${ticketArtifacts.success} = false THEN 1 ELSE 0 END)`,
+        })
+        .from(ticketArtifacts)
+        .where(inArray(ticketArtifacts.pipelineRunId, input.pipelineRunIds))
+        .groupBy(ticketArtifacts.pipelineRunId);
+
+      const counts: Record<number, { total: number; success: number; failed: number }> = {};
+      for (const row of rows) {
+        if (row.pipelineRunId != null) {
+          counts[row.pipelineRunId] = {
+            total: Number(row.total),
+            success: Number(row.success),
+            failed: Number(row.failed),
+          };
+        }
+      }
+
+      return { counts };
+    }),
+
+  /**
+   * Batch-query ticket artifact counts for a list of queue item IDs.
+   * Returns a map of { queueItemId: { total, success, failed } }.
+   * Used by Alert Queue to show "Ticketed" badges without N+1 queries.
+   */
+  ticketArtifactCountsByQueueItem: protectedProcedure
+    .input(
+      z.object({
+        queueItemIds: z.array(z.number().int()).min(1).max(200),
+      })
+    )
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+      }
+
+      const rows = await db
+        .select({
+          queueItemId: ticketArtifacts.queueItemId,
+          total: sql<number>`COUNT(*)`,
+          success: sql<number>`SUM(CASE WHEN ${ticketArtifacts.success} = true THEN 1 ELSE 0 END)`,
+          failed: sql<number>`SUM(CASE WHEN ${ticketArtifacts.success} = false THEN 1 ELSE 0 END)`,
+        })
+        .from(ticketArtifacts)
+        .where(inArray(ticketArtifacts.queueItemId, input.queueItemIds))
+        .groupBy(ticketArtifacts.queueItemId);
+
+      const counts: Record<number, { total: number; success: number; failed: number }> = {};
+      for (const row of rows) {
+        if (row.queueItemId != null) {
+          counts[row.queueItemId] = {
+            total: Number(row.total),
+            success: Number(row.success),
+            failed: Number(row.failed),
+          };
+        }
+      }
+
+      return { counts };
+    }),
+
+  /**
+   * Get a single ticket artifact by ID — full detail view for audit inspection.
+   */
+  getTicketArtifact: protectedProcedure
+    .input(z.object({ id: z.number().int() }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+      }
+
+      const [artifact] = await db
+        .select()
+        .from(ticketArtifacts)
+        .where(eq(ticketArtifacts.id, input.id))
+        .limit(1);
+
+      if (!artifact) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Ticket artifact not found" });
+      }
+
+      return artifact;
     }),
 });

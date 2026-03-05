@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS `baseline_schedules` (
   `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT `baseline_schedules_id` PRIMARY KEY(`id`)
 );
-
+--> statement-breakpoint
 -- ── Drift Snapshots ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `drift_snapshots` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -49,7 +49,7 @@ CREATE INDEX IF NOT EXISTS `ds_scheduleId_idx` ON `drift_snapshots` (`scheduleId
 CREATE INDEX IF NOT EXISTS `ds_userId_idx` ON `drift_snapshots` (`userId`);
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `ds_createdAt_idx` ON `drift_snapshots` (`createdAt`);
-
+--> statement-breakpoint
 -- ── Drift Anomalies ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `drift_anomalies` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -83,7 +83,7 @@ CREATE INDEX IF NOT EXISTS `anomalies_severity_idx` ON `drift_anomalies` (`sever
 CREATE INDEX IF NOT EXISTS `anomalies_acknowledged_idx` ON `drift_anomalies` (`acknowledged`);
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `anomalies_createdAt_idx` ON `drift_anomalies` (`createdAt`);
-
+--> statement-breakpoint
 -- ── Drift Notification History ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `drift_notification_history` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -119,7 +119,7 @@ CREATE INDEX IF NOT EXISTS `notif_history_type_idx` ON `drift_notification_histo
 CREATE INDEX IF NOT EXISTS `notif_history_createdAt_idx` ON `drift_notification_history` (`createdAt`);
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `notif_history_nextRetry_idx` ON `drift_notification_history` (`nextRetryAt`);
-
+--> statement-breakpoint
 -- ── Anomaly Suppression Rules ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `anomaly_suppression_rules` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -143,7 +143,7 @@ CREATE INDEX IF NOT EXISTS `suppression_scheduleId_idx` ON `anomaly_suppression_
 CREATE INDEX IF NOT EXISTS `suppression_active_idx` ON `anomaly_suppression_rules` (`active`);
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `suppression_expiresAt_idx` ON `anomaly_suppression_rules` (`expiresAt`);
-
+--> statement-breakpoint
 -- ── Knowledge Graph Tables ──────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `kg_endpoints` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -174,7 +174,7 @@ CREATE INDEX IF NOT EXISTS `kge_resource_idx` ON `kg_endpoints` (`resource`);
 CREATE INDEX IF NOT EXISTS `kge_risk_level_idx` ON `kg_endpoints` (`risk_level`);
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `kge_path_idx` ON `kg_endpoints` (`path`);
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `kg_parameters` (
   `id` int AUTO_INCREMENT NOT NULL,
   `endpoint_id` int NOT NULL,
@@ -190,7 +190,7 @@ CREATE TABLE IF NOT EXISTS `kg_parameters` (
 CREATE INDEX IF NOT EXISTS `kgp_endpoint_id_idx` ON `kg_parameters` (`endpoint_id`);
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `kgp_name_idx` ON `kg_parameters` (`name`);
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `kg_responses` (
   `id` int AUTO_INCREMENT NOT NULL,
   `endpoint_id` int NOT NULL,
@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS `kg_responses` (
 );
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `kgr_endpoint_id_idx` ON `kg_responses` (`endpoint_id`);
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `kg_auth_methods` (
   `id` int AUTO_INCREMENT NOT NULL,
   `auth_id` varchar(64) NOT NULL,
@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS `kg_auth_methods` (
   `created_at` timestamp NOT NULL DEFAULT (now()),
   CONSTRAINT `kg_auth_methods_id` PRIMARY KEY(`id`)
 );
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `kg_resources` (
   `id` int AUTO_INCREMENT NOT NULL,
   `name` varchar(64) NOT NULL,
@@ -220,7 +220,7 @@ CREATE TABLE IF NOT EXISTS `kg_resources` (
   CONSTRAINT `kg_resources_id` PRIMARY KEY(`id`),
   CONSTRAINT `kg_resources_name_unique` UNIQUE(`name`)
 );
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `kg_use_cases` (
   `id` int AUTO_INCREMENT NOT NULL,
   `intent` varchar(128) NOT NULL,
@@ -232,7 +232,7 @@ CREATE TABLE IF NOT EXISTS `kg_use_cases` (
   `updated_at` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT `kg_use_cases_id` PRIMARY KEY(`id`)
 );
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `kg_indices` (
   `id` int AUTO_INCREMENT NOT NULL,
   `pattern` varchar(256) NOT NULL,
@@ -240,7 +240,7 @@ CREATE TABLE IF NOT EXISTS `kg_indices` (
   `created_at` timestamp NOT NULL DEFAULT (now()),
   CONSTRAINT `kg_indices_id` PRIMARY KEY(`id`)
 );
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `kg_fields` (
   `id` int AUTO_INCREMENT NOT NULL,
   `index_id` int NOT NULL,
@@ -254,7 +254,7 @@ CREATE TABLE IF NOT EXISTS `kg_fields` (
 CREATE INDEX IF NOT EXISTS `kgf_index_id_idx` ON `kg_fields` (`index_id`);
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `kgf_field_name_idx` ON `kg_fields` (`field_name`);
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `kg_error_patterns` (
   `id` int AUTO_INCREMENT NOT NULL,
   `http_status` int NOT NULL,
@@ -264,7 +264,7 @@ CREATE TABLE IF NOT EXISTS `kg_error_patterns` (
   `created_at` timestamp NOT NULL DEFAULT (now()),
   CONSTRAINT `kg_error_patterns_id` PRIMARY KEY(`id`)
 );
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `kg_trust_history` (
   `id` int AUTO_INCREMENT NOT NULL,
   `endpoint_id` int NOT NULL,
@@ -276,7 +276,7 @@ CREATE TABLE IF NOT EXISTS `kg_trust_history` (
 );
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `kgth_endpoint_id_idx` ON `kg_trust_history` (`endpoint_id`);
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `kg_answer_provenance` (
   `id` int AUTO_INCREMENT NOT NULL,
   `session_id` varchar(64) NOT NULL,
@@ -292,7 +292,7 @@ CREATE TABLE IF NOT EXISTS `kg_answer_provenance` (
 );
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `kgap_session_id_idx` ON `kg_answer_provenance` (`session_id`);
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `kg_sync_status` (
   `id` int AUTO_INCREMENT NOT NULL,
   `layer` varchar(64) NOT NULL,
@@ -306,7 +306,7 @@ CREATE TABLE IF NOT EXISTS `kg_sync_status` (
   CONSTRAINT `kg_sync_status_id` PRIMARY KEY(`id`),
   CONSTRAINT `kg_sync_status_layer_unique` UNIQUE(`layer`)
 );
-
+--> statement-breakpoint
 -- ── LLM Usage Tracking ──────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `llm_usage` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -328,7 +328,7 @@ CREATE INDEX IF NOT EXISTS `lu_source_idx` ON `llm_usage` (`source`);
 CREATE INDEX IF NOT EXISTS `lu_model_idx` ON `llm_usage` (`model`);
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `lu_created_idx` ON `llm_usage` (`createdAt`);
-
+--> statement-breakpoint
 -- ── Alert Queue ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `alert_queue` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -356,7 +356,7 @@ CREATE INDEX IF NOT EXISTS `aq_status_idx` ON `alert_queue` (`status`);
 CREATE INDEX IF NOT EXISTS `aq_alertId_idx` ON `alert_queue` (`alertId`);
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `aq_queuedAt_idx` ON `alert_queue` (`queuedAt`);
-
+--> statement-breakpoint
 -- ── Auto-Queue Rules ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `auto_queue_rules` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -376,7 +376,7 @@ CREATE TABLE IF NOT EXISTS `auto_queue_rules` (
 );
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `aqr_enabled_idx` ON `auto_queue_rules` (`enabled`);
-
+--> statement-breakpoint
 -- ── Saved Hunts ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `saved_hunts` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -409,7 +409,7 @@ CREATE INDEX IF NOT EXISTS `sh_iocType_idx` ON `saved_hunts` (`iocType`);
 CREATE INDEX IF NOT EXISTS `sh_severity_idx` ON `saved_hunts` (`severity`);
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `sh_createdAt_idx` ON `saved_hunts` (`createdAt`);
-
+--> statement-breakpoint
 -- ── Triage Objects ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `triage_objects` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -469,7 +469,7 @@ CREATE INDEX IF NOT EXISTS `to_createdAt_idx` ON `triage_objects` (`createdAt`);
 CREATE INDEX IF NOT EXISTS `to_alertFamily_idx` ON `triage_objects` (`alertFamily`);
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `to_linkedCaseId_idx` ON `triage_objects` (`linkedCaseId`);
-
+--> statement-breakpoint
 -- ── Correlation Bundles ─────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `correlation_bundles` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -504,7 +504,7 @@ CREATE INDEX IF NOT EXISTS `cb_caseAction_idx` ON `correlation_bundles` (`caseAc
 CREATE INDEX IF NOT EXISTS `cb_likelyCampaign_idx` ON `correlation_bundles` (`likelyCampaign`);
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `cb_createdAt_idx` ON `correlation_bundles` (`createdAt`);
-
+--> statement-breakpoint
 -- ── Living Case State ───────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `living_case_state` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -532,7 +532,7 @@ CREATE INDEX IF NOT EXISTS `lcs_sessionId_idx` ON `living_case_state` (`sessionI
 CREATE INDEX IF NOT EXISTS `lcs_theoryConfidence_idx` ON `living_case_state` (`theoryConfidence`);
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `lcs_updatedAt_idx` ON `living_case_state` (`updatedAt`);
-
+--> statement-breakpoint
 -- ── Response Actions ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `response_actions` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -584,7 +584,7 @@ CREATE INDEX IF NOT EXISTS `ra_triageId_idx` ON `response_actions` (`triageId`);
 CREATE INDEX IF NOT EXISTS `ra_proposedAt_idx` ON `response_actions` (`proposedAt`);
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `ra_requiresApproval_state_idx` ON `response_actions` (`requiresApproval`, `state`);
-
+--> statement-breakpoint
 -- ── Response Action Audit ───────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `response_action_audit` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -606,7 +606,7 @@ CREATE INDEX IF NOT EXISTS `raa_actionIdStr_idx` ON `response_action_audit` (`ac
 CREATE INDEX IF NOT EXISTS `raa_performedAt_idx` ON `response_action_audit` (`performedAt`);
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `raa_toState_idx` ON `response_action_audit` (`toState`);
-
+--> statement-breakpoint
 -- ── Pipeline Runs ───────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `pipeline_runs` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -643,15 +643,22 @@ CREATE INDEX IF NOT EXISTS `pr_queueItemId_idx` ON `pipeline_runs` (`queueItemId
 CREATE INDEX IF NOT EXISTS `pr_alertId_idx` ON `pipeline_runs` (`alertId`);
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `pr_startedAt_idx` ON `pipeline_runs` (`startedAt`);
-
+--> statement-breakpoint
 -- ── Drop orphaned graph_ tables from old migrations ─────────────────────────
 -- These tables were created by early migrations but are no longer in the schema.
 -- They have been replaced by the Knowledge Graph (kg_*) tables above.
 DROP TABLE IF EXISTS `graph_vulnerabilities`;
+--> statement-breakpoint
 DROP TABLE IF EXISTS `graph_software_packages`;
+--> statement-breakpoint
 DROP TABLE IF EXISTS `graph_security_events`;
+--> statement-breakpoint
 DROP TABLE IF EXISTS `graph_processes`;
+--> statement-breakpoint
 DROP TABLE IF EXISTS `graph_network_ports`;
+--> statement-breakpoint
 DROP TABLE IF EXISTS `graph_identities`;
+--> statement-breakpoint
 DROP TABLE IF EXISTS `graph_endpoints`;
+--> statement-breakpoint
 DROP TABLE IF EXISTS `graph_sync_status`;

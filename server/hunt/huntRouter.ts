@@ -9,7 +9,9 @@
  * All operations are read-only. No mutations, no writes.
  */
 
+import { requireDb } from "../dbGuard";
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { savedHunts } from "../../drizzle/schema";
@@ -277,7 +279,7 @@ export const huntRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
-      if (!db) throw new Error("Database not available");
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
       const [result] = await db.insert(savedHunts).values({
         userId: ctx.user.id,
         title: input.title,
@@ -307,8 +309,7 @@ export const huntRouter = router({
       iocType: z.string().max(32).optional(),
     }).optional())
     .query(async ({ ctx, input }) => {
-      const db = await getDb();
-      if (!db) return { items: [], total: 0 };
+      const db = await requireDb();
       const limit = input?.limit ?? 25;
       const offset = input?.offset ?? 0;
 
@@ -359,8 +360,7 @@ export const huntRouter = router({
   get: protectedProcedure
     .input(z.object({ id: z.number().int() }))
     .query(async ({ ctx, input }) => {
-      const db = await getDb();
-      if (!db) return null;
+      const db = await requireDb();
       const rows = await db.select()
         .from(savedHunts)
         .where(and(eq(savedHunts.id, input.id), eq(savedHunts.userId, ctx.user.id)))
@@ -373,7 +373,7 @@ export const huntRouter = router({
     .input(z.object({ id: z.number().int() }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
-      if (!db) throw new Error("Database not available");
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
       await db.delete(savedHunts)
         .where(and(eq(savedHunts.id, input.id), eq(savedHunts.userId, ctx.user.id)));
       return { success: true };
@@ -391,7 +391,7 @@ export const huntRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
-      if (!db) throw new Error("Database not available");
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
       const updates: Record<string, unknown> = {};
       if (input.severity !== undefined) updates.severity = input.severity;
       if (input.resolved !== undefined) updates.resolved = input.resolved;

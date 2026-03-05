@@ -1,21 +1,28 @@
 /**
- * Alert Queue Router — tRPC procedures for the 10-deep alert-to-Walter queue.
+ * Alert Queue Router — tRPC procedures for the 10-deep alert queue.
+ *
+ * Queue processing runs TRIAGE ONLY via runTriageAgent(). It creates a
+ * triageObjects row and a pipelineRuns row (status: "partial"). Downstream
+ * stages (correlation, hypothesis, response actions) are NOT triggered here —
+ * they must be invoked separately from the Triage Pipeline page or via
+ * runFullPipeline.
  *
  * Provides:
  * - list: Get all queued/completed items (ordered by severity desc within status groups)
  * - enqueue: Add an alert to the queue (max 10, lowest-severity evicted)
  * - remove: Remove/dismiss an item from the queue
- * - process: Trigger Walter analysis on a queued item (human-initiated)
+ * - process: Trigger triage-only on a queued item (human-initiated, creates pipelineRuns row)
  * - getTriageResult: Get the triage result for a completed item
  * - count: Get the current queue depth
  */
 
+import { requireDb } from "../dbGuard";
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../_core/trpc";
-import { getDb } from "../db";
-import { alertQueue } from "../../drizzle/schema";
+import { alertQueue, pipelineRuns } from "../../drizzle/schema";
 import { eq, desc, asc, sql, and, inArray, gte } from "drizzle-orm";
-import { runAnalystPipeline, type AnalystMessage } from "../graph/agenticPipeline";
+import { runTriageAgent } from "../agenticPipeline/triageAgent";
 
 const MAX_QUEUE_DEPTH = 10;
 
@@ -24,8 +31,7 @@ export const alertQueueRouter = router({
    * List all queue items. Returns queued items first, then completed/failed.
    */
   list: protectedProcedure.query(async () => {
-    const db = await getDb();
-    if (!db) return { items: [], total: 0 };
+    const db = await requireDb();
 
     const items = await db
       .select()
@@ -52,8 +58,7 @@ export const alertQueueRouter = router({
    * Get current queue depth (queued + processing items only).
    */
   count: protectedProcedure.query(async () => {
-    const db = await getDb();
-    if (!db) return { count: 0 };
+    const db = await requireDb();
 
     const [result] = await db
       .select({ count: sql<number>`COUNT(*)` })
@@ -64,7 +69,7 @@ export const alertQueueRouter = router({
   }),
 
   /**
-   * Enqueue an alert for Walter analysis.
+   * Enqueue an alert for structured triage.
    * Max 10 items — lowest-severity queued item is evicted (dismissed) when full.
    * Prevents duplicate alertId from being queued.
    * Priority: higher ruleLevel = higher priority in the queue.
@@ -81,8 +86,7 @@ export const alertQueueRouter = router({
       rawJson: z.record(z.string(), z.unknown()).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const db = await getDb();
-      if (!db) throw new Error("Database not available");
+      const db = await requireDb();
 
       // Check for duplicate (same alertId already queued/processing)
       const [existing] = await db
@@ -149,7 +153,7 @@ export const alertQueueRouter = router({
         queuedBy: ctx.user?.id ?? null,
       });
 
-      return { success: true, message: "Alert queued for Walter analysis", id: result.insertId };
+      return { success: true, message: "Alert queued for structured triage", id: result.insertId };
     }),
 
   /**
@@ -158,8 +162,7 @@ export const alertQueueRouter = router({
   remove: protectedProcedure
     .input(z.object({ id: z.number().int() }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("Database not available");
+      const db = await requireDb();
 
       await db
         .update(alertQueue)
@@ -170,15 +173,23 @@ export const alertQueueRouter = router({
     }),
 
   /**
-   * Process a queued alert — triggers Walter's agentic pipeline.
-   * This is human-initiated: analyst clicks the queue item to start analysis.
-   * Returns the full triage result.
+   * Process a queued alert — runs structured triage only.
+   * This is human-initiated: analyst clicks "Structured Triage" on a queue item.
+   *
+   * What this does:
+   *   1. Calls runTriageAgent() → creates a triageObjects row
+   *   2. Links the triage back to this queue item via pipelineTriageId
+   *   3. Inserts a pipelineRuns row so the Pipeline Inspector can see it
+   *
+   * What this does NOT do:
+   *   - Correlation, hypothesis, or living case creation
+   *   - Those are triggered separately from the Triage Pipeline page
+   *     or via runFullPipeline()
    */
   process: protectedProcedure
     .input(z.object({ id: z.number().int() }))
-    .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("Database not available");
+    .mutation(async ({ input, ctx }) => {
+      const db = await requireDb();
 
       // Get the queue item
       const [item] = await db
@@ -187,54 +198,157 @@ export const alertQueueRouter = router({
         .where(eq(alertQueue.id, input.id))
         .limit(1);
 
-      if (!item) throw new Error("Queue item not found");
-      if (item.status !== "queued") throw new Error(`Cannot process item with status: ${item.status}`);
+      if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Queue item not found" });
+      if (item.status !== "queued") throw new TRPCError({ code: "BAD_REQUEST", message: `Cannot process item with status: ${item.status}` });
+
+      // Check if already triaged via the pipeline
+      if (item.pipelineTriageId) {
+        return {
+          success: true,
+          alreadyTriaged: true,
+          triageId: item.pipelineTriageId,
+          triageResult: item.triageResult,
+        };
+      }
 
       // Mark as processing
       await db
         .update(alertQueue)
-        .set({ status: "processing", processedAt: new Date() })
+        .set({
+          status: "processing",
+          processedAt: new Date(),
+          autoTriageStatus: "running",
+        })
         .where(eq(alertQueue.id, input.id));
 
-      // Build the context prompt for Walter
-      const alertContext = buildAlertContextPrompt(item);
+      // Build the raw alert from queue item (same pattern as autoTriageQueueItem)
+      const rawAlert = item.rawJson ?? {
+        id: item.alertId,
+        rule: {
+          id: item.ruleId,
+          description: item.ruleDescription,
+          level: item.ruleLevel,
+        },
+        agent: {
+          id: item.agentId,
+          name: item.agentName,
+        },
+        timestamp: item.alertTimestamp,
+      };
 
       try {
-        // Run Walter's agentic pipeline with the alert context
-        const result = await runAnalystPipeline(alertContext, []);
+        // Run the UNIFIED triage agent — creates a triageObjects row
+        const result = await runTriageAgent({
+          rawAlert,
+          userId: ctx.user.id,
+          alertQueueItemId: item.id,
+        });
 
-        // Store the triage result
-        const triageResult = {
-          answer: result.answer,
-          reasoning: result.reasoning,
-          trustScore: result.trustScore,
-          confidence: result.confidence,
-          safetyStatus: result.safetyStatus,
-          agentSteps: result.agentSteps as unknown as Array<Record<string, unknown>>,
-          sources: result.sources as unknown as Array<Record<string, unknown>>,
-          suggestedFollowUps: result.suggestedFollowUps,
-          provenance: result.provenance as unknown as Record<string, unknown>,
-        };
+        if (result.success && result.triageId) {
+          // Build a summary triageResult for backward compatibility
+          // (legacy UI rendering of inline triage data)
+          const triageResult = {
+            answer: result.triageObject
+              ? `**Severity:** ${result.triageObject.severity} (${((result.triageObject.severityConfidence ?? 0) * 100).toFixed(0)}% confidence)\n**Route:** ${result.triageObject.route}\n**Alert Family:** ${result.triageObject.alertFamily}\n\n${result.triageObject.severityReasoning ?? ""}\n\n**Recommended Actions:**\n${((result.triageObject as unknown as Record<string, unknown>).recommendedActions as string[] ?? []).map((a: string) => `- ${a}`).join("\n")}`
+              : "Triage completed — view details on the Triage Pipeline page.",
+            reasoning: result.triageObject?.severityReasoning ?? "Triage completed via unified pipeline",
+            trustScore: result.triageObject?.severityConfidence ?? undefined,
+            confidence: result.triageObject?.severityConfidence ?? undefined,
+            // Link to the structured pipeline
+            pipelineTriageId: result.triageId,
+            severity: result.triageObject?.severity ?? undefined,
+            route: result.triageObject?.route ?? undefined,
+          };
 
-        await db
-          .update(alertQueue)
-          .set({
-            status: "completed",
+          // Insert a pipelineRuns row with status: "partial"
+          const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+          // completedAt is NULL because the run is NOT complete —
+          // only triage is done. Downstream stages (correlation, hypothesis,
+          // response actions) are still pending and require analyst advancement.
+          // totalLatencyMs records triage latency only, not overall run time.
+          await db.insert(pipelineRuns).values({
+            runId,
+            queueItemId: item.id,
+            alertId: item.alertId,
+            currentStage: "triage",
+            status: "partial",
+            triageId: result.triageId,
+            triageStatus: "completed",
+            triageLatencyMs: result.latencyMs ?? null,
+            totalLatencyMs: result.latencyMs ?? null,
+            correlationStatus: "pending",
+            hypothesisStatus: "pending",
+            responseActionsStatus: "pending",
+            triggeredBy: ctx.user.name ?? ctx.user.openId ?? "queue",
+            startedAt: new Date(),
+            completedAt: null,  // NOT complete — awaiting analyst advancement
+          });
+
+          // Update queue item with triage link + backward-compatible result
+          await db
+            .update(alertQueue)
+            .set({
+              status: "completed",
+              pipelineTriageId: result.triageId,
+              autoTriageStatus: "completed",
+              triageResult,
+              completedAt: new Date(),
+            })
+            .where(eq(alertQueue.id, input.id));
+
+          return {
+            success: true,
+            triageId: result.triageId,
             triageResult,
+            latencyMs: result.latencyMs,
+          };
+        } else {
+          // Triage failed — still insert a pipelineRuns row so the failure is visible
+          const failRunId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+          await db.insert(pipelineRuns).values({
+            runId: failRunId,
+            queueItemId: item.id,
+            alertId: item.alertId,
+            currentStage: "failed",
+            status: "failed",
+            triageStatus: "failed",
+            correlationStatus: "pending",
+            hypothesisStatus: "pending",
+            responseActionsStatus: "pending",
+            triggeredBy: ctx.user.name ?? ctx.user.openId ?? "queue",
+            error: result.error ?? "Triage pipeline failed",
+            startedAt: new Date(),
             completedAt: new Date(),
-          })
-          .where(eq(alertQueue.id, input.id));
+          });
 
-        return { success: true, triageResult };
+          await db
+            .update(alertQueue)
+            .set({
+              status: "failed",
+              autoTriageStatus: "failed",
+              triageResult: {
+                answer: `Triage failed: ${result.error ?? "Unknown error"}`,
+                reasoning: "Pipeline error during structured triage",
+              },
+              completedAt: new Date(),
+            })
+            .where(eq(alertQueue.id, input.id));
+
+          return {
+            success: false,
+            error: result.error ?? "Triage pipeline failed",
+          };
+        }
       } catch (err) {
         // Mark as failed
         await db
           .update(alertQueue)
           .set({
             status: "failed",
+            autoTriageStatus: "failed",
             triageResult: {
               answer: `Analysis failed: ${(err as Error).message}`,
-              reasoning: "Pipeline error during alert triage",
+              reasoning: "Pipeline error during structured triage",
             },
             completedAt: new Date(),
           })
@@ -250,8 +364,7 @@ export const alertQueueRouter = router({
   getTriageResult: protectedProcedure
     .input(z.object({ id: z.number().int() }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return null;
+      const db = await requireDb();
 
       const [item] = await db
         .select()
@@ -273,8 +386,7 @@ export const alertQueueRouter = router({
       since: z.string(),
     }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return { alerts: [] };
+      const db = await requireDb();
 
       const sinceDate = new Date(input.since);
 
@@ -307,8 +419,7 @@ export const alertQueueRouter = router({
    * Clear all dismissed/completed/failed items from the queue.
    */
   clearHistory: protectedProcedure.mutation(async () => {
-    const db = await getDb();
-    if (!db) throw new Error("Database not available");
+    const db = await requireDb();
 
     await db
       .delete(alertQueue)
@@ -317,67 +428,3 @@ export const alertQueueRouter = router({
     return { success: true };
   }),
 });
-
-/**
- * Build a rich context prompt from the alert data for Walter's pipeline.
- */
-function buildAlertContextPrompt(item: {
-  alertId: string;
-  ruleId: string;
-  ruleDescription: string | null;
-  ruleLevel: number;
-  agentId: string | null;
-  agentName: string | null;
-  alertTimestamp: string | null;
-  rawJson: Record<string, unknown> | null;
-}): string {
-  const parts: string[] = [
-    `Triage the following Wazuh alert and provide a comprehensive security analysis:`,
-    ``,
-    `**Alert ID:** ${item.alertId}`,
-    `**Rule ID:** ${item.ruleId}`,
-    `**Rule Description:** ${item.ruleDescription ?? "Unknown"}`,
-    `**Severity Level:** ${item.ruleLevel}/15`,
-    `**Agent:** ${item.agentId ?? "Unknown"} (${item.agentName ?? "Unknown"})`,
-    `**Timestamp:** ${item.alertTimestamp ?? "Unknown"}`,
-  ];
-
-  if (item.rawJson) {
-    const rule = item.rawJson.rule as Record<string, unknown> | undefined;
-    const data = item.rawJson.data as Record<string, unknown> | undefined;
-    const mitre = (rule?.mitre as Record<string, unknown>) ?? {};
-
-    if (mitre.id) {
-      parts.push(`**MITRE ATT&CK:** ${Array.isArray(mitre.id) ? mitre.id.join(", ") : mitre.id}`);
-    }
-    if (mitre.tactic) {
-      parts.push(`**Tactics:** ${Array.isArray(mitre.tactic) ? mitre.tactic.join(", ") : mitre.tactic}`);
-    }
-    if (data?.srcip) {
-      parts.push(`**Source IP:** ${data.srcip}`);
-    }
-    if (data?.dstip) {
-      parts.push(`**Destination IP:** ${data.dstip}`);
-    }
-    if (rule?.groups) {
-      parts.push(`**Rule Groups:** ${Array.isArray(rule.groups) ? rule.groups.join(", ") : rule.groups}`);
-    }
-
-    parts.push(``);
-    parts.push(`**Full Alert JSON:**`);
-    parts.push("```json");
-    parts.push(JSON.stringify(item.rawJson, null, 2).slice(0, 4000)); // Cap at 4K chars
-    parts.push("```");
-  }
-
-  parts.push(``);
-  parts.push(`Please provide:`);
-  parts.push(`1. Severity assessment and risk classification`);
-  parts.push(`2. MITRE ATT&CK technique analysis (if applicable)`);
-  parts.push(`3. Potential impact and affected assets`);
-  parts.push(`4. Recommended investigation steps`);
-  parts.push(`5. Related indicators of compromise (IOCs)`);
-  parts.push(`6. Suggested remediation actions`);
-
-  return parts.join("\n");
-}

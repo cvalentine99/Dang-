@@ -70,8 +70,18 @@ async function startServer() {
     }
   });
 
-  // Comprehensive status endpoint for the /status dashboard
-  app.get("/api/status", async (_req, res) => {
+  // Auth middleware for status endpoint — validates session cookie
+  const statusAuthMiddleware: import("express").RequestHandler = async (req, res, next) => {
+    try {
+      await sdk.authenticateRequest(req);
+      next();
+    } catch {
+      res.status(401).json({ error: "Authentication required for status endpoint" });
+    }
+  };
+
+  // Comprehensive status endpoint for the /status dashboard (protected)
+  app.get("/api/status", statusAuthMiddleware, async (_req, res) => {
     const startTime = Date.now();
     const HEALTH_CHECK_TIMEOUT = 5_000;
 

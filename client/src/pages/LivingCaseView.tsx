@@ -985,6 +985,28 @@ function LivingCaseListView() {
                       {c.updatedAt ? new Date(c.updatedAt).toLocaleString() : ""}
                     </span>
                     <span className="text-[10px] text-violet-400/50">{c.lastUpdatedBy}</span>
+                    {c.sourceTriageId && (
+                      <span
+                        role="link"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/triage?highlight=${c.sourceTriageId}`); }}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-violet-500/10 border border-violet-500/20 text-violet-300 hover:bg-violet-500/20 cursor-pointer transition-colors"
+                        title={`Source Triage: ${c.sourceTriageId}`}
+                      >
+                        <Brain className="w-2.5 h-2.5" />
+                        Source Triage
+                      </span>
+                    )}
+                    {c.sourceCorrelationId && (
+                      <span
+                        role="link"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/triage?highlightCorrelation=${c.sourceCorrelationId}`); }}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 hover:bg-cyan-500/20 cursor-pointer transition-colors"
+                        title={`Source Correlation: ${c.sourceCorrelationId}`}
+                      >
+                        <GitBranch className="w-2.5 h-2.5" />
+                        Source Correlation
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -1188,9 +1210,15 @@ function LivingCaseDetailView({ caseId }: { caseId: number }) {
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-2">Triage IDs</div>
             <div className="flex flex-wrap gap-1">
               {(caseData?.linkedTriageIds ?? []).map((id: string, i: number) => (
-                <span key={i} className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-violet-500/10 border border-violet-500/20 text-violet-300">
-                  {id}
-                </span>
+                <button
+                  key={i}
+                  onClick={() => navigate(`/triage?highlight=${id}`)}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-violet-500/10 border border-violet-500/20 text-violet-300 hover:bg-violet-500/20 cursor-pointer transition-colors"
+                  title={`View triage: ${id}`}
+                >
+                  <Brain className="w-2.5 h-2.5" />
+                  {id.length > 12 ? `${id.slice(0, 12)}…` : id}
+                </button>
               ))}
               {(!caseData?.linkedTriageIds || caseData.linkedTriageIds.length === 0) && (
                 <span className="text-[10px] text-muted-foreground/30">None</span>
@@ -1201,7 +1229,14 @@ function LivingCaseDetailView({ caseId }: { caseId: number }) {
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-2">Correlation IDs</div>
             <div className="flex flex-wrap gap-1">
               {(caseData?.linkedCorrelationIds ?? []).map((id: string, i: number) => (
-                <span key={i} className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-500/10 border border-cyan-500/20 text-cyan-300">
+                <span
+                  key={i}
+                  role="link"
+                  onClick={() => navigate(`/triage?highlightCorrelation=${id}`)}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 hover:bg-cyan-500/20 cursor-pointer transition-colors"
+                  title={`View correlation ${id} in Triage Pipeline`}
+                >
+                  <GitBranch className="w-2.5 h-2.5" />
                   {id}
                 </span>
               ))}

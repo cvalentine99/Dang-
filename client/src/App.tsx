@@ -40,6 +40,9 @@ import ResponseActions from "./pages/ResponseActions";
 import PipelineInspector from "./pages/PipelineInspector";
 import FeedbackAnalytics from "./pages/FeedbackAnalytics";
 import DriftAnalytics from "./pages/DriftAnalytics";
+import FleetInventory from "./pages/FleetInventory";
+import SecurityExplorer from "./pages/SecurityExplorer";
+import SensitiveAccessAudit from "./pages/SensitiveAccessAudit";
 
 function Router() {
   return (
@@ -87,6 +90,9 @@ function Router() {
               <Route path="/pipeline-inspector" component={PipelineInspector} />
               <Route path="/feedback-analytics" component={FeedbackAnalytics} />
               <Route path="/drift-analytics" component={DriftAnalytics} />
+              <Route path="/fleet-inventory" component={FleetInventory} />
+              <Route path="/security" component={SecurityExplorer} />
+              <Route path="/admin/audit" component={SensitiveAccessAudit} />
               <Route path="/404" component={NotFound} />
               <Route component={NotFound} />
             </Switch>

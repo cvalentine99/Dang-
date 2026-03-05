@@ -192,12 +192,13 @@ export default function MitreAttack() {
   const { indexerTacticAlerts, indexerTimeline, indexerTopTechniques, totalMitreAlerts } = useMemo(() => {
     if (indexerHealthy && mitreAggQ.data) {
       const raw = mitreAggQ.data as Record<string, unknown>;
-      const aggs = raw.aggregations as Record<string, unknown> | undefined;
+      const esData = raw.data as Record<string, unknown> | undefined;
+      const aggs = esData?.aggregations as Record<string, unknown> | undefined;
       if (aggs) {
         const tacticBuckets = ((aggs.tactics as Record<string, unknown>)?.buckets ?? []) as Array<{ key: string; doc_count: number }>;
         const techBuckets = ((aggs.techniques as Record<string, unknown>)?.buckets ?? []) as Array<{ key: string; doc_count: number }>;
         const timelineBuckets = ((aggs.timeline as Record<string, unknown>)?.buckets ?? []) as Array<{ key_as_string: string; doc_count: number; tactics?: { buckets: Array<{ key: string; doc_count: number }> } }>;
-        const totalHits = ((raw.hits as Record<string, unknown>)?.total as Record<string, unknown>)?.value as number ?? 0;
+        const totalHits = ((esData?.hits as Record<string, unknown>)?.total as Record<string, unknown>)?.value as number ?? 0;
 
         const tacticAlerts = tacticBuckets.map(b => ({ tactic: b.key, alerts: b.doc_count, delta: 0 }));
         const topTechniques = techBuckets.slice(0, 10).map(b => ({ id: b.key, name: b.key, tactic: "", alerts: b.doc_count }));
@@ -634,8 +635,8 @@ export default function MitreAttack() {
                   <div className="bg-secondary/20 rounded-lg p-3 border border-border/20">
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Associated Rule IDs</p>
                     <div className="flex flex-wrap gap-1.5">
-                      {selectedTechnique.ruleIds.slice(0, 30).map(id => (
-                        <span key={id} className="text-[10px] px-2 py-0.5 rounded-full bg-secondary/50 text-foreground font-mono border border-border/30">{id}</span>
+                      {selectedTechnique.ruleIds.slice(0, 30).map((id, idx) => (
+                        <span key={`${id}-${idx}`} className="text-[10px] px-2 py-0.5 rounded-full bg-secondary/50 text-foreground font-mono border border-border/30">{id}</span>
                       ))}
                       {selectedTechnique.ruleIds.length > 30 ? <span className="text-[10px] text-muted-foreground">+{selectedTechnique.ruleIds.length - 30} more</span> : null}
                     </div>

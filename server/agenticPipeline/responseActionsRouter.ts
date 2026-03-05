@@ -19,10 +19,12 @@
  *   Queries:   getById, getByCase, listAll, stats, auditTrail
  */
 
+import { requireDb } from "../dbGuard";
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { eq, and, desc, sql, count } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { protectedProcedure, router } from "../_core/trpc";
+import { protectedProcedure, adminProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import {
   responseActions,
@@ -46,7 +48,7 @@ import {
 
 export const responseActionsRouter = router({
   // ── Propose a new response action ──────────────────────────────────────────
-  propose: protectedProcedure
+  propose: adminProcedure
     .input(z.object({
       category: z.enum(RESPONSE_ACTION_CATEGORIES as unknown as [string, ...string[]]),
       title: z.string().min(1).max(512),
@@ -67,7 +69,7 @@ export const responseActionsRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const db = await getDb();
-      if (!db) throw new Error("Database not available");
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
 
       const actionId = `ra-${nanoid(12)}`;
       const proposedBy = input.proposedByAgent ?? `user:${ctx.user.id}`;
@@ -120,7 +122,7 @@ export const responseActionsRouter = router({
     }),
 
   // ── Approve ── (delegates to centralized state machine) ───────────────────
-  approve: protectedProcedure
+  approve: adminProcedure
     .input(z.object({
       actionId: z.string().min(1),
       reason: z.string().max(2000).optional(),
@@ -130,7 +132,7 @@ export const responseActionsRouter = router({
     }),
 
   // ── Reject ── (delegates to centralized state machine) ────────────────────
-  reject: protectedProcedure
+  reject: adminProcedure
     .input(z.object({
       actionId: z.string().min(1),
       reason: z.string().min(1).max(2000),
@@ -140,7 +142,7 @@ export const responseActionsRouter = router({
     }),
 
   // ── Execute ── (delegates to centralized state machine) ───────────────────
-  execute: protectedProcedure
+  execute: adminProcedure
     .input(z.object({
       actionId: z.string().min(1),
       executionResult: z.string().max(5000).optional(),
@@ -170,7 +172,7 @@ export const responseActionsRouter = router({
     }),
 
   // ── Defer ── (delegates to centralized state machine) ─────────────────────
-  defer: protectedProcedure
+  defer: adminProcedure
     .input(z.object({
       actionId: z.string().min(1),
       reason: z.string().min(1).max(2000),
@@ -180,7 +182,7 @@ export const responseActionsRouter = router({
     }),
 
   // ── Re-propose (from deferred) ── (delegates to centralized state machine)
-  repropose: protectedProcedure
+  repropose: adminProcedure
     .input(z.object({
       actionId: z.string().min(1),
       reason: z.string().max(2000).optional(),
@@ -190,7 +192,7 @@ export const responseActionsRouter = router({
     }),
 
   // ── Bulk Approve ── (delegates each to centralized state machine) ─────────
-  bulkApprove: protectedProcedure
+  bulkApprove: adminProcedure
     .input(z.object({
       actionIds: z.array(z.string().min(1)).min(1).max(50),
       reason: z.string().max(2000).optional(),
@@ -214,8 +216,7 @@ export const responseActionsRouter = router({
   getById: protectedProcedure
     .input(z.object({ actionId: z.string().min(1) }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return { found: false as const };
+      const db = await requireDb();
 
       const [action] = await db
         .select()
@@ -234,8 +235,7 @@ export const responseActionsRouter = router({
       state: z.enum(RESPONSE_ACTION_STATES as unknown as [string, ...string[]]).optional(),
     }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return { actions: [] };
+      const db = await requireDb();
 
       const conditions = [eq(responseActions.caseId, input.caseId)];
       if (input.state) {
@@ -266,8 +266,7 @@ export const responseActionsRouter = router({
       caseId: z.number().int().optional(),
     }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return { actions: [], total: 0 };
+      const db = await requireDb();
 
       const conditions: ReturnType<typeof eq>[] = [];
       if (input.state) conditions.push(eq(responseActions.state, input.state as any));
@@ -304,8 +303,7 @@ export const responseActionsRouter = router({
   // ── Pending Approval Queue ─────────────────────────────────────────────────
   pendingApproval: protectedProcedure
     .query(async () => {
-      const db = await getDb();
-      if (!db) return { actions: [], total: 0 };
+      const db = await requireDb();
 
       const actions = await db
         .select()
@@ -327,11 +325,7 @@ export const responseActionsRouter = router({
   // ── Statistics ─────────────────────────────────────────────────────────────
   stats: protectedProcedure
     .query(async () => {
-      const db = await getDb();
-      if (!db) return {
-        total: 0, byState: {}, byCategory: {}, byUrgency: {},
-        pendingApproval: 0, avgTimeToApproval: null, avgTimeToExecution: null,
-      };
+      const db = await requireDb();
 
       const [
         totalResult,
@@ -417,8 +411,7 @@ export const responseActionsRouter = router({
       actionId: z.string().min(1),
     }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return { entries: [] };
+      const db = await requireDb();
 
       const entries = await db
         .select()
@@ -436,8 +429,7 @@ export const responseActionsRouter = router({
       offset: z.number().int().min(0).default(0),
     }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return { entries: [], total: 0 };
+      const db = await requireDb();
 
       const [entries, totalResult] = await Promise.all([
         db

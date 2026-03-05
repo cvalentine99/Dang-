@@ -8,7 +8,9 @@
  * by the BaselineScheduler after each baseline capture.
  */
 
+import { requireDb } from "../dbGuard";
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { eq, desc, and, gte, sql } from "drizzle-orm";
 import { protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
@@ -32,8 +34,7 @@ export const driftAnalyticsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const db = await getDb();
-      if (!db) return { points: [] };
+      const db = await requireDb();
 
       const since = new Date(Date.now() - input.days * 24 * 60 * 60 * 1000);
 
@@ -102,8 +103,7 @@ export const driftAnalyticsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const db = await getDb();
-      if (!db) return { agents: [] };
+      const db = await requireDb();
 
       const since = new Date(Date.now() - input.days * 24 * 60 * 60 * 1000);
 
@@ -242,8 +242,7 @@ export const driftAnalyticsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const db = await getDb();
-      if (!db) return { schedules: [] };
+      const db = await requireDb();
 
       const since = new Date(Date.now() - input.days * 24 * 60 * 60 * 1000);
 
@@ -309,7 +308,7 @@ export const driftAnalyticsRouter = router({
     .input(z.object({ id: z.number().int() }))
     .query(async ({ ctx, input }) => {
       const db = await getDb();
-      if (!db) throw new Error("Database unavailable");
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
 
       const results = await db
         .select()
@@ -322,7 +321,7 @@ export const driftAnalyticsRouter = router({
         )
         .limit(1);
 
-      if (!results.length) throw new Error("Drift snapshot not found");
+      if (!results.length) throw new TRPCError({ code: "NOT_FOUND", message: "Drift snapshot not found" });
 
       return { snapshot: results[0] };
     }),
@@ -338,8 +337,7 @@ export const driftAnalyticsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const db = await getDb();
-      if (!db) return { events: [] };
+      const db = await requireDb();
 
       const conditions = [eq(driftSnapshots.userId, ctx.user.id)];
 
@@ -391,8 +389,7 @@ export const driftAnalyticsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const db = await getDb();
-      if (!db) return { grid: [], agents: [], buckets: [] };
+      const db = await requireDb();
 
       const since = new Date(Date.now() - input.days * 24 * 60 * 60 * 1000);
 

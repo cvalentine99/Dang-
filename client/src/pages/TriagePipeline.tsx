@@ -8,7 +8,7 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { GlassPanel, StatCard, RawJsonViewer, ThreatBadge } from "@/components/shared";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -506,7 +506,21 @@ function CorrelationBundleCard({ bundle }: { bundle: any }) {
 
 // ── Triage Result Card ───────────────────────────────────────────────────────
 
-function TriageResultCard({ triage, onRefresh }: { triage: any; onRefresh?: () => void }) {
+function TriageResultCard({ triage, onRefresh, isHighlighted, highlightCorrelationId }: { triage: any; onRefresh?: () => void; isHighlighted?: boolean; highlightCorrelationId?: string | null }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  // Determine if this card's correlation is highlighted
+  const isCorrelationHighlighted = !!(highlightCorrelationId && triage.correlationBundleId && triage.correlationBundleId === highlightCorrelationId);
+
+  // Auto-scroll and expand when highlighted (triage or correlation)
+  useEffect(() => {
+    if ((isHighlighted || isCorrelationHighlighted) && cardRef.current) {
+      setExpanded(true);
+      if (isCorrelationHighlighted) setShowCorrelation(true);
+      setTimeout(() => {
+        cardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
+    }
+  }, [isHighlighted, isCorrelationHighlighted]);
   const [expanded, setExpanded] = useState(false);
   const [showRawJson, setShowRawJson] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -546,7 +560,7 @@ function TriageResultCard({ triage, onRefresh }: { triage: any; onRefresh?: () =
   // Get correlation bundle if exists
   const correlationQuery = trpc.pipeline.getCorrelationByTriageId.useQuery(
     { triageId: triage.triageId },
-    { enabled: !!triage.triageId && (showCorrelation || triage.correlationBundleId != null) }
+    { enabled: !!triage.triageId && (showCorrelation || triage.correlationBundleId != null || isCorrelationHighlighted) }
   );
 
   const triageData = triage.triageData as any;
@@ -555,7 +569,7 @@ function TriageResultCard({ triage, onRefresh }: { triage: any; onRefresh?: () =
   const routeInfo = ROUTE_LABELS[route] || ROUTE_LABELS.B_LOW_CONFIDENCE;
 
   return (
-    <GlassPanel className="p-0 overflow-hidden">
+    <GlassPanel ref={cardRef} className={`p-0 overflow-hidden transition-all duration-500 ${isHighlighted ? "ring-2 ring-violet-500/60 shadow-[0_0_20px_rgba(139,92,246,0.2)]" : ""} ${isCorrelationHighlighted ? "ring-2 ring-cyan-500/60 shadow-[0_0_20px_rgba(6,182,212,0.2)]" : ""}`}>
       {/* Header Row */}
       <button
         onClick={() => setExpanded(!expanded)}
@@ -920,6 +934,16 @@ export default function TriagePipeline() {
   const [page, setPage] = useState(0);
   const pageSize = 25;
 
+  // Deep-link highlight support: /triage?highlight=<triageId>&highlightCorrelation=<correlationId>
+  const highlightId = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("highlight") || null;
+  }, []);
+  const highlightCorrelationId = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("highlightCorrelation") || null;
+  }, []);
+
   const { data, isLoading, refetch, isFetching } = trpc.pipeline.listTriages.useQuery({
     limit: pageSize,
     offset: page * pageSize,
@@ -1004,13 +1028,13 @@ export default function TriagePipeline() {
           <h3 className="text-lg font-[Space_Grotesk] text-foreground/60 mb-2">No Triage Objects Yet</h3>
           <p className="text-sm text-muted-foreground/40 max-w-md mx-auto">
             Triage objects are created when alerts are processed through the agentic pipeline.
-            Use the "AI Triage" button on any alert, or send alerts from the Walter Queue.
+            Use the "Structured Triage" button on any alert, or send alerts from the Alert Queue.
           </p>
         </GlassPanel>
       ) : (
         <div className="space-y-2">
           {triages.map((triage: any) => (
-            <TriageResultCard key={triage.id} triage={triage} onRefresh={() => refetch()} />
+            <TriageResultCard key={triage.id} triage={triage} onRefresh={() => refetch()} isHighlighted={triage.triageId === highlightId} highlightCorrelationId={highlightCorrelationId} />
           ))}
         </div>
       )}

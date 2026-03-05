@@ -447,6 +447,7 @@ export const kgEndpoints = mysqlTable("kg_endpoints", {
   authMethod: varchar("auth_method", { length: 64 }),
   trustScore: varchar("trust_score", { length: 8 }).default("1.0").notNull(),
   deprecated: int("deprecated").default(0).notNull(),
+  brokerValidated: int("broker_validated").default(0).notNull(),
   lastVerifiedAt: timestamp("last_verified_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
@@ -471,6 +472,7 @@ export const kgParameters = mysqlTable("kg_parameters", {
   required: int("required").default(0).notNull(),
   paramType: varchar("param_type", { length: 32 }).notNull(),
   description: text("description"),
+  appAliases: json("app_aliases").$type<string[]>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ([
   index("kgp_endpoint_id_idx").on(table.endpointId),
@@ -757,9 +759,9 @@ export type LlmUsage = typeof llmUsage.$inferSelect;
 export type InsertLlmUsage = typeof llmUsage.$inferInsert;
 
 /**
- * Alert Queue — 10-deep FIFO queue for alerts awaiting Walter analysis.
+ * Alert Queue — 10-deep FIFO queue for alerts awaiting agentic triage.
  * Analysts queue alerts from the Alerts Timeline, then click to trigger
- * Walter's full agentic pipeline on demand. Max 10 items; oldest evicted.
+ * the full agentic pipeline on demand. Max 10 items; oldest evicted.
  */
 export const alertQueue = mysqlTable("alert_queue", {
   id: int("id").autoincrement().primaryKey(),
@@ -777,11 +779,11 @@ export const alertQueue = mysqlTable("alert_queue", {
   agentName: varchar("agentName", { length: 128 }),
   /** Alert timestamp from Wazuh */
   alertTimestamp: varchar("alertTimestamp", { length: 64 }),
-  /** Full raw alert JSON for Walter context */
+  /** Full raw alert JSON for pipeline context */
   rawJson: json("rawJson").$type<Record<string, unknown>>(),
   /** Queue status: queued → processing → completed → failed → dismissed */
   status: mysqlEnum("status", ["queued", "processing", "completed", "failed", "dismissed"]).default("queued").notNull(),
-  /** Walter's triage result (stored after analysis completes) */
+  /** Agentic triage result (stored after analysis completes) */
   triageResult: json("triageResult").$type<{
     answer: string;
     reasoning?: string;
@@ -797,9 +799,9 @@ export const alertQueue = mysqlTable("alert_queue", {
   queuedBy: int("queuedBy"),
   /** When the alert was queued */
   queuedAt: timestamp("queuedAt").defaultNow().notNull(),
-  /** When Walter started processing */
+  /** When pipeline started processing */
   processedAt: timestamp("processedAt"),
-  /** When Walter completed analysis */
+  /** When pipeline completed analysis */
   completedAt: timestamp("completedAt"),
   /** Pipeline triage ID (links to triage_objects.triageId for auto-triage) */
   pipelineTriageId: varchar("pipelineTriageId", { length: 64 }),
@@ -816,10 +818,10 @@ export type InsertAlertQueueItem = typeof alertQueue.$inferInsert;
 
 /**
  * Auto-queue rules — configurable rules that automatically send matching
- * Wazuh alerts to Walter's queue without manual analyst intervention.
+ * Wazuh alerts to the triage queue without manual analyst intervention.
  *
  * Rules are evaluated against incoming alerts from the Wazuh Indexer.
- * When an alert matches a rule, it is automatically enqueued for Walter analysis.
+ * When an alert matches a rule, it is automatically enqueued for agentic triage.
  *
  * Rule types:
  * - severity_threshold: Queue any alert at or above a severity level
@@ -1375,3 +1377,113 @@ export const pipelineRuns = mysqlTable("pipeline_runs", {
 export type PipelineRunRow = typeof pipelineRuns.$inferSelect;
 export type InsertPipelineRunRow = typeof pipelineRuns.$inferInsert;
 
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Ticket Artifacts — first-class record of externally-created tickets
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Each row represents a ticket that was manually created by an analyst
+// from a completed triage result and sent to an external ticketing system
+// (currently Splunk ES via HEC).
+//
+// This table provides workflow lineage: which alert queue item, which
+// pipeline run, and which analyst created the ticket, plus the external
+// system's response (ticket ID, status, raw response).
+//
+// This is NOT automated ticket orchestration — every ticket here was
+// explicitly triggered by an analyst clicking "Create Ticket" in the UI.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const ticketArtifacts = mysqlTable("ticket_artifacts", {
+  id: int("id").autoincrement().primaryKey(),
+
+  /** External ticket ID returned by the ticketing system (e.g., "DANG-1709...") */
+  ticketId: varchar("ticketId", { length: 128 }).notNull(),
+
+  /** Which external system holds this ticket */
+  system: mysqlEnum("system", ["splunk_es", "jira", "servicenow", "custom"]).default("splunk_es").notNull(),
+
+  /** FK to alert_queue.id — the queue item this ticket was created from */
+  queueItemId: int("queueItemId").notNull(),
+
+  /** FK to pipeline_runs.id — the pipeline run associated with this triage (nullable for legacy items) */
+  pipelineRunId: int("pipelineRunId"),
+
+  /**
+   * FK to triage_objects.triageId — the triage that produced the data for this ticket.
+   * This is the primary workflow linkage: ticket → triage → alert.
+   * Nullable for legacy items created before this column existed.
+   */
+  triageId: varchar("triageId", { length: 64 }),
+
+  /** Wazuh alert ID for cross-reference */
+  alertId: varchar("alertId", { length: 128 }).notNull(),
+
+  /** Rule ID from the original alert */
+  ruleId: varchar("ruleId", { length: 32 }),
+
+  /** Rule severity level */
+  ruleLevel: int("ruleLevel"),
+
+  /** Who created this ticket (analyst name/email) */
+  createdBy: varchar("createdBy", { length: 256 }).notNull(),
+
+  /** Whether the external system accepted the ticket */
+  success: boolean("success").notNull(),
+
+  /** Human-readable status message from the external system */
+  statusMessage: text("statusMessage"),
+
+  /** Raw response from the external system (for forensic audit) */
+  rawResponse: json("rawResponse"),
+
+  /** HTTP status code from the external system */
+  httpStatusCode: int("httpStatusCode"),
+
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  index("ta_ticketId_idx").on(table.ticketId),
+  index("ta_queueItemId_idx").on(table.queueItemId),
+  index("ta_pipelineRunId_idx").on(table.pipelineRunId),
+  index("ta_triageId_idx").on(table.triageId),
+  index("ta_alertId_idx").on(table.alertId),
+  index("ta_system_idx").on(table.system),
+  index("ta_createdAt_idx").on(table.createdAt),
+]));
+
+export type TicketArtifactRow = typeof ticketArtifacts.$inferSelect;
+export type InsertTicketArtifactRow = typeof ticketArtifacts.$inferInsert;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Sensitive Access Audit — tracks disclosure of credential material (agent keys)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Every time a user reveals sensitive data (e.g., agent registration key),
+ * a row is written here. This is the accountability trail Chase requires:
+ * "a secret displayed without an audit trail is a lie your system tells about accountability."
+ */
+export const sensitiveAccessAudit = mysqlTable("sensitive_access_audit", {
+  id: int("id").autoincrement().primaryKey(),
+  /** FK to users.id — who accessed the secret */
+  userId: int("userId").notNull(),
+  /** What type of secret was accessed */
+  resourceType: varchar("resourceType", { length: 64 }).notNull(), // e.g., "agent_key"
+  /** Identifier of the specific resource (e.g., agent ID) */
+  resourceId: varchar("resourceId", { length: 128 }).notNull(),
+  /** What action was performed */
+  action: varchar("action", { length: 32 }).notNull(), // "reveal" | "copy"
+  /** IP address of the requester (for forensic context) */
+  ipAddress: varchar("ipAddress", { length: 45 }),
+  /** User-Agent string (for forensic context) */
+  userAgent: text("userAgent"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  index("saa_userId_idx").on(table.userId),
+  index("saa_resourceType_idx").on(table.resourceType),
+  index("saa_resourceId_idx").on(table.resourceId),
+  index("saa_createdAt_idx").on(table.createdAt),
+]));
+
+export type SensitiveAccessAuditRow = typeof sensitiveAccessAudit.$inferSelect;
+export type InsertSensitiveAccessAuditRow = typeof sensitiveAccessAudit.$inferInsert;

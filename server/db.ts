@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, users, sensitiveAccessAudit, InsertSensitiveAccessAuditRow } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +89,24 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+// ── Sensitive Access Audit ──────────────────────────────────────────────────
+
+/**
+ * Log a sensitive data access event (e.g., agent key reveal).
+ *
+ * FAIL-CLOSED: if the audit insert fails for ANY reason (no DB, insert error),
+ * this function THROWS. The caller MUST NOT reveal the sensitive data.
+ * This is a contract-level guarantee — audit trail is a gate, not best-effort.
+ */
+export async function logSensitiveAccess(entry: Omit<InsertSensitiveAccessAuditRow, "id" | "createdAt">): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    throw new Error("Audit logging unavailable: database connection failed. Cannot reveal sensitive data.");
+  }
+  try {
+    await db.insert(sensitiveAccessAudit).values(entry);
+  } catch (error) {
+    console.error("[SensitiveAccessAudit] Failed to log:", error);
+    throw new Error("Audit logging unavailable: insert failed. Cannot reveal sensitive data.");
+  }
+}

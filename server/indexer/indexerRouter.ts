@@ -215,7 +215,13 @@ export const indexerRouter = router({
                 over_time: dateHistogramAgg("timestamp", input.interval),
               },
             },
-            techniques_total: termsAgg("rule.mitre.id", 30),
+            techniques: termsAgg("rule.mitre.id", 30),
+            timeline: {
+              ...dateHistogramAgg("timestamp", input.interval),
+              aggs: {
+                tactics: termsAgg("rule.mitre.tactic", 20),
+              },
+            },
           },
         },
         "alerts"
@@ -450,6 +456,7 @@ export const indexerRouter = router({
                 controls: termsAgg(frameworkField, 10),
               },
             },
+            levels: termsAgg("rule.level", 16),
           },
         },
         "alerts"

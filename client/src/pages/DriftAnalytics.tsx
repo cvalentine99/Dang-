@@ -12,7 +12,8 @@
  * 8. Drift snapshot detail panel
  */
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, lazy, Suspense } from "react";
+import { LazyTabFallback } from "@/components/shared/LazyTabFallback";
 import { trpc } from "@/lib/trpc";
 import {
   AreaChart,
@@ -58,241 +59,37 @@ import {
   FileText,
   History,
   ShieldOff,
-  Plus,
-  Trash2,
-  RotateCcw,
-  PauseCircle,
-  PlayCircle,
 } from "lucide-react";
 
-// ─── Amethyst Nexus palette ─────────────────────────────────────────────────
-const PURPLE = "oklch(0.541 0.281 293.009)";
-const PURPLE_DIM = "oklch(0.4 0.15 293)";
-const VIOLET = "oklch(0.6 0.2 293)";
-const CYAN = "oklch(0.789 0.154 211.53)";
-const AMBER = "oklch(0.795 0.184 86.047)";
-const RED = "oklch(0.637 0.237 25.331)";
-const GREEN = "oklch(0.765 0.177 163.223)";
-const MUTED = "oklch(0.65 0.02 286)";
-const CARD_BG = "oklch(0.17 0.025 286)";
-const GLASS_BG = "oklch(0.15 0.02 286 / 70%)";
-const BORDER = "oklch(0.3 0.04 286 / 40%)";
+// Lazy-loaded tab sub-components — only loaded when the tab is first activated
+const NotificationHistoryTab = lazy(() => import("./drift-analytics/NotificationHistoryTab").then(m => ({ default: m.NotificationHistoryTab })));
+const SuppressionRulesTab = lazy(() => import("./drift-analytics/SuppressionRulesTab").then(m => ({ default: m.SuppressionRulesTab })));
 
-const SCHEDULE_COLORS = [PURPLE, CYAN, AMBER, GREEN, VIOLET, RED, "oklch(0.7 0.15 330)", "oklch(0.7 0.15 200)"];
-const CATEGORY_COLORS = { packages: CYAN, services: VIOLET, users: AMBER };
-const CHANGE_COLORS = { added: GREEN, removed: RED, changed: AMBER };
-
-// ─── Time range presets ─────────────────────────────────────────────────────
-const TIME_RANGES = [
-  { label: "24h", days: 1 },
-  { label: "7d", days: 7 },
-  { label: "30d", days: 30 },
-  { label: "90d", days: 90 },
-] as const;
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-function formatDate(ts: number): string {
-  return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-function formatDateTime(ts: number): string {
-  return new Date(ts).toLocaleString("en-US", {
-    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-  });
-}
-function formatPct(v: number): string {
-  return `${Math.round(v * 100) / 100}%`;
-}
-
-// ─── Glass Panel ────────────────────────────────────────────────────────────
-function GlassPanel({
-  children,
-  className = "",
-  title,
-  icon: Icon,
-  action,
-}: {
-  children: React.ReactNode;
-  className?: string;
-  title?: string;
-  icon?: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div
-      className={`rounded-xl border backdrop-blur-md ${className}`}
-      style={{
-        background: GLASS_BG,
-        borderColor: BORDER,
-      }}
-    >
-      {title && (
-        <div className="flex items-center justify-between px-5 pt-4 pb-2">
-          <div className="flex items-center gap-2">
-            {Icon && <Icon className="h-4 w-4" style={{ color: PURPLE }} />}
-            <h3 className="font-display text-sm font-semibold tracking-wide" style={{ color: "oklch(0.85 0.01 286)" }}>
-              {title}
-            </h3>
-          </div>
-          {action}
-        </div>
-      )}
-      {children}
-    </div>
-  );
-}
-
-// ─── KPI Card ───────────────────────────────────────────────────────────────
-function KpiCard({
-  label,
-  value,
-  sub,
-  icon: Icon,
-  color = PURPLE,
-}: {
-  label: string;
-  value: string | number;
-  sub?: string;
-  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
-  color?: string;
-}) {
-  return (
-    <div
-      className="flex items-center gap-3 rounded-lg border px-4 py-3"
-      style={{ background: CARD_BG, borderColor: BORDER }}
-    >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg" style={{ background: `${color}20` }}>
-        <Icon className="h-5 w-5" style={{ color }} />
-      </div>
-      <div className="min-w-0">
-        <div className="text-xs uppercase tracking-wider" style={{ color: MUTED }}>{label}</div>
-        <div className="font-display text-xl font-bold" style={{ color: "oklch(0.93 0.005 286)" }}>{value}</div>
-        {sub && <div className="text-xs" style={{ color: MUTED }}>{sub}</div>}
-      </div>
-    </div>
-  );
-}
-
-// ─── Tooltip ────────────────────────────────────────────────────────────────
-function ChartTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div
-      className="rounded-lg border px-3 py-2 text-xs shadow-lg backdrop-blur-md"
-      style={{ background: CARD_BG, borderColor: BORDER, color: "oklch(0.85 0.01 286)" }}
-    >
-      <div className="mb-1 font-semibold">{label}</div>
-      {payload.map((p: any, i: number) => (
-        <div key={i} className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full" style={{ background: p.color }} />
-          <span style={{ color: MUTED }}>{p.name}:</span>
-          <span className="font-mono">{typeof p.value === "number" ? formatPct(p.value) : p.value}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Heatmap Cell ───────────────────────────────────────────────────────────
-function HeatmapGrid({
-  grid,
-  agents,
-  buckets,
-}: {
-  grid: Array<{ agentId: string; bucket: number; driftPercent: number }>;
-  agents: string[];
-  buckets: number[];
-}) {
-  if (agents.length === 0 || buckets.length === 0) {
-    return (
-      <div className="flex h-32 items-center justify-center text-sm" style={{ color: MUTED }}>
-        No heatmap data available
-      </div>
-    );
-  }
-
-  // Build lookup
-  const lookup: Record<string, Record<number, number>> = {};
-  for (const cell of grid) {
-    if (!lookup[cell.agentId]) lookup[cell.agentId] = {};
-    lookup[cell.agentId][cell.bucket] = cell.driftPercent;
-  }
-
-  // Show max 15 buckets to keep it readable
-  const displayBuckets = buckets.length > 15 ? buckets.slice(-15) : buckets;
-
-  return (
-    <div className="overflow-x-auto">
-      <div className="min-w-[600px]">
-        {/* Header row */}
-        <div className="flex items-center gap-0.5 mb-1">
-          <div className="w-20 shrink-0 text-xs font-mono" style={{ color: MUTED }}>Agent</div>
-          {displayBuckets.map((b) => (
-            <div
-              key={b}
-              className="flex-1 text-center text-[10px] font-mono"
-              style={{ color: MUTED }}
-              title={formatDateTime(b)}
-            >
-              {formatDate(b)}
-            </div>
-          ))}
-        </div>
-
-        {/* Agent rows */}
-        {agents.map((agentId) => (
-          <div key={agentId} className="flex items-center gap-0.5 mb-0.5">
-            <div
-              className="w-20 shrink-0 truncate text-xs font-mono"
-              style={{ color: "oklch(0.85 0.01 286)" }}
-              title={agentId}
-            >
-              {agentId}
-            </div>
-            {displayBuckets.map((b) => {
-              const val = lookup[agentId]?.[b] ?? 0;
-              // Map 0-100 to opacity
-              const intensity = Math.min(val / 50, 1); // 50% = full intensity
-              const bg = val === 0
-                ? "oklch(0.2 0.02 286 / 30%)"
-                : `oklch(${0.5 + intensity * 0.15} ${0.1 + intensity * 0.17} ${val > 30 ? 25 : 293} / ${0.3 + intensity * 0.7})`;
-              return (
-                <div
-                  key={b}
-                  className="flex-1 h-7 rounded-sm flex items-center justify-center text-[10px] font-mono cursor-default transition-all hover:ring-1 hover:ring-purple-400/40"
-                  style={{ background: bg, color: val > 0 ? "oklch(0.95 0 0)" : "transparent" }}
-                  title={`Agent ${agentId} | ${formatDate(b)} | ${formatPct(val)} drift`}
-                >
-                  {val > 0 ? Math.round(val) : ""}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-
-        {/* Legend */}
-        <div className="flex items-center gap-3 mt-3 text-[10px]" style={{ color: MUTED }}>
-          <span>Drift intensity:</span>
-          <div className="flex items-center gap-1">
-            <div className="h-3 w-3 rounded-sm" style={{ background: "oklch(0.2 0.02 286 / 30%)" }} />
-            <span>0%</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="h-3 w-3 rounded-sm" style={{ background: "oklch(0.55 0.15 293 / 50%)" }} />
-            <span>Low</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="h-3 w-3 rounded-sm" style={{ background: "oklch(0.6 0.2 293 / 80%)" }} />
-            <span>Medium</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="h-3 w-3 rounded-sm" style={{ background: "oklch(0.65 0.27 25 / 100%)" }} />
-            <span>High</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+import {
+  GlassPanel,
+  KpiCard,
+  ChartTooltip,
+  HeatmapGrid,
+  AnomalyDetailPanel,
+  SnapshotDetailPanel,
+  PURPLE,
+  PURPLE_DIM,
+  VIOLET,
+  CYAN,
+  AMBER,
+  RED,
+  GREEN,
+  MUTED,
+  CARD_BG,
+  BORDER,
+  SCHEDULE_COLORS,
+  CATEGORY_COLORS,
+  CHANGE_COLORS,
+  TIME_RANGES,
+  formatDate,
+  formatDateTime,
+  formatPct,
+} from "./drift-analytics";
 
 // ─── Main Component ─────────────────────────────────────────────────────────
 export default function DriftAnalytics() {
@@ -394,20 +191,13 @@ export default function DriftAnalytics() {
     { enabled: activeTab === "suppression", refetchOnWindowFocus: false }
   );
   const createSuppressionMut = trpc.suppression.create.useMutation({
-    onSuccess: () => { suppressionListQ.refetch(); setShowCreateRule(false); },
+    onSuccess: () => { suppressionListQ.refetch(); },
   });
   const deactivateSuppressionMut = trpc.suppression.deactivate.useMutation({
     onSuccess: () => suppressionListQ.refetch(),
   });
   const deleteSuppressionMut = trpc.suppression.delete.useMutation({
     onSuccess: () => suppressionListQ.refetch(),
-  });
-  const [showCreateRule, setShowCreateRule] = useState(false);
-  const [newRule, setNewRule] = useState({
-    scheduleId: null as number | null,
-    severityFilter: "all" as "critical" | "high" | "medium" | "all",
-    durationHours: 24,
-    reason: "",
   });
 
   // ── Export queries (lazy) ─────────────────────────────────────────────────
@@ -432,10 +222,9 @@ export default function DriftAnalytics() {
     if (!trendQuery.data?.points.length) return [];
     const points = trendQuery.data.points;
 
-    // Group by schedule for multi-line chart
-    const scheduleNames = Array.from(new Set(points.map((p) => p.scheduleName)));
+    const schedNames = Array.from(new Set(points.map((p) => p.scheduleName)));
 
-    if (scheduleNames.length <= 1) {
+    if (schedNames.length <= 1) {
       return points.map((p) => ({
         time: formatDate(p.timestamp),
         timestamp: p.timestamp,
@@ -444,7 +233,6 @@ export default function DriftAnalytics() {
       }));
     }
 
-    // Multi-schedule: pivot into { time, schedule1: drift, schedule2: drift, ... }
     const byTime: Record<number, Record<string, number>> = {};
     for (const p of points) {
       if (!byTime[p.timestamp]) byTime[p.timestamp] = {};
@@ -493,7 +281,6 @@ export default function DriftAnalytics() {
     ];
   }, [categoryQuery.data]);
 
-  // KPI aggregates
   const kpis = useMemo(() => {
     const schedules = summaryQuery.data?.schedules || [];
     const totalCaptures = schedules.reduce((s, x) => s + x.captureCount, 0);
@@ -675,6 +462,7 @@ export default function DriftAnalytics() {
         <GlassPanel
           title="Drift Anomaly Detection"
           icon={TriangleAlert}
+          className="mb-6"
           action={
             <div className="flex items-center gap-2">
               {/* Severity filter */}
@@ -939,30 +727,18 @@ export default function DriftAnalytics() {
                     <BarChart data={categoryData} layout="vertical">
                       <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.02 286 / 30%)" />
                       <XAxis type="number" tick={{ fill: MUTED, fontSize: 11 }} />
-                      <YAxis dataKey="category" type="category" tick={{ fill: MUTED, fontSize: 11 }} width={70} />
+                      <YAxis type="category" dataKey="category" tick={{ fill: MUTED, fontSize: 11 }} width={80} />
                       <Tooltip content={<ChartTooltip />} />
-                      <Bar dataKey="added" name="Added" stackId="a" fill={CHANGE_COLORS.added} radius={[0, 0, 0, 0]} />
-                      <Bar dataKey="changed" name="Changed" stackId="a" fill={CHANGE_COLORS.changed} />
-                      <Bar dataKey="removed" name="Removed" stackId="a" fill={CHANGE_COLORS.removed} radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="added" stackId="a" fill={CHANGE_COLORS.added} name="Added" radius={[0, 0, 0, 0]} />
+                      <Bar dataKey="changed" stackId="a" fill={CHANGE_COLORS.changed} name="Changed" />
+                      <Bar dataKey="removed" stackId="a" fill={CHANGE_COLORS.removed} name="Removed" radius={[0, 4, 4, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
-
-                  {/* Category legend */}
-                  <div className="mt-3 flex flex-wrap gap-4 text-xs" style={{ color: MUTED }}>
+                  <div className="flex justify-center gap-4 mt-2 text-[10px]" style={{ color: MUTED }}>
                     {Object.entries(CHANGE_COLORS).map(([key, color]) => (
                       <div key={key} className="flex items-center gap-1.5">
-                        <span className="h-2.5 w-2.5 rounded-sm" style={{ background: color }} />
+                        <div className="h-2.5 w-2.5 rounded-sm" style={{ background: color }} />
                         <span className="capitalize">{key}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Totals */}
-                  <div className="mt-3 grid grid-cols-3 gap-2">
-                    {categoryData.map((c) => (
-                      <div key={c.category} className="rounded-lg border px-3 py-2 text-center" style={{ borderColor: BORDER }}>
-                        <div className="text-[10px] uppercase tracking-wider" style={{ color: MUTED }}>{c.category}</div>
-                        <div className="font-display text-lg font-bold" style={{ color: "oklch(0.93 0.005 286)" }}>{c.total}</div>
                       </div>
                     ))}
                   </div>
@@ -971,11 +747,11 @@ export default function DriftAnalytics() {
             </div>
           </GlassPanel>
 
-          {/* ── Agent Volatility Heatmap (spans 2 cols) ────────────────── */}
-          <GlassPanel className="xl:col-span-2" title="Agent Drift Heatmap" icon={Zap}>
+          {/* ── Agent Heatmap (full width) ──────────────────────────────── */}
+          <GlassPanel className="xl:col-span-3" title="Agent Drift Heatmap" icon={Zap}>
             <div className="px-5 pb-5">
               {heatmapQuery.isLoading ? (
-                <div className="flex h-48 items-center justify-center">
+                <div className="flex h-32 items-center justify-center">
                   <div className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: PURPLE }} />
                 </div>
               ) : (
@@ -989,15 +765,11 @@ export default function DriftAnalytics() {
           </GlassPanel>
 
           {/* ── Top Drifting Agents ─────────────────────────────────────── */}
-          <GlassPanel title="Agent Volatility Ranking" icon={AlertTriangle}>
+          <GlassPanel className="xl:col-span-2" title="Top Drifting Agents" icon={AlertTriangle}>
             <div className="px-5 pb-5">
               {volatilityQuery.isLoading ? (
-                <div className="flex h-48 items-center justify-center">
+                <div className="flex h-32 items-center justify-center">
                   <div className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: PURPLE }} />
-                </div>
-              ) : (volatilityQuery.data?.agents.length ?? 0) === 0 ? (
-                <div className="flex h-48 items-center justify-center text-sm" style={{ color: MUTED }}>
-                  No agent data available
                 </div>
               ) : (
                 <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
@@ -1222,705 +994,46 @@ export default function DriftAnalytics() {
 
       {/* ═══════════════════ NOTIFICATION HISTORY TAB ═══════════════════ */}
       {activeTab === "notifications" && (
-        <div className="space-y-5">
-          {/* Notification KPIs */}
-          {notifStatsQ.data && (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              <KpiCard icon={Bell} label="Total Sent" value={notifStatsQ.data.sent} sub="notifications" color={GREEN} />
-              <KpiCard icon={AlertTriangle} label="Failed" value={notifStatsQ.data.failed} sub="delivery errors" color={RED} />
-              <KpiCard icon={ShieldOff} label="Suppressed" value={notifStatsQ.data.suppressed} sub="by rules" color={AMBER} />
-              <KpiCard icon={TriangleAlert} label="Anomaly Alerts" value={notifStatsQ.data.byType.anomaly} sub="anomaly type" color={VIOLET} />
-              <KpiCard icon={TrendingUp} label="Drift Alerts" value={notifStatsQ.data.byType.drift_threshold} sub="threshold type" color={CYAN} />
-              <KpiCard icon={RotateCcw} label="Retrying" value={notifStatsQ.data.retrying} sub="pending retry" color={PURPLE} />
-            </div>
-          )}
-
-          {/* Notification History Table */}
-          <GlassPanel title="Notification History" icon={History}>
-            <div className="px-5 pb-5">
-              {notifHistoryQ.isLoading ? (
-                <div className="flex h-48 items-center justify-center">
-                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: PURPLE }} />
-                </div>
-              ) : (notifHistoryQ.data?.notifications.length ?? 0) === 0 ? (
-                <div className="flex h-48 flex-col items-center justify-center text-center">
-                  <History className="mb-3 h-10 w-10" style={{ color: PURPLE_DIM }} />
-                  <p className="text-sm" style={{ color: MUTED }}>No notifications sent in the selected time range.</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr style={{ color: MUTED }}>
-                        <th className="pb-2 text-left font-medium">Time</th>
-                        <th className="pb-2 text-left font-medium">Type</th>
-                        <th className="pb-2 text-left font-medium">Schedule</th>
-                        <th className="pb-2 text-center font-medium">Severity</th>
-                        <th className="pb-2 text-center font-medium">Status</th>
-                        <th className="pb-2 text-right font-medium">Drift %</th>
-                        <th className="pb-2 text-right font-medium">Retries</th>
-                        <th className="pb-2 text-center font-medium">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {notifHistoryQ.data!.notifications.map((n) => {
-                        const statusColor = n.deliveryStatus === "sent" ? GREEN : n.deliveryStatus === "failed" ? RED : n.deliveryStatus === "suppressed" ? AMBER : CYAN;
-                        const sevColor = n.severity === "critical" ? RED : n.severity === "high" ? "oklch(0.705 0.191 22.216)" : n.severity === "medium" ? AMBER : CYAN;
-                        return (
-                          <tr key={n.id} className="border-t" style={{ borderColor: "oklch(0.25 0.02 286 / 20%)" }}>
-                            <td className="py-2.5 pr-3 font-mono text-[10px]" style={{ color: MUTED }}>
-                              {formatDateTime(n.timestamp)}
-                            </td>
-                            <td className="py-2.5 pr-3">
-                              <span
-                                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
-                                style={{ background: n.notificationType === "anomaly" ? `${VIOLET}20` : `${CYAN}20`, color: n.notificationType === "anomaly" ? VIOLET : CYAN }}
-                              >
-                                {n.notificationType === "anomaly" ? <TriangleAlert className="h-2.5 w-2.5" /> : <TrendingUp className="h-2.5 w-2.5" />}
-                                {n.notificationType}
-                              </span>
-                            </td>
-                            <td className="py-2.5 pr-3 text-xs" style={{ color: "oklch(0.85 0.01 286)" }}>
-                              {n.scheduleName || "—"}
-                            </td>
-                            <td className="py-2.5 text-center">
-                              <span
-                                className="inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase"
-                                style={{ background: `${sevColor}20`, color: sevColor }}
-                              >
-                                {n.severity}
-                              </span>
-                            </td>
-                            <td className="py-2.5 text-center">
-                              <span
-                                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
-                                style={{ background: `${statusColor}15`, color: statusColor }}
-                              >
-                                {n.deliveryStatus === "sent" && <CheckCircle2 className="h-2.5 w-2.5" />}
-                                {n.deliveryStatus === "failed" && <AlertTriangle className="h-2.5 w-2.5" />}
-                                {n.deliveryStatus === "suppressed" && <ShieldOff className="h-2.5 w-2.5" />}
-                                {n.deliveryStatus}
-                              </span>
-                            </td>
-                            <td className="py-2.5 pr-3 text-right font-mono" style={{ color: "oklch(0.85 0.01 286)" }}>
-                              {n.driftPercent != null ? formatPct(n.driftPercent) : "—"}
-                            </td>
-                            <td className="py-2.5 pr-3 text-right font-mono" style={{ color: MUTED }}>
-                              {n.retryCount}
-                            </td>
-                            <td className="py-2.5 text-center">
-                              {n.deliveryStatus === "failed" && (
-                                <button
-                                  onClick={() => retryMutation.mutate({ id: n.id })}
-                                  disabled={retryMutation.isPending}
-                                  className="rounded p-1 transition-colors hover:bg-white/10"
-                                  title="Retry notification"
-                                >
-                                  <RotateCcw className="h-3.5 w-3.5" style={{ color: CYAN }} />
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </GlassPanel>
-        </div>
+        <Suspense fallback={<LazyTabFallback />}>
+          <NotificationHistoryTab
+            notifStatsQ={notifStatsQ}
+            notifListQ={notifHistoryQ}
+            retryMutation={retryMutation}
+          />
+        </Suspense>
       )}
 
       {/* ═══════════════════ SUPPRESSION RULES TAB ═══════════════════ */}
       {activeTab === "suppression" && (
-        <div className="space-y-5">
-          {/* Header with Create button */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="font-display text-lg font-semibold" style={{ color: "oklch(0.9 0.005 286)" }}>Suppression Rules</h2>
-              <p className="text-xs" style={{ color: MUTED }}>Mute anomaly alerts during maintenance windows or known-noisy periods</p>
-            </div>
-            <button
-              onClick={() => setShowCreateRule(true)}
-              className="flex items-center gap-2 rounded-lg border px-4 py-2 text-xs font-medium transition-colors hover:bg-white/5"
-              style={{ borderColor: PURPLE, color: PURPLE }}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Create Rule
-            </button>
-          </div>
-
-          {/* Create Rule Form */}
-          {showCreateRule && (
-            <GlassPanel title="New Suppression Rule" icon={ShieldOff}>
-              <div className="px-5 pb-5 space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {/* Schedule selector */}
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: MUTED }}>Target Schedule</label>
-                    <select
-                      value={newRule.scheduleId ?? ""}
-                      onChange={(e) => setNewRule({ ...newRule, scheduleId: e.target.value ? Number(e.target.value) : null })}
-                      className="w-full rounded-lg border px-3 py-2 text-xs"
-                      style={{ background: "oklch(0.12 0.02 286)", borderColor: BORDER, color: "oklch(0.85 0.01 286)" }}
-                    >
-                      <option value="">All Schedules</option>
-                      {(summaryQuery.data?.schedules || []).map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Severity filter */}
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: MUTED }}>Suppress Severity</label>
-                    <select
-                      value={newRule.severityFilter}
-                      onChange={(e) => setNewRule({ ...newRule, severityFilter: e.target.value as any })}
-                      className="w-full rounded-lg border px-3 py-2 text-xs"
-                      style={{ background: "oklch(0.12 0.02 286)", borderColor: BORDER, color: "oklch(0.85 0.01 286)" }}
-                    >
-                      <option value="all">All Severities</option>
-                      <option value="critical">Critical & below</option>
-                      <option value="high">High & below</option>
-                      <option value="medium">Medium only</option>
-                    </select>
-                  </div>
-
-                  {/* Duration */}
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: MUTED }}>Duration (hours)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={720}
-                      value={newRule.durationHours}
-                      onChange={(e) => setNewRule({ ...newRule, durationHours: Math.max(1, Math.min(720, Number(e.target.value))) })}
-                      className="w-full rounded-lg border px-3 py-2 text-xs"
-                      style={{ background: "oklch(0.12 0.02 286)", borderColor: BORDER, color: "oklch(0.85 0.01 286)" }}
-                    />
-                    <div className="mt-1 flex gap-2">
-                      {[1, 4, 8, 24, 72, 168].map((h) => (
-                        <button
-                          key={h}
-                          onClick={() => setNewRule({ ...newRule, durationHours: h })}
-                          className="rounded px-2 py-0.5 text-[10px] transition-colors hover:bg-white/10"
-                          style={{ color: newRule.durationHours === h ? CYAN : MUTED, background: newRule.durationHours === h ? `${CYAN}15` : "transparent" }}
-                        >
-                          {h < 24 ? `${h}h` : `${h / 24}d`}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Reason */}
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: MUTED }}>Reason</label>
-                    <input
-                      type="text"
-                      value={newRule.reason}
-                      onChange={(e) => setNewRule({ ...newRule, reason: e.target.value })}
-                      placeholder="e.g., Scheduled maintenance window"
-                      className="w-full rounded-lg border px-3 py-2 text-xs"
-                      style={{ background: "oklch(0.12 0.02 286)", borderColor: BORDER, color: "oklch(0.85 0.01 286)" }}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 pt-2">
-                  <button
-                    onClick={() => {
-                      if (!newRule.reason.trim()) return;
-                      createSuppressionMut.mutate(newRule);
-                    }}
-                    disabled={!newRule.reason.trim() || createSuppressionMut.isPending}
-                    className="flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-medium transition-colors disabled:opacity-50"
-                    style={{ background: PURPLE, color: "oklch(0.98 0.005 285)" }}
-                  >
-                    {createSuppressionMut.isPending ? "Creating..." : "Create Rule"}
-                  </button>
-                  <button
-                    onClick={() => setShowCreateRule(false)}
-                    className="rounded-lg border px-4 py-2 text-xs transition-colors hover:bg-white/5"
-                    style={{ borderColor: BORDER, color: MUTED }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </GlassPanel>
-          )}
-
-          {/* Rules List */}
-          <GlassPanel title="Active & Expired Rules" icon={Shield}>
-            <div className="px-5 pb-5">
-              {suppressionListQ.isLoading ? (
-                <div className="flex h-48 items-center justify-center">
-                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: PURPLE }} />
-                </div>
-              ) : (suppressionListQ.data?.rules.length ?? 0) === 0 ? (
-                <div className="flex h-48 flex-col items-center justify-center text-center">
-                  <ShieldOff className="mb-3 h-10 w-10" style={{ color: PURPLE_DIM }} />
-                  <p className="text-sm" style={{ color: MUTED }}>No suppression rules configured.</p>
-                  <p className="text-xs mt-1" style={{ color: MUTED }}>Create a rule to mute anomaly alerts during maintenance windows.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {suppressionListQ.data!.rules.map((rule) => {
-                    const isActive = rule.active && !rule.isExpired;
-                    const sevColor = rule.severityFilter === "critical" ? RED : rule.severityFilter === "high" ? "oklch(0.705 0.191 22.216)" : rule.severityFilter === "medium" ? AMBER : VIOLET;
-                    return (
-                      <div
-                        key={rule.id}
-                        className="flex items-center gap-4 rounded-lg border px-4 py-3"
-                        style={{ borderColor: isActive ? `${PURPLE}40` : BORDER, background: isActive ? "oklch(0.16 0.025 286)" : "oklch(0.13 0.015 286)" }}
-                      >
-                        {/* Status icon */}
-                        <div className="shrink-0">
-                          {isActive ? (
-                            <PauseCircle className="h-5 w-5" style={{ color: AMBER }} />
-                          ) : (
-                            <PlayCircle className="h-5 w-5" style={{ color: MUTED }} />
-                          )}
-                        </div>
-
-                        {/* Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs font-semibold" style={{ color: isActive ? "oklch(0.9 0.005 286)" : MUTED }}>
-                              {rule.scheduleName || "All Schedules"}
-                            </span>
-                            <span
-                              className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase"
-                              style={{ background: `${sevColor}20`, color: sevColor }}
-                            >
-                              {rule.severityFilter === "all" ? "all severities" : `≤ ${rule.severityFilter}`}
-                            </span>
-                            <span
-                              className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                              style={{ background: isActive ? `${GREEN}15` : `${RED}15`, color: isActive ? GREEN : RED }}
-                            >
-                              {isActive ? "Active" : rule.isExpired ? "Expired" : "Deactivated"}
-                            </span>
-                          </div>
-                          <div className="text-xs" style={{ color: MUTED }}>
-                            {rule.reason}
-                          </div>
-                          <div className="flex items-center gap-4 mt-1 text-[10px] font-mono" style={{ color: MUTED }}>
-                            <span>Duration: {rule.durationHours}h</span>
-                            <span>Expires: {new Date(rule.expiresAtTs).toLocaleString()}</span>
-                            <span>Suppressed: {rule.suppressedCount} alerts</span>
-                          </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex items-center gap-2 shrink-0">
-                          {isActive && (
-                            <button
-                              onClick={() => deactivateSuppressionMut.mutate({ id: rule.id })}
-                              className="rounded p-1.5 transition-colors hover:bg-white/10"
-                              title="Deactivate rule"
-                              disabled={deactivateSuppressionMut.isPending}
-                            >
-                              <PauseCircle className="h-4 w-4" style={{ color: AMBER }} />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => deleteSuppressionMut.mutate({ id: rule.id })}
-                            className="rounded p-1.5 transition-colors hover:bg-white/10"
-                            title="Delete rule"
-                            disabled={deleteSuppressionMut.isPending}
-                          >
-                            <Trash2 className="h-4 w-4" style={{ color: RED }} />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </GlassPanel>
-        </div>
+        <Suspense fallback={<LazyTabFallback />}>
+          <SuppressionRulesTab
+            schedules={summaryQuery.data?.schedules.map((s) => ({ id: s.id, name: s.name })) || []}
+            suppressionListQ={suppressionListQ}
+            createSuppressionMut={createSuppressionMut}
+            deactivateSuppressionMut={deactivateSuppressionMut}
+            deleteSuppressionMut={deleteSuppressionMut}
+          />
+        </Suspense>
       )}
 
       {/* ── Anomaly Detail Slide-over ───────────────────────────── */}
       {selectedAnomalyId !== null && (
-        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setSelectedAnomalyId(null)}>
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-          <div
-            className="relative w-full max-w-lg overflow-y-auto border-l shadow-2xl"
-            style={{ background: "oklch(0.14 0.025 286)", borderColor: BORDER }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b px-5 py-4" style={{ background: "oklch(0.14 0.025 286)", borderColor: BORDER }}>
-              <h3 className="font-display text-sm font-semibold flex items-center gap-2">
-                <TriangleAlert className="h-4 w-4" style={{ color: RED }} />
-                Anomaly Detail
-              </h3>
-              <button onClick={() => setSelectedAnomalyId(null)} className="rounded p-1 hover:bg-white/10">
-                <X className="h-4 w-4" style={{ color: MUTED }} />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4">
-              {anomalyDetailQ.isLoading ? (
-                <div className="flex h-48 items-center justify-center">
-                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: PURPLE }} />
-                </div>
-              ) : anomalyDetailQ.data?.anomaly ? (
-                (() => {
-                  const a = anomalyDetailQ.data.anomaly;
-                  const sevColor = a.severity === "critical" ? RED : a.severity === "high" ? "oklch(0.705 0.191 22.216)" : AMBER;
-                  const byCat = a.byCategory as { packages: { added: number; removed: number; changed: number }; services: { added: number; removed: number; changed: number }; users: { added: number; removed: number; changed: number } } | null;
-                  const topItems = (a.topDriftItems as Array<{ category: string; agentId: string; name: string; changeType: string; previousValue?: string; currentValue?: string }>) || [];
-
-                  return (
-                    <>
-                      {/* Severity + Status */}
-                      <div className="flex items-center gap-3">
-                        <span
-                          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold uppercase"
-                          style={{ background: `${sevColor}20`, color: sevColor }}
-                        >
-                          <TriangleAlert className="h-3.5 w-3.5" />
-                          {a.severity}
-                        </span>
-                        {a.acknowledged ? (
-                          <span className="inline-flex items-center gap-1 text-xs" style={{ color: GREEN }}>
-                            <CheckCircle2 className="h-3.5 w-3.5" /> Acknowledged
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => ackMutation.mutate({ id: a.id })}
-                            className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors hover:bg-white/5"
-                            style={{ borderColor: BORDER, color: PURPLE }}
-                            disabled={ackMutation.isPending}
-                          >
-                            <CheckCircle2 className="h-3 w-3" /> Acknowledge
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Statistical summary */}
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="rounded-lg border p-3 text-center" style={{ borderColor: BORDER }}>
-                          <div className="text-[10px] uppercase" style={{ color: MUTED }}>Drift</div>
-                          <div className="font-display text-2xl font-bold" style={{ color: sevColor }}>
-                            {formatPct(a.driftPercent)}
-                          </div>
-                        </div>
-                        <div className="rounded-lg border p-3 text-center" style={{ borderColor: BORDER }}>
-                          <div className="text-[10px] uppercase" style={{ color: MUTED }}>Z-Score</div>
-                          <div className="font-display text-2xl font-bold" style={{ color: "oklch(0.9 0.005 286)" }}>
-                            {a.zScore.toFixed(2)}σ
-                          </div>
-                        </div>
-                        <div className="rounded-lg border p-3 text-center" style={{ borderColor: BORDER }}>
-                          <div className="text-[10px] uppercase" style={{ color: MUTED }}>Threshold</div>
-                          <div className="font-display text-2xl font-bold" style={{ color: MUTED }}>
-                            {a.sigmaThreshold}σ
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Rolling stats */}
-                      <div className="rounded-lg border p-4" style={{ borderColor: BORDER }}>
-                        <h4 className="text-xs font-semibold mb-2" style={{ color: MUTED }}>Statistical Context</h4>
-                        <div className="space-y-2 text-xs">
-                          <div className="flex justify-between">
-                            <span style={{ color: MUTED }}>Rolling Average</span>
-                            <span className="font-mono" style={{ color: "oklch(0.85 0.01 286)" }}>{a.rollingAvg.toFixed(2)}%</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span style={{ color: MUTED }}>Standard Deviation</span>
-                            <span className="font-mono" style={{ color: "oklch(0.85 0.01 286)" }}>±{a.rollingStdDev.toFixed(2)}%</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span style={{ color: MUTED }}>Expected Range</span>
-                            <span className="font-mono" style={{ color: "oklch(0.85 0.01 286)" }}>
-                              {Math.max(0, a.rollingAvg - a.sigmaThreshold * a.rollingStdDev).toFixed(2)}% – {(a.rollingAvg + a.sigmaThreshold * a.rollingStdDev).toFixed(2)}%
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span style={{ color: MUTED }}>Actual Drift</span>
-                            <span className="font-mono font-bold" style={{ color: sevColor }}>{formatPct(a.driftPercent)}</span>
-                          </div>
-                          {/* Visual deviation bar */}
-                          <div className="mt-2">
-                            <div className="h-3 rounded-full relative overflow-hidden" style={{ background: "oklch(0.2 0.02 286 / 50%)" }}>
-                              {/* Expected range */}
-                              <div
-                                className="absolute h-full rounded-full"
-                                style={{
-                                  left: `${Math.max(0, (a.rollingAvg - a.sigmaThreshold * a.rollingStdDev) / Math.max(a.driftPercent * 1.2, 1) * 100)}%`,
-                                  width: `${Math.min(100, (a.sigmaThreshold * a.rollingStdDev * 2) / Math.max(a.driftPercent * 1.2, 1) * 100)}%`,
-                                  background: `${GREEN}30`,
-                                }}
-                              />
-                              {/* Actual value marker */}
-                              <div
-                                className="absolute h-full w-1 rounded-full"
-                                style={{
-                                  left: `${Math.min(100, a.driftPercent / Math.max(a.driftPercent * 1.2, 1) * 100)}%`,
-                                  background: sevColor,
-                                  boxShadow: `0 0 6px ${sevColor}`,
-                                }}
-                              />
-                            </div>
-                            <div className="flex justify-between mt-1 text-[9px]" style={{ color: MUTED }}>
-                              <span>0%</span>
-                              <span>Expected</span>
-                              <span>Actual</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Category breakdown */}
-                      {byCat && (
-                        <div>
-                          <h4 className="text-xs font-semibold mb-2" style={{ color: MUTED }}>Category Breakdown</h4>
-                          <div className="space-y-1.5">
-                            {(["packages", "services", "users"] as const).map((cat) => {
-                              const d = byCat[cat];
-                              const total = d.added + d.removed + d.changed;
-                              return (
-                                <div key={cat} className="flex items-center gap-3 text-xs">
-                                  <span className="w-16 capitalize" style={{ color: "oklch(0.85 0.01 286)" }}>{cat}</span>
-                                  <div className="flex gap-2 font-mono" style={{ color: MUTED }}>
-                                    {d.added > 0 && <span style={{ color: GREEN }}>+{d.added}</span>}
-                                    {d.changed > 0 && <span style={{ color: AMBER }}>~{d.changed}</span>}
-                                    {d.removed > 0 && <span style={{ color: RED }}>-{d.removed}</span>}
-                                    {total === 0 && <span>—</span>}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Top drift items */}
-                      {topItems.length > 0 && (
-                        <div>
-                          <h4 className="text-xs font-semibold mb-2" style={{ color: MUTED }}>Top Changes ({topItems.length})</h4>
-                          <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
-                            {topItems.map((item, i) => (
-                              <div
-                                key={i}
-                                className="flex items-center gap-2 rounded border px-2 py-1.5 text-xs"
-                                style={{ borderColor: "oklch(0.25 0.02 286 / 30%)" }}
-                              >
-                                <span
-                                  className="shrink-0 rounded px-1 py-0.5 text-[10px] font-bold"
-                                  style={{
-                                    background: item.changeType === "added" ? `${GREEN}20` : item.changeType === "removed" ? `${RED}20` : `${AMBER}20`,
-                                    color: item.changeType === "added" ? GREEN : item.changeType === "removed" ? RED : AMBER,
-                                  }}
-                                >
-                                  {item.changeType === "added" ? "+" : item.changeType === "removed" ? "−" : "~"}
-                                </span>
-                                <span className="font-mono truncate" style={{ color: "oklch(0.85 0.01 286)" }}>
-                                  {item.name}
-                                </span>
-                                <span className="shrink-0 text-[10px]" style={{ color: MUTED }}>[{item.category}]</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Metadata */}
-                      <div className="rounded-lg border p-3 text-xs" style={{ borderColor: BORDER }}>
-                        <h4 className="font-semibold mb-1.5" style={{ color: MUTED }}>Metadata</h4>
-                        <div className="space-y-1 font-mono" style={{ color: "oklch(0.75 0.01 286)" }}>
-                          <div>Anomaly ID: {a.id}</div>
-                          <div>Snapshot ID: {a.snapshotId}</div>
-                          <div>Schedule: {a.scheduleName} (ID: {a.scheduleId})</div>
-                          <div>Agents: {(a.agentIds as string[])?.join(", ") || "—"}</div>
-                          <div>Notification: {a.notificationSent ? "Sent" : "Not sent"}</div>
-                          <div>Detected: {new Date(a.timestamp).toLocaleString()}</div>
-                          {a.acknowledged && a.acknowledgedAtTs && (
-                            <div>Acknowledged: {new Date(a.acknowledgedAtTs).toLocaleString()}</div>
-                          )}
-                          {a.acknowledgeNote && <div>Note: {a.acknowledgeNote}</div>}
-                        </div>
-                      </div>
-
-                      {/* Raw JSON */}
-                      <details className="group">
-                        <summary className="cursor-pointer text-xs font-semibold flex items-center gap-1" style={{ color: MUTED }}>
-                          <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-                          Raw JSON
-                        </summary>
-                        <pre
-                          className="mt-2 max-h-64 overflow-auto rounded-lg border p-3 font-mono text-[10px] leading-relaxed"
-                          style={{ background: "oklch(0.12 0.02 286)", borderColor: BORDER, color: "oklch(0.75 0.01 286)" }}
-                        >
-                          {JSON.stringify(a, null, 2)}
-                        </pre>
-                      </details>
-                    </>
-                  );
-                })()
-              ) : (
-                <div className="text-sm" style={{ color: MUTED }}>Anomaly not found</div>
-              )}
-            </div>
-          </div>
-        </div>
+        <AnomalyDetailPanel
+          anomaly={anomalyDetailQ.data?.anomaly}
+          isLoading={anomalyDetailQ.isLoading}
+          onClose={() => setSelectedAnomalyId(null)}
+          onAcknowledge={(id) => ackMutation.mutate({ id })}
+          ackPending={ackMutation.isPending}
+        />
       )}
 
       {/* ── Detail Slide-over Panel ──────────────────────────────── */}
       {detailSnapshotId !== null && (
-        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setDetailSnapshotId(null)}>
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-          <div
-            className="relative w-full max-w-lg overflow-y-auto border-l shadow-2xl"
-            style={{ background: "oklch(0.14 0.025 286)", borderColor: BORDER }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b px-5 py-4" style={{ background: "oklch(0.14 0.025 286)", borderColor: BORDER }}>
-              <h3 className="font-display text-sm font-semibold">Drift Snapshot Detail</h3>
-              <button onClick={() => setDetailSnapshotId(null)} className="rounded p-1 hover:bg-white/10">
-                <X className="h-4 w-4" style={{ color: MUTED }} />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4">
-              {detailQuery.isLoading ? (
-                <div className="flex h-48 items-center justify-center">
-                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: PURPLE }} />
-                </div>
-              ) : detailQuery.data?.snapshot ? (
-                (() => {
-                  const snap = detailQuery.data.snapshot;
-                  const byCat = snap.byCategory as { packages: { added: number; removed: number; changed: number }; services: { added: number; removed: number; changed: number }; users: { added: number; removed: number; changed: number } } | null;
-                  const topItems = (snap.topDriftItems as Array<{ category: string; agentId: string; name: string; changeType: string; previousValue?: string; currentValue?: string }>) || [];
-
-                  return (
-                    <>
-                      {/* Summary */}
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="rounded-lg border p-3 text-center" style={{ borderColor: BORDER }}>
-                          <div className="text-[10px] uppercase" style={{ color: MUTED }}>Drift</div>
-                          <div className="font-display text-2xl font-bold" style={{ color: snap.driftPercent > 50 ? RED : snap.driftPercent > 20 ? AMBER : CYAN }}>
-                            {formatPct(snap.driftPercent)}
-                          </div>
-                        </div>
-                        <div className="rounded-lg border p-3 text-center" style={{ borderColor: BORDER }}>
-                          <div className="text-[10px] uppercase" style={{ color: MUTED }}>Changes</div>
-                          <div className="font-display text-2xl font-bold" style={{ color: "oklch(0.9 0.005 286)" }}>
-                            {snap.driftCount}
-                          </div>
-                        </div>
-                        <div className="rounded-lg border p-3 text-center" style={{ borderColor: BORDER }}>
-                          <div className="text-[10px] uppercase" style={{ color: MUTED }}>Total</div>
-                          <div className="font-display text-2xl font-bold" style={{ color: "oklch(0.9 0.005 286)" }}>
-                            {snap.totalItems}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Category breakdown */}
-                      {byCat && (
-                        <div>
-                          <h4 className="text-xs font-semibold mb-2" style={{ color: MUTED }}>Category Breakdown</h4>
-                          <div className="space-y-1.5">
-                            {(["packages", "services", "users"] as const).map((cat) => {
-                              const d = byCat[cat];
-                              const total = d.added + d.removed + d.changed;
-                              return (
-                                <div key={cat} className="flex items-center gap-3 text-xs">
-                                  <span className="w-16 capitalize" style={{ color: "oklch(0.85 0.01 286)" }}>{cat}</span>
-                                  <div className="flex gap-2 font-mono" style={{ color: MUTED }}>
-                                    {d.added > 0 && <span style={{ color: GREEN }}>+{d.added}</span>}
-                                    {d.changed > 0 && <span style={{ color: AMBER }}>~{d.changed}</span>}
-                                    {d.removed > 0 && <span style={{ color: RED }}>-{d.removed}</span>}
-                                    {total === 0 && <span>—</span>}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Top drift items */}
-                      {topItems.length > 0 && (
-                        <div>
-                          <h4 className="text-xs font-semibold mb-2" style={{ color: MUTED }}>
-                            Top Changes ({topItems.length})
-                          </h4>
-                          <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
-                            {topItems.map((item, i) => (
-                              <div
-                                key={i}
-                                className="flex items-center gap-2 rounded border px-2 py-1.5 text-xs"
-                                style={{ borderColor: "oklch(0.25 0.02 286 / 30%)" }}
-                              >
-                                <span
-                                  className="shrink-0 rounded px-1 py-0.5 text-[10px] font-bold"
-                                  style={{
-                                    background: item.changeType === "added" ? `${GREEN}20` : item.changeType === "removed" ? `${RED}20` : `${AMBER}20`,
-                                    color: item.changeType === "added" ? GREEN : item.changeType === "removed" ? RED : AMBER,
-                                  }}
-                                >
-                                  {item.changeType === "added" ? "+" : item.changeType === "removed" ? "−" : "~"}
-                                </span>
-                                <span className="font-mono truncate" style={{ color: "oklch(0.85 0.01 286)" }}>
-                                  {item.name}
-                                </span>
-                                <span className="shrink-0 text-[10px]" style={{ color: MUTED }}>
-                                  [{item.category}]
-                                </span>
-                                <span className="shrink-0 font-mono text-[10px]" style={{ color: MUTED }}>
-                                  agent {item.agentId}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Metadata */}
-                      <div className="rounded-lg border p-3 text-xs" style={{ borderColor: BORDER }}>
-                        <h4 className="font-semibold mb-1.5" style={{ color: MUTED }}>Metadata</h4>
-                        <div className="space-y-1 font-mono" style={{ color: "oklch(0.75 0.01 286)" }}>
-                          <div>Snapshot ID: {snap.id}</div>
-                          <div>Schedule ID: {snap.scheduleId}</div>
-                          <div>Baseline ID: {snap.baselineId}</div>
-                          <div>Previous Baseline: {snap.previousBaselineId}</div>
-                          <div>Agents: {(snap.agentIds as string[])?.join(", ")}</div>
-                          <div>Notification: {snap.notificationSent ? "Sent" : "Not sent"}</div>
-                          <div>Captured: {new Date(snap.createdAt).toLocaleString()}</div>
-                        </div>
-                      </div>
-
-                      {/* Raw JSON */}
-                      <details className="group">
-                        <summary className="cursor-pointer text-xs font-semibold flex items-center gap-1" style={{ color: MUTED }}>
-                          <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-                          Raw JSON
-                        </summary>
-                        <pre
-                          className="mt-2 max-h-64 overflow-auto rounded-lg border p-3 font-mono text-[10px] leading-relaxed"
-                          style={{ background: "oklch(0.12 0.02 286)", borderColor: BORDER, color: "oklch(0.75 0.01 286)" }}
-                        >
-                          {JSON.stringify(snap, null, 2)}
-                        </pre>
-                      </details>
-                    </>
-                  );
-                })()
-              ) : (
-                <div className="text-sm" style={{ color: MUTED }}>Snapshot not found</div>
-              )}
-            </div>
-          </div>
-        </div>
+        <SnapshotDetailPanel
+          snapshot={detailQuery.data?.snapshot}
+          isLoading={detailQuery.isLoading}
+          onClose={() => setDetailSnapshotId(null)}
+        />
       )}
     </div>
   );

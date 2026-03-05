@@ -7,7 +7,9 @@
  * - retry: Manually retry a failed notification
  */
 
+import { requireDb } from "../dbGuard";
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { eq, desc, and, gte, sql } from "drizzle-orm";
 import { protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
@@ -91,8 +93,7 @@ export const notificationHistoryRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const db = await getDb();
-      if (!db) return { notifications: [], total: 0 };
+      const db = await requireDb();
 
       const since = new Date(Date.now() - input.days * 24 * 60 * 60 * 1000);
 
@@ -143,7 +144,7 @@ export const notificationHistoryRouter = router({
     .input(z.object({ id: z.number().int() }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
-      if (!db) throw new Error("Database unavailable");
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
 
       // Verify ownership
       const [record] = await db
@@ -153,7 +154,7 @@ export const notificationHistoryRouter = router({
         .limit(1);
 
       if (!record || record.userId !== ctx.user.id) {
-        throw new Error("Notification not found");
+        throw new TRPCError({ code: "NOT_FOUND", message: "Notification not found" });
       }
 
       const result = await retryNotification(input.id);

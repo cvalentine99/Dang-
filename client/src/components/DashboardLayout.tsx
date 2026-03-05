@@ -58,6 +58,8 @@ import {
   ShieldAlert,
   BarChart3,
   GitCompare,
+  Package,
+  Lock,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -69,7 +71,7 @@ import { Button } from "./ui/button";
  * Polls every 30s. Green = online, Red = offline, Amber = disabled.
  */
 /**
- * Alert Queue Badge — shows the number of alerts waiting for Walter analysis.
+ * Alert Queue Badge — shows the number of alerts waiting for structured triage.
  * Clickable to navigate to the queue page.
  */
 function AlertQueueBadge() {
@@ -89,7 +91,7 @@ function AlertQueueBadge() {
         navigate("/alert-queue");
       }}
       className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[10px] font-mono hover:bg-purple-500/30 transition-all"
-      title={`${count} alert${count !== 1 ? "s" : ""} queued for Walter`}
+      title={`${count} alert${count !== 1 ? "s" : ""} queued for structured triage`}
     >
       <Inbox className="h-2.5 w-2.5" />
       <span>{count}</span>
@@ -183,14 +185,16 @@ const menuItems = [
   { icon: ShieldCheck, label: "Compliance", path: "/compliance", group: "Posture" },
   { icon: FileSearch, label: "File Integrity", path: "/fim", group: "Posture" },
   { icon: Monitor, label: "IT Hygiene", path: "/hygiene", group: "Posture" },
+  { icon: Package, label: "Fleet Inventory", path: "/fleet-inventory", group: "Posture" },
   { icon: GitCompare, label: "Drift Analytics", path: "/drift-analytics", group: "Posture", hasAnomalyBadge: true },
   { icon: Server, label: "Cluster Health", path: "/cluster", group: "System" },
   { icon: HeartPulse, label: "System Status", path: "/status", group: "System" },
+  { icon: Lock, label: "Security Explorer", path: "/security", group: "System" },
   { icon: Brain, label: "Security Analyst", path: "/analyst", group: "Intelligence", hasQueueBadge: true },
   { icon: Network, label: "Knowledge Graph", path: "/graph", group: "Intelligence" },
   { icon: FolderSearch, label: "Investigations", path: "/investigations", group: "Intelligence" },
   { icon: Database, label: "Data Pipeline", path: "/pipeline", group: "Intelligence" },
-  { icon: Inbox, label: "Walter Queue", path: "/alert-queue", group: "Intelligence" },
+  { icon: Inbox, label: "Alert Queue", path: "/alert-queue", group: "Intelligence" },
   { icon: Zap, label: "Auto-Queue Rules", path: "/auto-queue-rules", group: "Intelligence" },
   { icon: Workflow, label: "Triage Pipeline", path: "/triage", group: "Intelligence" },
   { icon: Lightbulb, label: "Living Cases", path: "/living-cases", group: "Intelligence" },
@@ -200,8 +204,10 @@ const menuItems = [
   { icon: Gauge, label: "Token Usage", path: "/admin/token-usage", group: "Admin" },
   { icon: UserCog, label: "User Management", path: "/admin/users", group: "Admin" },
   { icon: Settings, label: "Connection Settings", path: "/admin/settings", group: "Admin" },
+  { icon: ShieldAlert, label: "Access Audit", path: "/admin/audit", group: "Admin" },
   { icon: StickyNote, label: "Analyst Notes", path: "/notes", group: "Tools" },
-  { icon: Bot, label: "AI Assistant", path: "/assistant", group: "Tools" },
+  // Removed: /assistant (generic LLM chat without Wazuh KG context) — use /analyst instead
+  // { icon: Bot, label: "AI Assistant", path: "/assistant", group: "Tools" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -408,7 +414,7 @@ function DashboardLayoutContent({
                           {(item as typeof menuItems[number] & { hasAnomalyBadge?: boolean }).hasAnomalyBadge && (
                             <AnomalyBadge />
                           )}
-                          {(item.path === "/analyst" || item.path === "/assistant") && (
+                          {item.path === "/analyst" && (
                             <LLMHealthDot />
                           )}
                         </SidebarMenuButton>

@@ -9,7 +9,7 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { GlassPanel, StatCard, RawJsonViewer } from "@/components/shared";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -38,6 +38,8 @@ import {
   GitBranch,
   Brain,
   Swords,
+  Ticket,
+  ExternalLink,
 } from "lucide-react";
 
 // ── Stage Config ───────────────────────────────────────────────────────────
@@ -53,7 +55,7 @@ const STATUS_CONFIG: Record<string, { icon: typeof CheckCircle2; color: string; 
   completed: { icon: CheckCircle2, color: "text-emerald-400", label: "Completed" },
   failed: { icon: XCircle, color: "text-red-400", label: "Failed" },
   running: { icon: Loader2, color: "text-cyan-400", label: "Running" },
-  partial: { icon: AlertTriangle, color: "text-yellow-400", label: "Partial" },
+  partial: { icon: AlertTriangle, color: "text-yellow-400", label: "Triage Only" },
   pending: { icon: Clock, color: "text-muted-foreground/50", label: "Pending" },
   skipped: { icon: Clock, color: "text-muted-foreground/30", label: "Skipped" },
 };
@@ -75,6 +77,17 @@ export default function PipelineInspector() {
   const runs = data?.runs ?? [];
   const total = data?.total ?? 0;
 
+  // Batch-query ticket artifact counts for visible runs
+  const pipelineRunIds = useMemo(
+    () => runs.map((r: any) => r.id).filter((id: number) => id != null),
+    [runs]
+  );
+  const { data: ticketCountsData } = trpc.splunk.ticketArtifactCounts.useQuery(
+    { pipelineRunIds },
+    { enabled: pipelineRunIds.length > 0 }
+  );
+  const ticketCounts = ticketCountsData?.counts ?? {};
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -95,7 +108,7 @@ export default function PipelineInspector() {
           icon={CheckCircle2}
         />
         <StatCard
-          label="Partial"
+          label="Triage Only"
           value={stats?.partial ?? 0}
           icon={AlertTriangle}
         />
@@ -120,7 +133,8 @@ export default function PipelineInspector() {
       <GlassPanel className="p-4">
         <div className="flex items-center gap-3 flex-wrap">
           <span className="text-xs text-muted-foreground/50 uppercase tracking-wider font-[Space_Grotesk]">Filter:</span>
-          {["all", "running", "completed", "partial", "failed"].map((s) => (
+          {(["all", "running", "completed", "partial", "failed"] as const).map((s) => (
+            // Display labels: "partial" → "Triage Only" for honest semantics
             <button
               key={s}
               onClick={() => { setStatusFilter(s); setPage(0); }}
@@ -130,7 +144,7 @@ export default function PipelineInspector() {
                   : "bg-white/[0.03] border border-white/[0.06] text-muted-foreground/50 hover:text-foreground/70"
               }`}
             >
-              {s.charAt(0).toUpperCase() + s.slice(1)}
+              {s === "partial" ? "Triage Only" : s.charAt(0).toUpperCase() + s.slice(1)}
             </button>
           ))}
           <button
@@ -153,12 +167,16 @@ export default function PipelineInspector() {
         <GlassPanel className="p-8 text-center">
           <Activity className="w-8 h-8 text-muted-foreground/20 mx-auto mb-3" />
           <p className="text-sm text-muted-foreground/40">No pipeline runs found.</p>
-          <p className="text-xs text-muted-foreground/25 mt-1">Pipeline runs are created when alerts enter the Walter Queue with auto-triage enabled.</p>
+          <p className="text-xs text-muted-foreground/25 mt-1">Pipeline runs are created when alerts are processed via Structured Triage from the Alert Queue.</p>
         </GlassPanel>
       ) : (
         <div className="space-y-3">
           {runs.map((run: any) => (
-            <PipelineRunCard key={run.id} run={run} />
+            <PipelineRunCard
+              key={run.id}
+              run={run}
+              ticketCount={ticketCounts[run.id] ?? null}
+            />
           ))}
         </div>
       )}
@@ -193,7 +211,10 @@ export default function PipelineInspector() {
 
 // ── Pipeline Run Card ──────────────────────────────────────────────────────
 
-function PipelineRunCard({ run }: { run: any }) {
+function PipelineRunCard({ run, ticketCount }: {
+  run: any;
+  ticketCount: { total: number; success: number; failed: number } | null;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [, navigate] = useLocation();
 
@@ -257,6 +278,30 @@ function PipelineRunCard({ run }: { run: any }) {
             }`}>
               {overallStatus.label}
             </span>
+            {/* Tickets badge — links to Alert Queue audit panel */}
+            {ticketCount && ticketCount.total > 0 && (
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded border flex items-center gap-1 cursor-pointer transition-colors ${
+                  ticketCount.failed > 0 && ticketCount.success === 0
+                    ? "bg-red-500/10 border-red-500/20 text-red-300 hover:bg-red-500/20"
+                    : ticketCount.failed > 0
+                    ? "bg-amber-500/10 border-amber-500/20 text-amber-300 hover:bg-amber-500/20"
+                    : "bg-violet-500/10 border-violet-500/20 text-violet-300 hover:bg-violet-500/20"
+                }`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/alert-queue?tab=tickets&pipelineRunId=${run.id}`);
+                }}
+                title={`${ticketCount.success} successful, ${ticketCount.failed} failed — click to view in Alert Queue`}
+              >
+                <Ticket className="w-3 h-3" />
+                {ticketCount.total}
+                {ticketCount.failed > 0 && (
+                  <span className="text-[9px] opacity-70">({ticketCount.failed} failed)</span>
+                )}
+                <ExternalLink className="w-2.5 h-2.5 opacity-50" />
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3 mt-1">
             {run.alertId && (
@@ -381,9 +426,9 @@ function PipelineRunCard({ run }: { run: any }) {
             </div>
           )}
 
-          {/* Replay Button for failed/partial runs */}
+          {/* Continue Pipeline for partial (triage-only) runs / Replay for failed runs */}
           {(run.status === "failed" || run.status === "partial") && (
-            <ReplayButton runId={run.runId} />
+            <PipelineContinuationButton runId={run.runId} runStatus={run.status} />
           )}
 
           {/* Direction 6: Artifacts Drill-Down */}
@@ -394,7 +439,11 @@ function PipelineRunCard({ run }: { run: any }) {
             <span>Run ID: <span className="font-mono">{run.runId}</span></span>
             {run.queueItemId && <span>Queue Item: <span className="font-mono">#{run.queueItemId}</span></span>}
             <span>Started: {run.startedAt ? new Date(run.startedAt).toLocaleString() : "—"}</span>
-            {run.completedAt && <span>Completed: {new Date(run.completedAt).toLocaleString()}</span>}
+            {run.completedAt ? (
+              <span>Completed: {new Date(run.completedAt).toLocaleString()}</span>
+            ) : run.status === "partial" ? (
+              <span className="text-yellow-400/60">Triage complete — awaiting analyst advancement</span>
+            ) : null}
           </div>
         </div>
       )}
@@ -402,53 +451,84 @@ function PipelineRunCard({ run }: { run: any }) {
   );
 }
 
-// ── Replay Button ─────────────────────────────────────────────────────────
+// ── Pipeline Continuation ───────────────────────────────────────────────────
+// Handles both:
+//   - "Continue Pipeline" for partial/triage-only runs (first pending stage)
+//   - "Replay Pipeline" for failed runs (first failed stage)
+// Both delegate to the shared executeResumePipeline helper on the backend.
 
-function ReplayButton({ runId }: { runId: string }) {
+function PipelineContinuationButton({ runId, runStatus }: { runId: string; runStatus: string }) {
   const utils = trpc.useUtils();
-  const replay = trpc.pipeline.replayPipelineRun.useMutation({
+  const isPartial = runStatus === "partial";
+
+  // Semantic call-site alignment:
+  //   partial runs → continuePipelineRun ("Continue Pipeline")
+  //   failed runs  → resumePipelineRun  ("Replay Pipeline")
+  const continueMutation = trpc.pipeline.continuePipelineRun.useMutation({
     onSuccess: () => {
       utils.pipeline.listPipelineRuns.invalidate();
       utils.pipeline.pipelineRunStats.invalidate();
     },
   });
+  const resumeMutation = trpc.pipeline.resumePipelineRun.useMutation({
+    onSuccess: () => {
+      utils.pipeline.listPipelineRuns.invalidate();
+      utils.pipeline.pipelineRunStats.invalidate();
+    },
+  });
+  const mutation = isPartial ? continueMutation : resumeMutation;
+
+  // Precise language: "Continue Pipeline" for triage-only partial runs,
+  // "Replay Pipeline" for failed runs.
+  const title = isPartial ? "Continue Pipeline" : "Replay Pipeline";
+  const description = isPartial
+    ? "Advance from triage to correlation, hypothesis, and response actions. Triage stage is preserved."
+    : "Re-run from the first failed stage. Completed stages are reused.";
+  const buttonLabel = isPartial ? "Continue" : "Replay";
+  const pendingLabel = isPartial ? "Continuing..." : "Replaying...";
+  const ButtonIcon = isPartial ? ArrowRight : Zap;
+  const borderColor = isPartial ? "border-cyan-500/20" : "border-violet-500/20";
+  const bgColor = isPartial ? "bg-cyan-500/5" : "bg-violet-500/5";
+  const accentColor = isPartial ? "text-cyan-300" : "text-violet-300";
+  const accentIcon = isPartial ? "text-cyan-400" : "text-violet-400";
+  const btnBg = isPartial ? "bg-cyan-500/15 border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/25" : "bg-violet-500/15 border-violet-500/30 text-violet-300 hover:bg-violet-500/25";
 
   return (
-    <div className="p-3 rounded-lg bg-violet-500/5 border border-violet-500/20">
+    <div className={`p-3 rounded-lg ${bgColor} border ${borderColor}`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <RefreshCw className="w-3.5 h-3.5 text-violet-400" />
+          {isPartial ? <ArrowRight className={`w-3.5 h-3.5 ${accentIcon}`} /> : <RefreshCw className={`w-3.5 h-3.5 ${accentIcon}`} />}
           <div>
-            <span className="text-xs font-semibold text-violet-300 font-[Space_Grotesk]">Replay Pipeline</span>
+            <span className={`text-xs font-semibold ${accentColor} font-[Space_Grotesk]`}>{title}</span>
             <p className="text-[10px] text-muted-foreground/40 mt-0.5">
-              Re-run from the first failed stage. Completed stages are reused.
+              {description}
             </p>
           </div>
         </div>
         <button
-          onClick={() => replay.mutate({ runId })}
-          disabled={replay.isPending}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-500/15 border border-violet-500/30 text-violet-300 hover:bg-violet-500/25 transition-colors disabled:opacity-40 flex items-center gap-1.5"
+          onClick={() => mutation.mutate({ runId })}
+          disabled={mutation.isPending}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors disabled:opacity-40 flex items-center gap-1.5 ${btnBg}`}
         >
-          {replay.isPending ? (
-            <><Loader2 className="w-3 h-3 animate-spin" /> Replaying...</>
+          {mutation.isPending ? (
+            <><Loader2 className="w-3 h-3 animate-spin" /> {pendingLabel}</>
           ) : (
-            <><Zap className="w-3 h-3" /> Replay</>
+            <><ButtonIcon className="w-3 h-3" /> {buttonLabel}</>
           )}
         </button>
       </div>
-      {replay.isSuccess && replay.data && (
+      {mutation.isSuccess && mutation.data && (
         <div className="mt-2 p-2 rounded bg-emerald-500/5 border border-emerald-500/20">
-          <span className="text-[10px] text-emerald-300">Replay started: </span>
-          <span className="text-[10px] font-mono text-emerald-300/70">{replay.data.replayRunId}</span>
+          <span className="text-[10px] text-emerald-300">{isPartial ? "Pipeline continued: " : "Pipeline resumed: "}</span>
+          <span className="text-[10px] font-mono text-emerald-300/70">{mutation.data.resumedRunId}</span>
           <span className="text-[10px] text-muted-foreground/40 ml-2">
-            from stage: {replay.data.startedFromStage}
+            from stage: {mutation.data.startedFromStage}
           </span>
         </div>
       )}
-      {replay.isError && (
+      {mutation.isError && (
         <div className="mt-2 p-2 rounded bg-red-500/5 border border-red-500/20">
-          <span className="text-[10px] text-red-300">{replay.error.message}</span>
+          <span className="text-[10px] text-red-300">{mutation.error.message}</span>
         </div>
       )}
     </div>

@@ -24,17 +24,48 @@
  *   Authorization header. Sending any request body (even empty JSON `{}`)
  *   violates the API contract and may cause authentication failures.
  *
+ * Rate limiting:
+ *   Two layers enforce fair usage:
+ *   1. Global rate limit — hard ceiling per endpoint group (protects Wazuh)
+ *   2. Per-user rate limit — prevents a single analyst from exhausting the
+ *      shared budget. Keyed by ctx.user.id passed through WazuhGetOptions.
+ *
  * Responsibilities:
  * - Manage JWT token lifecycle (obtain, cache, refresh)
  * - Enforce read-only access (GET only)
- * - Apply per-endpoint rate limiting
+ * - Apply global + per-user rate limiting
  * - Strip sensitive fields before returning data
  * - Never expose tokens to the browser
  * - Fail closed on auth/network errors
  */
 
-import axios, { AxiosInstance } from "axios";
+import axios, { AxiosInstance, AxiosError } from "axios";
 import https from "https";
+
+/**
+ * Extract meaningful error detail from Axios errors instead of losing
+ * the actual failure reason (ECONNREFUSED, ETIMEDOUT, 401, 403, TLS, etc.).
+ */
+export function extractWazuhErrorDetail(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    const ae = err as AxiosError;
+    if (ae.response) {
+      const status = ae.response.status;
+      const body = typeof ae.response.data === "object" && ae.response.data !== null
+        ? JSON.stringify(ae.response.data).slice(0, 200)
+        : String(ae.response.data ?? "").slice(0, 200);
+      return `HTTP ${status} from ${ae.config?.url ?? "unknown"} — ${body}`;
+    }
+    if (ae.code === "ECONNREFUSED") return `Connection refused at ${ae.config?.baseURL ?? "unknown"} — is Wazuh Manager running?`;
+    if (ae.code === "ETIMEDOUT" || ae.code === "ECONNABORTED") return `Connection timed out to ${ae.config?.baseURL ?? "unknown"} — network issue or firewall`;
+    if (ae.code === "ENOTFOUND") return `DNS resolution failed for ${ae.config?.baseURL ?? "unknown"} — check hostname`;
+    if (ae.code === "CERT_HAS_EXPIRED" || ae.code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE") return `TLS certificate error: ${ae.code}`;
+    if (ae.code) return `Network error ${ae.code}: ${ae.message}`;
+    return ae.message || "Unknown Axios error";
+  }
+  const msg = (err as Error)?.message;
+  return msg || "Unknown error (no message)";
+}
 
 // ── Token state ───────────────────────────────────────────────────────────────
 // We store the JWT and its expiration from the Wazuh API response.
@@ -48,25 +79,101 @@ interface CachedToken {
 
 let cachedToken: CachedToken | null = null;
 
-// ── Rate-limit state (simple token bucket per endpoint group) ─────────────────
-const rateLimitState: Record<string, { count: number; resetAt: number }> = {};
+// ── Rate-limit state ────────────────────────────────────────────────────────
+
+interface RateBucket {
+  count: number;
+  resetAt: number;
+}
+
+// Global rate limit state (per endpoint group)
+const globalRateLimitState: Record<string, RateBucket> = {};
+
+// Per-user rate limit state: key = `${userId}:${group}`
+const perUserRateLimitState: Record<string, RateBucket> = {};
+
 const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
-const RATE_LIMITS: Record<string, number> = {
+
+// Global limits per endpoint group (hard ceiling — protects Wazuh)
+const GLOBAL_RATE_LIMITS: Record<string, number> = {
   default: 60,
   alerts: 30,
   vulnerabilities: 20,
   syscheck: 20,
+  readiness: 10, // Low ceiling — readiness checks are lightweight and periodic
 };
 
-function checkRateLimit(group: string): void {
-  const limit = RATE_LIMITS[group] ?? RATE_LIMITS.default;
+// Per-user limits per endpoint group (fraction of global — ensures fairness)
+// Default: 50% of the global limit per user
+const PER_USER_RATE_LIMITS: Record<string, number> = {
+  default: 30,
+  alerts: 15,
+  vulnerabilities: 10,
+  syscheck: 10,
+  readiness: 5, // Low per-user ceiling — readiness polls every 30s
+};
+
+/**
+ * Check the global rate limit for an endpoint group.
+ * Throws if the global ceiling is exceeded.
+ */
+function checkGlobalRateLimit(group: string): { retryAfterSeconds: number } | null {
+  const limit = GLOBAL_RATE_LIMITS[group] ?? GLOBAL_RATE_LIMITS.default;
   const now = Date.now();
-  if (!rateLimitState[group] || now > rateLimitState[group].resetAt) {
-    rateLimitState[group] = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+  if (!globalRateLimitState[group] || now > globalRateLimitState[group].resetAt) {
+    globalRateLimitState[group] = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
   }
-  rateLimitState[group].count++;
-  if (rateLimitState[group].count > limit) {
-    throw new Error(`Rate limit exceeded for endpoint group '${group}'. Retry after ${Math.ceil((rateLimitState[group].resetAt - now) / 1000)}s.`);
+  globalRateLimitState[group].count++;
+  if (globalRateLimitState[group].count > limit) {
+    return { retryAfterSeconds: Math.ceil((globalRateLimitState[group].resetAt - now) / 1000) };
+  }
+  return null;
+}
+
+/**
+ * Check the per-user rate limit for an endpoint group.
+ * Throws if the user's individual budget is exceeded.
+ */
+function checkPerUserRateLimit(userId: string | number, group: string): { retryAfterSeconds: number } | null {
+  const limit = PER_USER_RATE_LIMITS[group] ?? PER_USER_RATE_LIMITS.default;
+  const key = `${userId}:${group}`;
+  const now = Date.now();
+  if (!perUserRateLimitState[key] || now > perUserRateLimitState[key].resetAt) {
+    perUserRateLimitState[key] = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+  }
+  perUserRateLimitState[key].count++;
+  if (perUserRateLimitState[key].count > limit) {
+    return { retryAfterSeconds: Math.ceil((perUserRateLimitState[key].resetAt - now) / 1000) };
+  }
+  return null;
+}
+
+/**
+ * Enforce both global and per-user rate limits.
+ * Per-user is checked first so individual analysts get a clear signal
+ * before the global ceiling is hit.
+ */
+function checkRateLimit(group: string, userId?: string | number): void {
+  // Per-user check (if userId is provided — it will be for all protectedProcedure calls)
+  if (userId !== undefined) {
+    const perUserResult = checkPerUserRateLimit(userId, group);
+    if (perUserResult) {
+      throw new Error(
+        `Per-user rate limit exceeded for endpoint group '${group}'. ` +
+        `Retry-After: ${perUserResult.retryAfterSeconds}s. ` +
+        `Your individual limit is ${PER_USER_RATE_LIMITS[group] ?? PER_USER_RATE_LIMITS.default} requests per minute.`
+      );
+    }
+  }
+
+  // Global check (always enforced)
+  const globalResult = checkGlobalRateLimit(group);
+  if (globalResult) {
+    throw new Error(
+      `Global rate limit exceeded for endpoint group '${group}'. ` +
+      `Retry-After: ${globalResult.retryAfterSeconds}s. ` +
+      `The system-wide limit is ${GLOBAL_RATE_LIMITS[group] ?? GLOBAL_RATE_LIMITS.default} requests per minute.`
+    );
   }
 }
 
@@ -76,7 +183,6 @@ const STRIP_FIELDS = new Set([
   "token",
   "secret",
   "api_key",
-  "key",
   "auth",
   "credential",
 ]);
@@ -172,15 +278,17 @@ export interface WazuhGetOptions {
   path: string;
   params?: Record<string, string | number | boolean | undefined>;
   rateLimitGroup?: string;
+  /** User ID for per-user rate limiting. Passed from ctx.user.id in tRPC procedures. */
+  userId?: string | number;
 }
 
 export async function wazuhGet(
   config: WazuhConfig,
   options: WazuhGetOptions
 ): Promise<unknown> {
-  const { path, params = {}, rateLimitGroup = "default" } = options;
+  const { path, params = {}, rateLimitGroup = "default", userId } = options;
 
-  checkRateLimit(rateLimitGroup);
+  checkRateLimit(rateLimitGroup, userId);
 
   const baseURL = `https://${config.host}:${config.port}`;
   let token: string;
@@ -188,7 +296,7 @@ export async function wazuhGet(
   try {
     token = await getToken(baseURL, config.user, config.pass);
   } catch (err) {
-    throw new Error(`Wazuh auth error: ${(err as Error).message}`);
+    throw new Error(`Wazuh auth error: ${extractWazuhErrorDetail(err)}`);
   }
 
   const instance = createAxiosInstance(baseURL);
@@ -267,3 +375,20 @@ export async function isWazuhEffectivelyConfigured(): Promise<boolean> {
   const config = await getEffectiveWazuhConfig();
   return config !== null;
 }
+
+// ── Exported for testing ─────────────────────────────────────────────────────
+export const _testing = {
+  checkGlobalRateLimit,
+  checkPerUserRateLimit,
+  checkRateLimit,
+  globalRateLimitState,
+  perUserRateLimitState,
+  GLOBAL_RATE_LIMITS,
+  PER_USER_RATE_LIMITS,
+  RATE_LIMIT_WINDOW_MS,
+  /** Reset all rate limit state (for tests only) */
+  resetRateLimits() {
+    for (const key of Object.keys(globalRateLimitState)) delete globalRateLimitState[key];
+    for (const key of Object.keys(perUserRateLimitState)) delete perUserRateLimitState[key];
+  },
+};

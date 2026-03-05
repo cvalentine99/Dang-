@@ -14,7 +14,9 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
+import { requireDb } from "../dbGuard";
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { protectedProcedure, router } from "../_core/trpc";
 import {
   runTriageAgent,
@@ -40,6 +42,7 @@ import {
   generateReport,
   type ReportType,
 } from "./livingCaseReportService";
+import { executeResumePipeline } from "./resumePipelineHelper";
 import { getDb } from "../db";
 import { triageObjects, alertQueue, correlationBundles, livingCaseState, pipelineRuns, responseActions } from "../../drizzle/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
@@ -221,7 +224,7 @@ export const pipelineRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const db = await getDb();
-      if (!db) throw new Error("Database not available");
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
 
       // Find the triage object
       const [row] = await db
@@ -276,8 +279,7 @@ export const pipelineRouter = router({
   getFeedback: protectedProcedure
     .input(z.object({ triageId: z.string() }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return { found: false as const };
+      const db = await requireDb();
 
       const [row] = await db
         .select({
@@ -312,8 +314,7 @@ export const pipelineRouter = router({
   /** Get feedback statistics — how many triages confirmed, overridden, etc. */
   feedbackStats: protectedProcedure
     .query(async () => {
-      const db = await getDb();
-      if (!db) return { total: 0, confirmed: 0, overridden: 0, pending: 0 };
+      const db = await requireDb();
 
       const [stats] = await db
         .select({
@@ -340,8 +341,7 @@ export const pipelineRouter = router({
    */
   feedbackAnalytics: protectedProcedure
     .query(async () => {
-      const db = await getDb();
-      if (!db) return null;
+      const db = await requireDb();
 
       // 1. Overall feedback coverage
       const [coverage] = await db.select({
@@ -435,7 +435,7 @@ export const pipelineRouter = router({
     }),
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // AUTO-TRIAGE ON WALTER QUEUE INTAKE
+  // AUTO-TRIAGE ON QUEUE INTAKE
   // ═══════════════════════════════════════════════════════════════════════════
 
   /** Trigger auto-triage on a queued alert (runs triage pipeline in background). */
@@ -445,7 +445,7 @@ export const pipelineRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const db = await getDb();
-      if (!db) throw new Error("Database not available");
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
 
       // Get the queue item
       const [item] = await db
@@ -541,8 +541,7 @@ export const pipelineRouter = router({
   getAutoTriageStatus: protectedProcedure
     .input(z.object({ queueItemId: z.number().int() }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return { found: false as const };
+      const db = await requireDb();
 
       const [item] = await db
         .select({
@@ -608,6 +607,7 @@ export const pipelineRouter = router({
           latencyMs: result.latencyMs,
           tokensUsed: result.tokensUsed,
           isNewSession: result.isNewSession,
+          materializePartialFailure: result.materializePartialFailure,
         };
       } catch (err) {
         return {
@@ -672,7 +672,7 @@ export const pipelineRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const db = await getDb();
-      if (!db) throw new Error("Database not available");
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
 
       const [row] = await db
         .select()
@@ -716,7 +716,7 @@ export const pipelineRouter = router({
   autoTriageAllPending: protectedProcedure
     .mutation(async ({ ctx }) => {
       const db = await getDb();
-      if (!db) throw new Error("Database not available");
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
 
       // Get all queued items without a triage
       const pendingItems = await db
@@ -831,7 +831,7 @@ export const pipelineRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const db = await getDb();
-      if (!db) throw new Error("Database not available");
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
 
       const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       const alertId = String(input.rawAlert.id ?? input.rawAlert.alertId ?? "unknown");
@@ -882,7 +882,7 @@ export const pipelineRouter = router({
         });
 
         if (!triageResult.success || !triageResult.triageId) {
-          throw new Error(triageResult.error ?? "Triage failed");
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: triageResult.error ?? "Triage failed" });
         }
 
         result.stages.triage = {
@@ -974,10 +974,14 @@ export const pipelineRouter = router({
 
         // Response actions are already materialized by the hypothesis agent
         const actionIds = hypoResult.materializedActionIds ?? [];
+        const partialFailure = hypoResult.materializePartialFailure;
         result.stages.responseActions = {
-          status: actionIds.length > 0 ? "completed" : "skipped",
+          status: partialFailure
+            ? "partial"
+            : actionIds.length > 0 ? "completed" : "skipped",
           count: actionIds.length,
           actionIds,
+          ...(partialFailure ? { partialFailure } : {}),
         };
 
         await db.update(pipelineRuns).set({
@@ -1014,8 +1018,7 @@ export const pipelineRouter = router({
   getPipelineRun: protectedProcedure
     .input(z.object({ runId: z.string() }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return null;
+      const db = await requireDb();
       const [row] = await db
         .select()
         .from(pipelineRuns)
@@ -1032,8 +1035,7 @@ export const pipelineRouter = router({
       status: z.enum(["running", "completed", "failed", "partial"]).optional(),
     }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return { runs: [], total: 0 };
+      const db = await requireDb();
 
       const conditions = input.status
         ? [eq(pipelineRuns.status, input.status)]
@@ -1061,8 +1063,7 @@ export const pipelineRouter = router({
   /** Pipeline run stats. */
   pipelineRunStats: protectedProcedure
     .query(async () => {
-      const db = await getDb();
-      if (!db) return null;
+      const db = await requireDb();
 
       const [stats] = await db.select({
         total: sql<number>`COUNT(*)`,
@@ -1077,274 +1078,60 @@ export const pipelineRouter = router({
     }),
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // REPORT GENERATION
+  // PIPELINE CONTINUATION / REPLAY
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**
-   * Replay a failed or partial pipeline run from the first failed stage.
+   * Resume Pipeline Run — unified mutation for both failed-run replay and partial-run continuation.
+   *
+   * This is the core implementation. Two semantic aliases expose it:
+   *   - `resumePipelineRun` — canonical name (replays failed stages OR continues pending stages)
+   *   - `continuePipelineRun` — semantic alias for partial/triage-only runs (same implementation)
+   *
+   * Resumes a failed or partial pipeline run from a specified (or auto-detected) stage.
    * Re-uses artifacts from completed stages (triage ID, correlation ID) and
-   * re-runs only the stages that failed or were not reached.
+   * re-runs only the stages that failed or were not yet reached.
+   *
+   * Stage detection priority:
+   *   1. Explicit fromStage override (if provided by caller)
+   *   2. First failed stage (for failed runs — "replay" semantics)
+   *   3. First pending stage (for partial/triage-only runs — "continue" semantics)
+   *   4. Throws if no actionable stage found (run already completed successfully)
+   *
+   * Authorization: requires authenticated user.
+   * The new run is attributed to the calling user via triggeredBy.
    */
-  replayPipelineRun: protectedProcedure
+  resumePipelineRun: protectedProcedure
     .input(z.object({
       runId: z.string(),
       fromStage: z.enum(["triage", "correlation", "hypothesis"]).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const db = await getDb();
-      if (!db) throw new Error("Database not available");
+      return executeResumePipeline(input, ctx, "replay");
+    }),
 
-      // 1. Fetch the original run
-      const [originalRun] = await db
-        .select()
-        .from(pipelineRuns)
-        .where(eq(pipelineRuns.runId, input.runId))
-        .limit(1);
-
-      if (!originalRun) {
-        throw new Error(`Pipeline run '${input.runId}' not found`);
-      }
-
-      if (originalRun.status === "running") {
-        throw new Error("Cannot replay a currently running pipeline");
-      }
-
-      // 2. Determine which stage to start from
-      const stageOrder = ["triage", "correlation", "hypothesis"] as const;
-      let startStage = input.fromStage;
-
-      if (!startStage) {
-        // Auto-detect: find the first failed stage
-        if (originalRun.triageStatus === "failed") startStage = "triage";
-        else if (originalRun.correlationStatus === "failed") startStage = "correlation";
-        else if (originalRun.hypothesisStatus === "failed") startStage = "hypothesis";
-        else if (originalRun.responseActionsStatus === "failed") startStage = "hypothesis"; // re-run hypothesis to re-materialize
-        else {
-          throw new Error("No failed stage found — pipeline completed successfully");
-        }
-      }
-
-      // 3. Validate we have the prerequisites for the starting stage
-      const startIdx = stageOrder.indexOf(startStage);
-      if (startStage === "correlation" && !originalRun.triageId) {
-        throw new Error("Cannot replay from correlation — no triage ID from original run");
-      }
-      if (startStage === "hypothesis" && !originalRun.correlationId) {
-        throw new Error("Cannot replay from hypothesis — no correlation ID from original run");
-      }
-
-      // 4. Create a new pipeline run record for the replay
-      const replayRunId = `replay-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-      const startTime = Date.now();
-
-      const [replayRow] = await db.insert(pipelineRuns).values({
-        runId: replayRunId,
-        queueItemId: originalRun.queueItemId,
-        alertId: originalRun.alertId,
-        currentStage: startStage,
-        status: "running",
-        triggeredBy: `user:${ctx.user.id}`,
-        // Carry forward completed stages
-        triageId: startIdx > 0 ? originalRun.triageId : null,
-        triageStatus: startIdx > 0 ? "completed" : "pending",
-        triageLatencyMs: startIdx > 0 ? originalRun.triageLatencyMs : null,
-        correlationId: startIdx > 1 ? originalRun.correlationId : null,
-        correlationStatus: startIdx > 1 ? "completed" : (startIdx > 0 ? "pending" : "pending"),
-        correlationLatencyMs: startIdx > 1 ? originalRun.correlationLatencyMs : null,
-      }).$returningId();
-
-      const result: {
-        replayRunId: string;
-        originalRunId: string;
-        startedFromStage: string;
-        stages: {
-          triage: { status: string; triageId?: string; latencyMs?: number; error?: string; reused?: boolean };
-          correlation: { status: string; correlationId?: string; latencyMs?: number; error?: string; reused?: boolean };
-          hypothesis: { status: string; caseId?: number; sessionId?: number; latencyMs?: number; error?: string };
-          responseActions: { status: string; count?: number; actionIds?: string[]; error?: string };
-        };
-        totalLatencyMs: number;
-        status: string;
-      } = {
-        replayRunId,
-        originalRunId: input.runId,
-        startedFromStage: startStage,
-        stages: {
-          triage: startIdx > 0
-            ? { status: "completed", triageId: originalRun.triageId ?? undefined, reused: true }
-            : { status: "pending" },
-          correlation: startIdx > 1
-            ? { status: "completed", correlationId: originalRun.correlationId ?? undefined, reused: true }
-            : { status: "pending" },
-          hypothesis: { status: "pending" },
-          responseActions: { status: "pending" },
-        },
-        totalLatencyMs: 0,
-        status: "running",
-      };
-
-      let currentTriageId = originalRun.triageId;
-      let currentCorrelationId = originalRun.correlationId;
-
-      // ── Stage 1: Triage (if needed) ─────────────────────────────────────
-      if (startIdx <= 0) {
-        try {
-          // We need the original raw alert — fetch from queue or triage
-          let rawAlert: Record<string, unknown> | null = null;
-
-          if (originalRun.queueItemId) {
-            const [qItem] = await db.select().from(alertQueue).where(eq(alertQueue.id, originalRun.queueItemId)).limit(1);
-            rawAlert = qItem?.rawJson as Record<string, unknown> | null;
-          }
-
-          if (!rawAlert && originalRun.triageId) {
-            // Fetch the triage object and extract raw alert from triageData
-            const [triageRow] = await db.select().from(triageObjects).where(eq(triageObjects.triageId, originalRun.triageId)).limit(1);
-            const triageData = triageRow?.triageData as any;
-            rawAlert = triageData?.rawAlert as Record<string, unknown> | null;
-          }
-
-          if (!rawAlert) {
-            throw new Error("Cannot replay triage — original raw alert not found");
-          }
-
-          await db.update(pipelineRuns)
-            .set({ currentStage: "triage", triageStatus: "running" })
-            .where(eq(pipelineRuns.id, replayRow.id));
-
-          const triageResult = await runTriageAgent({
-            rawAlert,
-            userId: ctx.user.id,
-            alertQueueItemId: originalRun.queueItemId ?? undefined,
-          });
-
-          if (!triageResult.success || !triageResult.triageId) {
-            throw new Error(triageResult.error ?? "Triage failed");
-          }
-
-          currentTriageId = triageResult.triageId;
-          result.stages.triage = {
-            status: "completed",
-            triageId: triageResult.triageId,
-            latencyMs: triageResult.latencyMs,
-          };
-
-          await db.update(pipelineRuns).set({
-            triageId: triageResult.triageId,
-            triageStatus: "completed",
-            triageLatencyMs: triageResult.latencyMs,
-            currentStage: "correlation",
-          }).where(eq(pipelineRuns.id, replayRow.id));
-        } catch (err) {
-          result.stages.triage = { status: "failed", error: (err as Error).message };
-          result.status = "partial";
-          await db.update(pipelineRuns).set({
-            triageStatus: "failed",
-            status: "partial",
-            error: (err as Error).message,
-            totalLatencyMs: Date.now() - startTime,
-            completedAt: new Date(),
-          }).where(eq(pipelineRuns.id, replayRow.id));
-          result.totalLatencyMs = Date.now() - startTime;
-          return result;
-        }
-      }
-
-      // ── Stage 2: Correlation (if needed) ────────────────────────────────
-      if (startIdx <= 1) {
-        try {
-          if (!currentTriageId) throw new Error("No triage ID available for correlation");
-
-          await db.update(pipelineRuns)
-            .set({ correlationStatus: "running", currentStage: "correlation" })
-            .where(eq(pipelineRuns.id, replayRow.id));
-
-          const corrResult = await runCorrelationAgent({
-            triageId: currentTriageId,
-          });
-
-          currentCorrelationId = corrResult.correlationId;
-          result.stages.correlation = {
-            status: "completed",
-            correlationId: corrResult.correlationId,
-            latencyMs: corrResult.latencyMs,
-          };
-
-          await db.update(pipelineRuns).set({
-            correlationId: corrResult.correlationId,
-            correlationStatus: "completed",
-            correlationLatencyMs: corrResult.latencyMs,
-            currentStage: "hypothesis",
-          }).where(eq(pipelineRuns.id, replayRow.id));
-        } catch (err) {
-          result.stages.correlation = { status: "failed", error: (err as Error).message };
-          result.status = "partial";
-          await db.update(pipelineRuns).set({
-            correlationStatus: "failed",
-            status: "partial",
-            error: (err as Error).message,
-            totalLatencyMs: Date.now() - startTime,
-            completedAt: new Date(),
-          }).where(eq(pipelineRuns.id, replayRow.id));
-          result.totalLatencyMs = Date.now() - startTime;
-          return result;
-        }
-      }
-
-      // ── Stage 3: Hypothesis + Response Actions ──────────────────────────
-      try {
-        if (!currentCorrelationId) throw new Error("No correlation ID available for hypothesis");
-
-        await db.update(pipelineRuns)
-          .set({ hypothesisStatus: "running", currentStage: "hypothesis" })
-          .where(eq(pipelineRuns.id, replayRow.id));
-
-        const hypoResult = await runHypothesisAgent({
-          correlationId: currentCorrelationId,
-        });
-
-        result.stages.hypothesis = {
-          status: "completed",
-          caseId: hypoResult.caseId,
-          sessionId: hypoResult.sessionId,
-          latencyMs: hypoResult.latencyMs,
-        };
-
-        const actionIds = hypoResult.materializedActionIds ?? [];
-        result.stages.responseActions = {
-          status: actionIds.length > 0 ? "completed" : "skipped",
-          count: actionIds.length,
-          actionIds,
-        };
-
-        await db.update(pipelineRuns).set({
-          livingCaseId: hypoResult.caseId,
-          hypothesisStatus: "completed",
-          hypothesisLatencyMs: hypoResult.latencyMs,
-          responseActionsCount: actionIds.length,
-          responseActionsStatus: actionIds.length > 0 ? "completed" : "skipped",
-          currentStage: "completed",
-          status: "completed",
-          totalLatencyMs: Date.now() - startTime,
-          completedAt: new Date(),
-        }).where(eq(pipelineRuns.id, replayRow.id));
-      } catch (err) {
-        result.stages.hypothesis = { status: "failed", error: (err as Error).message };
-        result.status = "partial";
-        await db.update(pipelineRuns).set({
-          hypothesisStatus: "failed",
-          status: "partial",
-          error: (err as Error).message,
-          totalLatencyMs: Date.now() - startTime,
-          completedAt: new Date(),
-        }).where(eq(pipelineRuns.id, replayRow.id));
-        result.totalLatencyMs = Date.now() - startTime;
-        return result;
-      }
-
-      result.totalLatencyMs = Date.now() - startTime;
-      result.status = "completed";
-      return result;
+  /**
+   * continuePipelineRun — semantic alias for resumePipelineRun.
+   *
+   * Used by the UI "Continue Pipeline" button for partial/triage-only runs.
+   * Identical implementation to resumePipelineRun — both resolve to the same
+   * stage-detection logic (failed stages first, then pending stages).
+   *
+   * This alias exists so the UI call site reads naturally:
+   *   - partial runs → trpc.pipeline.continuePipelineRun.useMutation()
+   *   - failed runs  → trpc.pipeline.resumePipelineRun.useMutation()
+   *
+   * Implementation note: shares the identical mutation handler as resumePipelineRun.
+   * Both are defined inline with the same logic to avoid circular self-reference.
+   * If the core logic changes, update both procedures.
+   */
+  continuePipelineRun: protectedProcedure
+    .input(z.object({
+      runId: z.string(),
+      fromStage: z.enum(["triage", "correlation", "hypothesis"]).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      return executeResumePipeline(input, ctx, "continue");
     }),
 
   /**
@@ -1356,8 +1143,7 @@ export const pipelineRouter = router({
   getPipelineArtifacts: protectedProcedure
     .input(z.object({ runId: z.string() }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return null;
+      const db = await requireDb();
 
       // 1. Fetch the pipeline run
       const [run] = await db

@@ -16,8 +16,8 @@
 
 import { invokeLLMWithFallback } from "../llm/llmService";
 import { getDb } from "../db";
-import { triageObjects, investigationSessions } from "../../drizzle/schema";
-import { eq, desc, and, or, like, sql } from "drizzle-orm";
+import { triageObjects, investigationSessions, correlationBundles } from "../../drizzle/schema";
+import { eq, desc, and, or, like, sql, getTableColumns } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import type {
   TriageObject,
@@ -519,10 +519,18 @@ export async function listTriages(opts: {
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
   const [rows, countResult] = await Promise.all([
-    db.select().from(triageObjects).where(where).orderBy(desc(triageObjects.createdAt)).limit(opts.limit ?? 50).offset(opts.offset ?? 0),
+    db.select({
+      ...getTableColumns(triageObjects),
+      correlationBundleId: correlationBundles.correlationId,
+    })
+      .from(triageObjects)
+      .leftJoin(correlationBundles, eq(correlationBundles.sourceTriageId, triageObjects.triageId))
+      .where(where)
+      .orderBy(desc(triageObjects.createdAt))
+      .limit(opts.limit ?? 50)
+      .offset(opts.offset ?? 0),
     db.select({ count: sql<number>`count(*)` }).from(triageObjects).where(where),
   ]);
-
   return { triages: rows, total: countResult[0]?.count ?? 0 };
 }
 

@@ -10,7 +10,9 @@
  * The assistant is read-only — it cannot trigger Wazuh actions.
  */
 
+import { requireDb } from "../dbGuard";
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { eq, desc, and } from "drizzle-orm";
 import axios from "axios";
 import { nanoid } from "nanoid";
@@ -209,8 +211,7 @@ export const hybridragRouter = router({
   sessionHistory: protectedProcedure
     .input(z.object({ sessionId: z.string() }))
     .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return [];
+      const db = await requireDb();
       return db
         .select()
         .from(ragSessions)
@@ -221,8 +222,7 @@ export const hybridragRouter = router({
   clearSession: protectedProcedure
     .input(z.object({ sessionId: z.string() }))
     .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return { success: false };
+      const db = await requireDb();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await (db.delete(ragSessions) as any).where(eq(ragSessions.sessionId, input.sessionId));
       return { success: true };
@@ -242,8 +242,7 @@ export const hybridragRouter = router({
         })
       )
       .query(async ({ input }) => {
-        const db = await getDb();
-        if (!db) return { notes: [], total: 0 };
+        const db = await requireDb();
 
         const conditions = [];
         if (input.agentId) conditions.push(eq(analystNotes.agentId, input.agentId));
@@ -281,7 +280,7 @@ export const hybridragRouter = router({
       )
       .mutation(async ({ input }) => {
         const db = await getDb();
-        if (!db) throw new Error("Database unavailable");
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
 
         const result = await db.insert(analystNotes).values({
           title: input.title,
@@ -310,7 +309,7 @@ export const hybridragRouter = router({
       )
       .mutation(async ({ input }) => {
         const db = await getDb();
-        if (!db) throw new Error("Database unavailable");
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
 
         const updates: Partial<typeof analystNotes.$inferInsert> = {};
         if (input.title !== undefined) updates.title = input.title;
@@ -327,7 +326,7 @@ export const hybridragRouter = router({
       .input(z.object({ id: z.number().int() }))
       .mutation(async ({ input }) => {
         const db = await getDb();
-        if (!db) throw new Error("Database unavailable");
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
         await db.delete(analystNotes).where(eq(analystNotes.id, input.id));
         return { success: true };
       }),
@@ -335,8 +334,7 @@ export const hybridragRouter = router({
     getById: protectedProcedure
       .input(z.object({ id: z.number().int() }))
       .query(async ({ input }) => {
-        const db = await getDb();
-        if (!db) return null;
+        const db = await requireDb();
         const result = await db.select().from(analystNotes).where(eq(analystNotes.id, input.id)).limit(1);
         return result[0] ?? null;
       }),

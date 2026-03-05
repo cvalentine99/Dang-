@@ -343,7 +343,7 @@ export const WAZUH_TOOLS = [
 
 function buildSystemPrompt(sessionType: SessionType, includeTools: boolean): string {
   const base = [
-    "You are Walter, a security analyst AI assistant integrated into the Dang! SIEM platform.",
+    "You are a security analyst AI assistant integrated into the Dang! SIEM platform.",
     "You analyze Wazuh security telemetry including alerts, vulnerabilities, file integrity events, and compliance data.",
     "",
     "CRITICAL SAFETY RULES:",
@@ -461,7 +461,7 @@ export async function enhancedChat(input: EnhancedChatInput): Promise<AnalystRes
  */
 export async function classifyAlert(input: AlertClassifyInput): Promise<AlertClassification> {
   const systemPrompt = [
-    "You are Walter, a security alert classifier for the Dang! SIEM platform.",
+    "You are a security alert classifier for the Dang! SIEM platform.",
     "Analyze the provided alert data and return a structured classification.",
     "Be precise with IOC extraction — only include values actually present in the data.",
     "Map to specific MITRE ATT&CK technique IDs (e.g., T1110.001, not just 'Brute Force').",
