@@ -411,16 +411,24 @@ export const wazuhRouter = router({
   })
     .input(z.object({ agentId: agentIdSchema }))
     .query(async ({ input, ctx }) => {
-      // Audit trail: log before returning data
+      // FAIL-CLOSED: audit insert MUST succeed before key is revealed.
+      // If audit logging fails, the key is NOT returned.
       const { logSensitiveAccess } = await import("../db");
-      await logSensitiveAccess({
-        userId: ctx.user!.id,
-        resourceType: "agent_key",
-        resourceId: input.agentId,
-        action: "reveal",
-        ipAddress: ctx.req?.ip ?? ctx.req?.socket?.remoteAddress ?? null,
-        userAgent: ctx.req?.headers?.["user-agent"] ?? null,
-      });
+      try {
+        await logSensitiveAccess({
+          userId: ctx.user!.id,
+          resourceType: "agent_key",
+          resourceId: input.agentId,
+          action: "reveal",
+          ipAddress: ctx.req?.ip ?? ctx.req?.socket?.remoteAddress ?? null,
+          userAgent: ctx.req?.headers?.["user-agent"] ?? null,
+        });
+      } catch {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Audit logging unavailable; cannot reveal key.",
+        });
+      }
       return proxyGet(`/agents/${input.agentId}/key`);
     }),
 

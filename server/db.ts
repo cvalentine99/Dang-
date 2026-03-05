@@ -93,15 +93,20 @@ export async function getUserByOpenId(openId: string) {
 
 /**
  * Log a sensitive data access event (e.g., agent key reveal).
- * Fire-and-forget: never throws, never blocks the caller.
+ *
+ * FAIL-CLOSED: if the audit insert fails for ANY reason (no DB, insert error),
+ * this function THROWS. The caller MUST NOT reveal the sensitive data.
+ * This is a contract-level guarantee — audit trail is a gate, not best-effort.
  */
 export async function logSensitiveAccess(entry: Omit<InsertSensitiveAccessAuditRow, "id" | "createdAt">): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    throw new Error("Audit logging unavailable: database connection failed. Cannot reveal sensitive data.");
+  }
   try {
-    const db = await getDb();
-    if (!db) return;
     await db.insert(sensitiveAccessAudit).values(entry);
   } catch (error) {
     console.error("[SensitiveAccessAudit] Failed to log:", error);
-    // Swallow — audit failure must not block the operation
+    throw new Error("Audit logging unavailable: insert failed. Cannot reveal sensitive data.");
   }
 }

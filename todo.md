@@ -3027,3 +3027,27 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Verify CI gate passes with updated artifacts (PASS)
 - [x] TypeScript compilation clean (0 errors)
 - [x] 46 new configStatsTab.test.ts tests — all passing
+
+## Contract-Level Correction Sprint (Mar 5, 2026)
+### Defect 1: sensitiveAccessAudit migration + fail-closed gate
+- [x] Generate drizzle migration for sensitiveAccessAudit table (drizzle/0012_sensitive_access_audit.sql)
+- [x] Apply migration via webdev_execute_sql (CREATE TABLE + 4 indexes)
+- [x] Change agentKey reveal flow: audit insert must succeed BEFORE key is returned (fail-closed)
+- [x] If audit logging fails, refuse reveal with "Audit logging unavailable; cannot reveal key" (TRPCError INTERNAL_SERVER_ERROR)
+- [x] Write tests: 5 fail-closed gate tests + 3 migration existence tests
+### Defect 2: Wire managerLogs + managerConfiguration into UI
+- [x] Wire managerLogs into ClusterHealth: paginated table with level/tag filters, BrokerWarnings, raw JSON
+- [x] Wire managerConfiguration into ClusterHealth: section-filterable config viewer with key-value display, BrokerWarnings, raw JSON
+### Defect 3: Fix resumePipelineHelper test regression
+- [x] Root cause: OTX mock path wrong (../threatIntel/otxService vs ../otx/otxClient) — unmocked network calls caused timeouts
+- [x] Fix: corrected mock path + added isOtxConfigured mock
+- [x] Result: 9/9 passing in 1.85s (was 48s+ timeout)
+### Defect 4: Proof artifact integrity
+- [x] Generated vitest.json from fresh run (72 files, 590 suites, 2138 tests)
+- [x] Generated ci-proof-artifact.md from vitest.json via generate-ci-proof.mjs
+- [x] Cross-verified: PHYSICS MATCH — all numbers extracted from vitest.json, zero hand-written counts
+### Defect 5: Gap-closure-matrix truth classifications
+- [x] managerLogs: reclassified from "planned" to "NOW WIRED" (wired to ClusterHealth, not just summary)
+- [x] managerConfiguration: reclassified from "planned" to "NOW WIRED" (wired to ClusterHealth, not just validation)
+- [x] Updated counts: 40 UI-planned, 5 newly wired (was 42/3), total 49 backend-only unchanged
+- [x] UI parity audit: 119 callsites, 69/113 procedures, 0 violations

@@ -12,7 +12,7 @@ import {
   Server, Activity, CheckCircle2,
   XCircle, AlertTriangle, Network, Gauge, BarChart3,
   ChevronDown, ChevronUp, FileText, Search, X,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Settings, ScrollText,
 } from "lucide-react";
 import React, { useMemo, useCallback, useState, type ReactNode } from "react";
 import {
@@ -408,6 +408,20 @@ export default function ClusterHealth() {
   const configValidQ = trpc.wazuh.managerConfigValidation.useQuery(undefined, { retry: 1, staleTime: 60_000, enabled: isConnected });
   const clusterStatusQ = trpc.wazuh.clusterStatus.useQuery(undefined, { retry: 1, staleTime: 30_000, enabled: isConnected });
   const clusterNodesQ = trpc.wazuh.clusterNodes.useQuery(undefined, { retry: 1, staleTime: 30_000, enabled: isConnected });
+  // ── Manager Logs (the actual procedure, not summary) ──────────────────────
+  const [logLevel, setLogLevel] = useState<string>("");
+  const [logTag, setLogTag] = useState("");
+  const [mgrLogPage, setMgrLogPage] = useState(0);
+  const managerLogsQ = trpc.wazuh.managerLogs.useQuery(
+    { offset: mgrLogPage * 20, limit: 20, ...(logLevel ? { level: logLevel as "info" | "error" | "warning" | "debug" } : {}), ...(logTag ? { tag: logTag } : {}) },
+    { retry: 1, staleTime: 15_000, enabled: isConnected }
+  );
+  // ── Manager Configuration (the actual procedure, not validation) ───────────
+  const [cfgSection, setCfgSection] = useState("");
+  const managerConfigQ = trpc.wazuh.managerConfiguration.useQuery(
+    cfgSection ? { section: cfgSection } : undefined,
+    { retry: 1, staleTime: 60_000, enabled: isConnected }
+  );
   const handleRefresh = useCallback(() => { utils.wazuh.invalidate(); }, [utils]);
 
   const daemonStatuses = useMemo(() => {
@@ -671,6 +685,118 @@ export default function ClusterHealth() {
           {expandedNode && (
             <NodeDrillDown nodeId={expandedNode} nodeName={expandedNode} isConnected={isConnected} />
           )}
+        </GlassPanel>
+
+        {/* ── Manager Logs (actual procedure) ────────────────────────── */}
+        <GlassPanel>
+          <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><ScrollText className="h-4 w-4 text-primary" /> Manager Logs</h3>
+          <BrokerWarnings data={managerLogsQ.data} context="Manager Logs" />
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <select value={logLevel} onChange={e => { setLogLevel(e.target.value); setMgrLogPage(0); }} className="bg-secondary/30 border border-border/20 rounded px-2 py-1 text-xs text-foreground">
+              <option value="">All Levels</option>
+              <option value="error">Error</option>
+              <option value="warning">Warning</option>
+              <option value="info">Info</option>
+              <option value="debug">Debug</option>
+            </select>
+            <Input placeholder="Filter by tag…" value={logTag} onChange={e => { setLogTag(e.target.value); setMgrLogPage(0); }} className="w-40 h-7 text-xs bg-secondary/30" />
+          </div>
+          {managerLogsQ.isLoading ? (
+            <TableSkeleton columns={4} rows={5} />
+          ) : (() => {
+            const mgrLogs = extractItems(managerLogsQ.data);
+            const mgrLogsTotal = Number(((managerLogsQ.data as Record<string, unknown>)?.data as Record<string, unknown>)?.total_affected_items ?? mgrLogs.length);
+            return mgrLogs.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-4 text-center">No log entries found.</p>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[11px]">
+                    <thead><tr className="border-b border-border/20 text-muted-foreground">
+                      <th className="text-left py-1.5 px-2 font-medium">Timestamp</th>
+                      <th className="text-left py-1.5 px-2 font-medium">Level</th>
+                      <th className="text-left py-1.5 px-2 font-medium">Tag</th>
+                      <th className="text-left py-1.5 px-2 font-medium">Description</th>
+                    </tr></thead>
+                    <tbody>
+                      {mgrLogs.map((log, i) => {
+                        const lvl = String(log.level ?? log.type ?? "").toLowerCase();
+                        const lvlColor = lvl === "error" ? "text-threat-critical" : lvl === "warning" ? "text-threat-high" : "text-muted-foreground";
+                        return (
+                          <tr key={i} className="border-b border-border/5 hover:bg-secondary/10">
+                            <td className="py-1 px-2 font-mono text-muted-foreground whitespace-nowrap">{String(log.timestamp ?? "")}</td>
+                            <td className={`py-1 px-2 font-mono uppercase ${lvlColor}`}>{lvl || "—"}</td>
+                            <td className="py-1 px-2 font-mono text-foreground">{String(log.tag ?? "—")}</td>
+                            <td className="py-1 px-2 text-foreground">{String(log.description ?? "—")}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-[10px] text-muted-foreground">{mgrLogsTotal.toLocaleString()} total</span>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setMgrLogPage(p => Math.max(0, p - 1))} disabled={mgrLogPage === 0} className="p-1 rounded hover:bg-secondary/30 disabled:opacity-30"><ChevronLeft className="h-3 w-3" /></button>
+                    <span className="text-[10px] text-muted-foreground">Page {mgrLogPage + 1}</span>
+                    <button onClick={() => setMgrLogPage(p => p + 1)} disabled={mgrLogs.length < 20} className="p-1 rounded hover:bg-secondary/30 disabled:opacity-30"><ChevronRight className="h-3 w-3" /></button>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+          {managerLogsQ.data ? <div className="mt-3"><RawJsonViewer data={managerLogsQ.data as Record<string, unknown>} title="Manager Logs JSON" /></div> : null}
+        </GlassPanel>
+
+        {/* ── Manager Configuration (actual procedure) ──────────────── */}
+        <GlassPanel>
+          <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2"><Settings className="h-4 w-4 text-primary" /> Manager Configuration</h3>
+          <BrokerWarnings data={managerConfigQ.data} context="Manager Configuration" />
+          <div className="flex items-center gap-2 mb-3">
+            <select value={cfgSection} onChange={e => setCfgSection(e.target.value)} className="bg-secondary/30 border border-border/20 rounded px-2 py-1 text-xs text-foreground">
+              <option value="">All Sections</option>
+              <option value="global">Global</option>
+              <option value="alerts">Alerts</option>
+              <option value="command">Command</option>
+              <option value="localfile">Local File</option>
+              <option value="syscheck">Syscheck</option>
+              <option value="rootcheck">Rootcheck</option>
+              <option value="remote">Remote</option>
+              <option value="auth">Auth</option>
+              <option value="cluster">Cluster</option>
+              <option value="vulnerability-detection">Vulnerability Detection</option>
+              <option value="cis-cat">CIS-CAT</option>
+              <option value="osquery">OSQuery</option>
+            </select>
+          </div>
+          {managerConfigQ.isLoading ? (
+            <TableSkeleton columns={2} rows={6} />
+          ) : (() => {
+            const cfgItems = extractItems(managerConfigQ.data);
+            const cfgRaw = (managerConfigQ.data as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+            // Manager config returns nested objects, render as key-value pairs
+            const entries: Array<[string, unknown]> = [];
+            if (cfgItems.length > 0) {
+              cfgItems.forEach(item => Object.entries(item).forEach(([k, v]) => entries.push([k, v])));
+            } else if (cfgRaw && typeof cfgRaw === "object") {
+              Object.entries(cfgRaw).filter(([k]) => !["affected_items", "total_affected_items", "total_failed_items", "failed_items"].includes(k)).forEach(([k, v]) => entries.push([k, v]));
+            }
+            return entries.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-4 text-center">No configuration data available.</p>
+            ) : (
+              <div className="space-y-1 max-h-[500px] overflow-y-auto">
+                {entries.map(([key, val], i) => (
+                  <div key={i} className="flex items-start gap-3 py-1.5 border-b border-border/10">
+                    <span className="text-[11px] font-mono text-primary min-w-[180px] shrink-0">{key}</span>
+                    <span className="text-[11px] font-mono text-foreground break-all">
+                      {typeof val === "object" && val !== null ? JSON.stringify(val, null, 2) : String(val ?? "—")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+          {managerConfigQ.data ? <div className="mt-3"><RawJsonViewer data={managerConfigQ.data as Record<string, unknown>} title="Manager Configuration JSON" /></div> : null}
         </GlassPanel>
 
         {/* Config Validation */}

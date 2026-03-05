@@ -1,6 +1,6 @@
 {
-  "generated": "2026-03-05T11:27:25.911Z",
-  "callsiteCount": 117,
+  "generated": "2026-03-05T13:05:31.550Z",
+  "callsiteCount": 119,
   "procedureCount": 113,
   "consumedProcedures": [
     "agentBrowserExtensions",
@@ -50,7 +50,9 @@
     "expSyscollectorPorts",
     "expSyscollectorProcesses",
     "managerConfigValidation",
+    "managerConfiguration",
     "managerInfo",
+    "managerLogs",
     "managerLogsSummary",
     "managerStatus",
     "mitreGroups",
@@ -493,6 +495,23 @@
       "procedure": "clusterNodes",
       "passedKeys": {},
       "isVoid": true
+    },
+    {
+      "file": "client/src/pages/ClusterHealth.tsx",
+      "line": 415,
+      "procedure": "managerLogs",
+      "passedKeys": {
+        "offset": "mgrLogPage * 20",
+        "limit": "20"
+      },
+      "isVoid": false
+    },
+    {
+      "file": "client/src/pages/ClusterHealth.tsx",
+      "line": 421,
+      "procedure": "managerConfiguration",
+      "passedKeys": {},
+      "isVoid": false
     },
     {
       "file": "client/src/pages/Compliance.tsx",

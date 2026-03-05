@@ -37,8 +37,9 @@ vi.mock("../wazuh/wazuhClient", () => ({
   getEffectiveWazuhConfig: async () => ({ host: "mock", port: 55000, user: "admin", pass: "admin", protocol: "https" }),
 }));
 
-vi.mock("../threatIntel/otxService", () => ({
+vi.mock("../otx/otxClient", () => ({
   otxGet: async () => ({}),
+  isOtxConfigured: () => false,
 }));
 
 const HAS_DB = !!process.env.DATABASE_URL;

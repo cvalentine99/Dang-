@@ -10,8 +10,8 @@
 | Field | Value |
 |-------|-------|
 | JSON artifact | `test-output/vitest.json` |
-| Generated at | 2026-03-05T11:27:20.184Z |
-| Test run started | 2026-03-05T11:23:14.717Z |
+| Generated at | 2026-03-05T13:05:25.755Z |
+| Test run started | 2026-03-05T13:04:12.676Z |
 | Overall success | false |
 
 ## Summary
@@ -21,20 +21,19 @@
 | Test files | 72 |
 | Passed files | 69 |
 | Failed files | 3 |
-| Describe blocks (vitest suites) | 586 |
-| Passed suites | 579 |
+| Describe blocks (vitest suites) | 590 |
+| Passed suites | 583 |
 | Failed suites | 7 |
-| Total tests | 2117 |
-| Passed tests | 2104 |
-| Failed tests | 7 |
+| Total tests | 2138 |
+| Passed tests | 2123 |
+| Failed tests | 4 |
 
 ## Per-File Breakdown
 
 | Status | File | Total | Passed | Failed |
 |--------|------|-------|--------|--------|
-| FAIL | `server/agenticPipeline/correlationAgent.test.ts` | 13 | 9 | 4 |
+| FAIL | `server/agenticPipeline/correlationAgent.test.ts` | 13 | 11 | 2 |
 | FAIL | `server/agenticPipeline/hypothesisAgent.test.ts` | 11 | 3 | 2 |
-| FAIL | `server/baselines/baselineSchedules.test.ts` | 27 | 26 | 1 |
 | PASS | `server/admin/adminUsers.test.ts` | 16 | 16 | 0 |
 | PASS | `server/admin/connectionSettings.test.ts` | 15 | 15 | 0 |
 | PASS | `server/admin/hostValidation.test.ts` | 19 | 19 | 0 |
@@ -44,7 +43,7 @@
 | PASS | `server/agenticPipeline/livingCaseReportService.test.ts` | 33 | 33 | 0 |
 | PASS | `server/agenticPipeline/resumePipelineHelper.test.ts` | 9 | 9 | 0 |
 | PASS | `server/agenticPipeline/stageOutput.test.ts` | 4 | 4 | 0 |
-| PASS | `server/agenticPipeline/stateMachine.test.ts` | 36 | 36 | 0 |
+| PASS | `server/agenticPipeline/stateMachine.test.ts` | 36 | 31 | 0 |
 | PASS | `server/agenticPipeline/triageAgent.test.ts` | 20 | 20 | 0 |
 | PASS | `server/agenticReadiness/readinessService.test.ts` | 34 | 34 | 0 |
 | PASS | `server/alertQueue/alertQueueRouter.test.ts` | 26 | 26 | 0 |
@@ -52,6 +51,7 @@
 | PASS | `server/alertQueue/queueNotifier.test.ts` | 20 | 20 | 0 |
 | PASS | `server/auth.logout.test.ts` | 1 | 1 | 0 |
 | PASS | `server/baselines/anomalyDetection.test.ts` | 28 | 28 | 0 |
+| PASS | `server/baselines/baselineSchedules.test.ts` | 27 | 27 | 0 |
 | PASS | `server/baselines/baselinesRouter.test.ts` | 14 | 14 | 0 |
 | PASS | `server/baselines/driftAnalytics.test.ts` | 15 | 15 | 0 |
 | PASS | `server/baselines/driftDetection.test.ts` | 16 | 16 | 0 |
@@ -91,7 +91,7 @@
 | PASS | `server/splunk/splunkRouter.test.ts` | 124 | 124 | 0 |
 | PASS | `server/sse/alertStreamService.test.ts` | 10 | 10 | 0 |
 | PASS | `server/wazuh/brokerWarnings.test.ts` | 11 | 11 | 0 |
-| PASS | `server/wazuh/configStatsTab.test.ts` | 46 | 46 | 0 |
+| PASS | `server/wazuh/configStatsTab.test.ts` | 67 | 67 | 0 |
 | PASS | `server/wazuh/paramBroker.test.ts` | 289 | 289 | 0 |
 | PASS | `server/wazuh/paramPropagation.test.ts` | 8 | 8 | 0 |
 | PASS | `server/wazuh/perUserRateLimit.test.ts` | 10 | 10 | 0 |
@@ -112,7 +112,7 @@
 **Test:** runCorrelationAgent — edge cases handles LLM returning invalid assetCriticality by normalizing to 'unknown'
 
 ```
-Error: Test timed out in 5000ms.
+Error: Test timed out in 15000ms.
 If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
     at Timeout.<anonymous> (file:///home/ubuntu/dang/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:44:18)
     at listOnTimeout (node:internal/timers:594:17)
@@ -121,35 +121,10 @@ If this is a long-running test, pass a timeout value as the last argument or con
 
 ### `server/agenticPipeline/correlationAgent.test.ts`
 
-**Test:** runCorrelationAgent — edge cases merges LLM-discovered entities with Wazuh-native entities
+**Test:** runCorrelationAgent — edge cases handles LLM returning invalid caseRecommendation action by normalizing to 'defer_to_analyst'
 
 ```
-Error: Test timed out in 5000ms.
-If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
-    at Timeout.<anonymous> (file:///home/ubuntu/dang/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:44:18)
-    at listOnTimeout (node:internal/timers:594:17)
-    at processTimers (node:internal/timers:529:7)
-```
-
-### `server/agenticPipeline/correlationAgent.test.ts`
-
-**Test:** runCorrelationAgent — edge cases handles synthesis with missing evidence gracefully
-
-```
-AssertionError: expected 1 to be 3 // Object.is equality
-    at /home/ubuntu/dang/server/agenticPipeline/correlationAgent.test.ts:268:62
-    at processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at file:///home/ubuntu/dang/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:533:5
-    at runTest (file:///home/ubuntu/dang/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1056:11)
-    at runSuite (file:///home/ubuntu
-```
-
-### `server/agenticPipeline/correlationAgent.test.ts`
-
-**Test:** runCorrelationAgent — edge cases preserves sourceTriageId from input, not from LLM
-
-```
-Error: Test timed out in 5000ms.
+Error: Test timed out in 15000ms.
 If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
     at Timeout.<anonymous> (file:///home/ubuntu/dang/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:44:18)
     at listOnTimeout (node:internal/timers:594:17)
@@ -180,18 +155,6 @@ AssertionError: expected 2 to be +0 // Object.is equality
     at file:///home/ubuntu/dang/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:533:5
     at runTest (file:///home/ubuntu/dang/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1056:11)
     at runSuite (file:///home/ubuntu
-```
-
-### `server/baselines/baselineSchedules.test.ts`
-
-**Test:** baselineSchedulerService executeScheduledCapture returns a result object with success boolean
-
-```
-Error: Test timed out in 5000ms.
-If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
-    at Timeout.<anonymous> (file:///home/ubuntu/dang/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:44:18)
-    at listOnTimeout (node:internal/timers:594:17)
-    at processTimers (node:internal/timers:529:7)
 ```
 
 ## Reproduction Commands

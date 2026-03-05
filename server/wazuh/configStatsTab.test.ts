@@ -240,3 +240,148 @@ describe("BrokerWarnings Component", () => {
     expect(src).toMatch(/return\s+null/);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 6. Fail-Closed Audit Gate — logSensitiveAccess throws on failure
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("Fail-Closed Audit Gate", () => {
+  const dbSrc = readFile("server/db.ts");
+  const routerSrc = readFile("server/wazuh/wazuhRouter.ts");
+
+  it("logSensitiveAccess should throw when DB is unavailable (not swallow)", () => {
+    // Must NOT contain "Swallow" or fire-and-forget patterns
+    expect(dbSrc).not.toMatch(/Swallow|fire.and.forget/i);
+    // Must throw on DB failure
+    expect(dbSrc).toContain("throw new Error(\"Audit logging unavailable: database connection failed.");
+  });
+
+  it("logSensitiveAccess should throw when insert fails", () => {
+    expect(dbSrc).toContain("throw new Error(\"Audit logging unavailable: insert failed.");
+  });
+
+  it("logSensitiveAccess docstring should state FAIL-CLOSED contract", () => {
+    expect(dbSrc).toMatch(/FAIL-CLOSED/);
+    expect(dbSrc).toContain("caller MUST NOT reveal the sensitive data");
+  });
+
+  it("agentKey procedure should catch audit failure and refuse key reveal", () => {
+    // The agentKey handler must wrap logSensitiveAccess in try/catch
+    // and throw TRPCError on audit failure
+    expect(routerSrc).toContain("Audit logging unavailable; cannot reveal key.");
+    expect(routerSrc).toMatch(/INTERNAL_SERVER_ERROR/);
+  });
+
+  it("agentKey procedure should call audit BEFORE proxyGet", () => {
+    // The audit call must appear before the proxyGet call in the agentKey handler
+    const auditIdx = routerSrc.indexOf("logSensitiveAccess");
+    const proxyIdx = routerSrc.indexOf("proxyGet(`/agents/${input.agentId}/key`)");
+    expect(auditIdx).toBeGreaterThan(-1);
+    expect(proxyIdx).toBeGreaterThan(-1);
+    expect(auditIdx).toBeLessThan(proxyIdx);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 7. Drizzle Migration File for sensitive_access_audit
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("Sensitive Access Audit — Migration", () => {
+  const { existsSync } = require("fs");
+  const migrationPath = join(ROOT, "drizzle", "0012_sensitive_access_audit.sql");
+
+  it("migration file 0012 should exist", () => {
+    expect(existsSync(migrationPath)).toBe(true);
+  });
+
+  it("migration should CREATE TABLE sensitive_access_audit", () => {
+    const sql = readFile("drizzle/0012_sensitive_access_audit.sql");
+    expect(sql).toMatch(/CREATE TABLE.*sensitive_access_audit/i);
+  });
+
+  it("migration should create indexes for userId, resourceType, resourceId, createdAt", () => {
+    const sql = readFile("drizzle/0012_sensitive_access_audit.sql");
+    expect(sql).toMatch(/CREATE INDEX.*saa_userId_idx/i);
+    expect(sql).toMatch(/CREATE INDEX.*saa_resourceType_idx/i);
+    expect(sql).toMatch(/CREATE INDEX.*saa_resourceId_idx/i);
+    expect(sql).toMatch(/CREATE INDEX.*saa_createdAt_idx/i);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 8. Manager Logs + Manager Configuration — UI Wiring in Cluster Health
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("ClusterHealth — managerLogs UI Wiring", () => {
+  const src = readFile("client/src/pages/ClusterHealth.tsx");
+
+  it("should consume trpc.wazuh.managerLogs.useQuery", () => {
+    expect(src).toContain("trpc.wazuh.managerLogs.useQuery");
+  });
+
+  it("should have level filter (error/warning/info/debug)", () => {
+    expect(src).toContain("logLevel");
+    expect(src).toContain('"error"');
+    expect(src).toContain('"warning"');
+    expect(src).toContain('"info"');
+    expect(src).toContain('"debug"');
+  });
+
+  it("should have tag filter input", () => {
+    expect(src).toContain("logTag");
+    expect(src).toMatch(/Filter by tag/);
+  });
+
+  it("should have pagination for logs", () => {
+    expect(src).toContain("mgrLogPage");
+    expect(src).toContain("setMgrLogPage");
+  });
+
+  it("should render log table with timestamp, level, tag, description columns", () => {
+    expect(src).toContain("Timestamp");
+    expect(src).toContain("Level");
+    expect(src).toContain("Tag");
+    expect(src).toContain("Description");
+  });
+
+  it("should include BrokerWarnings for managerLogs", () => {
+    expect(src).toContain('context="Manager Logs"');
+  });
+
+  it("should include RawJsonViewer for managerLogs", () => {
+    expect(src).toContain("Manager Logs JSON");
+  });
+});
+
+describe("ClusterHealth — managerConfiguration UI Wiring", () => {
+  const src = readFile("client/src/pages/ClusterHealth.tsx");
+
+  it("should consume trpc.wazuh.managerConfiguration.useQuery", () => {
+    expect(src).toContain("trpc.wazuh.managerConfiguration.useQuery");
+  });
+
+  it("should have section filter dropdown", () => {
+    expect(src).toContain("cfgSection");
+    expect(src).toContain("setCfgSection");
+  });
+
+  it("should offer common section options (global, alerts, syscheck, cluster, etc.)", () => {
+    expect(src).toContain('"global"');
+    expect(src).toContain('"alerts"');
+    expect(src).toContain('"syscheck"');
+    expect(src).toContain('"cluster"');
+  });
+
+  it("should render config as key-value pairs", () => {
+    // Config entries are rendered as key-value rows
+    expect(src).toMatch(/entries\.map/);
+  });
+
+  it("should include BrokerWarnings for managerConfiguration", () => {
+    expect(src).toContain('context="Manager Configuration"');
+  });
+
+  it("should include RawJsonViewer for managerConfiguration", () => {
+    expect(src).toContain("Manager Configuration JSON");
+  });
+});

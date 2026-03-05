@@ -2,8 +2,8 @@
 
 **Generated:** 2026-03-05  
 **Script:** `scripts/audit-ui-param-parity.mjs`  
-**Callsites audited:** 117  
-**Unique procedures consumed:** 67 of 113 total  
+**Callsites audited:** 119  
+**Unique procedures consumed:** 69 of 113 total  
 
 ---
 
@@ -12,12 +12,12 @@
 
 | Metric | Count |
 |--------|-------|
-| Total callsites | 117 |
-| Unique procedures consumed | 67 |
+| Total callsites | 119 |
+| Unique procedures consumed | 69 |
 | Router procedures available | 113 |
 | Parameters surfaced in UI | 74 |
-| Parameters hardcoded/constant | 86 |
-| Parameters not supported (classified) | 539 |
+| Parameters hardcoded/constant | 88 |
+| Parameters not supported (classified) | 550 |
 | Violations | 0 |
 
 **No violations found.** All UI callsites pass only schema-valid keys, all required params are present, and every optional param is classified.
@@ -53,8 +53,6 @@
 | `listsFileContent` | filename | Backend-only / Not yet wired to UI |
 | `listsFiles` | limit, offset | Backend-only / Not yet wired to UI |
 | `managerComponentConfig` | component, configuration | Backend-only / Not yet wired to UI |
-| `managerConfiguration` | section, field, raw, distinct | Backend-only / Not yet wired to UI |
-| `managerLogs` | limit, offset, level, tag, search, sort, q, select, distinct | Backend-only / Not yet wired to UI |
 | `managerStats` | (void) | Backend-only / Not yet wired to UI |
 | `managerVersionCheck` | force_query | Backend-only / Not yet wired to UI |
 | `mitreMetadata` | (void) | Backend-only / Not yet wired to UI |
@@ -580,6 +578,29 @@ Input: void (no parameters) — **OK**
 | `select` | Optional | No | — | **Not supported** — optional, not exposed in this view |
 | `sort` | Optional | No | — | **Not supported** — optional, not exposed in this view |
 | `type` | Optional | No | — | **Not supported** — optional, not exposed in this view |
+
+### Line 415: `wazuh.managerLogs`
+
+| Parameter | Router | Required | UI Status | Classification |
+|-----------|--------|----------|-----------|----------------|
+| `distinct` | Optional | No | — | **Not supported** — optional, not exposed in this view |
+| `level` | Optional | No | — | **Not supported** — optional, not exposed in this view |
+| `limit` | Optional | No | Passed | **Constant** (hardcoded: `20`) |
+| `offset` | Optional | No | Passed | **Constant** (hardcoded: `mgrLogPage * 20`) |
+| `q` | Optional | No | — | **Not supported** — optional, not exposed in this view |
+| `search` | Optional | No | — | **Not supported** — optional, not exposed in this view |
+| `select` | Optional | No | — | **Not supported** — optional, not exposed in this view |
+| `sort` | Optional | No | — | **Not supported** — optional, not exposed in this view |
+| `tag` | Optional | No | — | **Not supported** — optional, not exposed in this view |
+
+### Line 421: `wazuh.managerConfiguration`
+
+| Parameter | Router | Required | UI Status | Classification |
+|-----------|--------|----------|-----------|----------------|
+| `distinct` | Optional | No | — | **Not supported** — optional, not exposed in this view |
+| `field` | Optional | No | — | **Not supported** — optional, not exposed in this view |
+| `raw` | Optional | No | — | **Not supported** — optional, not exposed in this view |
+| `section` | Optional | No | — | **Not supported** — optional, not exposed in this view |
 
 ## client/src/pages/Compliance.tsx
 
@@ -1358,8 +1379,6 @@ Input: void (no parameters) — **OK**
 | `sort` | Optional | No | — | **Not supported** — optional, not exposed in this view |
 | `status` | Optional | No | Passed | **Constant** (hardcoded: `"active"`) |
 | `version` | Optional | No | — | **Not supported** — optional, not exposed in this view |
-
-
 
 
 

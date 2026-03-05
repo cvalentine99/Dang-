@@ -673,8 +673,8 @@ These procedures exist in the router with full Zod validation and auth gating. T
 | `listsFileContent` | Lists | CDB list content viewer planned for Ruleset Explorer expansion |
 | `listsFiles` | Lists | CDB list file browser planned for Ruleset Explorer expansion |
 | `managerComponentConfig` | Manager | Component config viewer planned for System Status expansion |
-| `managerConfiguration` | Manager | Manager config viewer planned for System Status expansion |
-| `managerLogs` | Manager | Manager log viewer planned for System Status expansion |
+| `managerConfiguration` | Manager | **NOW WIRED** — Cluster Health page: section-filterable config viewer with key-value display and raw JSON |
+| `managerLogs` | Manager | **NOW WIRED** — Cluster Health page: paginated log table with level/tag filters, BrokerWarnings, and raw JSON |
 | `managerStats` | Manager | Manager stats planned for System Status expansion |
 | `managerVersionCheck` | Manager | Version check planned for System Status expansion |
 | `mitreMetadata` | MITRE | MITRE metadata planned for MITRE ATT&CK page expansion |
@@ -697,8 +697,8 @@ These procedures exist in the router with full Zod validation and auth gating. T
 
 | Disposition | Count |
 |-------------|-------|
-| Implemented, UI planned for future phase | 42 |
-| **Newly wired to UI (this sprint)** | **3** |
+| Implemented, UI planned for future phase | 40 |
+| **Newly wired to UI (this sprint)** | **5** |
 | Implemented, data covered by equivalent route | 3 (`agentOverview`, `agentsSummary`, `remoted`) |
 | Implemented, internal use only (not dashboard) | 1 (`isConfigured`) |
 | **Total backend-only** | **49** |
