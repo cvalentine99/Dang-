@@ -7,6 +7,7 @@ import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
+import { BrokerWarnings } from "@/components/shared/BrokerWarnings";
 import { AddNoteDialog } from "@/components/shared/AddNoteDialog";
 
 import { Button } from "@/components/ui/button";
@@ -377,6 +378,8 @@ export default function AgentHealth() {
               </div>
             </div>
           )}
+
+          <BrokerWarnings data={agentsQ.data} context="Fleet Command" />
 
           {isLoading ? (
             <TableSkeleton columns={9} rows={10} columnWidths={[1, 2, 2, 2, 1, 2, 1, 2, 1]} />

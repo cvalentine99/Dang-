@@ -1,14 +1,16 @@
 {
-  "generated": "2026-03-05T10:22:02.319Z",
-  "callsiteCount": 114,
+  "generated": "2026-03-05T11:27:25.911Z",
+  "callsiteCount": 117,
   "procedureCount": 113,
   "consumedProcedures": [
     "agentBrowserExtensions",
     "agentById",
+    "agentConfig",
     "agentGroups",
     "agentGroups2",
     "agentHardware",
     "agentHotfixes",
+    "agentKey",
     "agentNetaddr",
     "agentNetiface",
     "agentNetproto",
@@ -17,6 +19,7 @@
     "agentPorts",
     "agentProcesses",
     "agentServices",
+    "agentStats",
     "agentSummaryOs",
     "agentSummaryStatus",
     "agentUsers",
@@ -101,7 +104,7 @@
     },
     {
       "file": "client/src/pages/AgentDetail.tsx",
-      "line": 57,
+      "line": 61,
       "procedure": "agentOs",
       "passedKeys": {
         "agentId": "shorthand"
@@ -110,7 +113,7 @@
     },
     {
       "file": "client/src/pages/AgentDetail.tsx",
-      "line": 58,
+      "line": 62,
       "procedure": "agentHardware",
       "passedKeys": {
         "agentId": "shorthand"
@@ -119,7 +122,7 @@
     },
     {
       "file": "client/src/pages/AgentDetail.tsx",
-      "line": 59,
+      "line": 63,
       "procedure": "scaPolicies",
       "passedKeys": {
         "agentId": "shorthand"
@@ -128,7 +131,7 @@
     },
     {
       "file": "client/src/pages/AgentDetail.tsx",
-      "line": 60,
+      "line": 64,
       "procedure": "syscheckLastScan",
       "passedKeys": {
         "agentId": "shorthand"
@@ -137,7 +140,7 @@
     },
     {
       "file": "client/src/pages/AgentDetail.tsx",
-      "line": 543,
+      "line": 547,
       "procedure": "syscheckFiles",
       "passedKeys": {
         "limit": "pageSize",
@@ -148,7 +151,7 @@
     },
     {
       "file": "client/src/pages/AgentDetail.tsx",
-      "line": 549,
+      "line": 553,
       "procedure": "syscheckLastScan",
       "passedKeys": {
         "agentId": "shorthand"
@@ -157,7 +160,7 @@
     },
     {
       "file": "client/src/pages/AgentDetail.tsx",
-      "line": 626,
+      "line": 630,
       "procedure": "agentPackages",
       "passedKeys": {
         "limit": "pageSize",
@@ -168,7 +171,7 @@
     },
     {
       "file": "client/src/pages/AgentDetail.tsx",
-      "line": 627,
+      "line": 631,
       "procedure": "agentPorts",
       "passedKeys": {
         "limit": "pageSize",
@@ -179,7 +182,7 @@
     },
     {
       "file": "client/src/pages/AgentDetail.tsx",
-      "line": 628,
+      "line": 632,
       "procedure": "agentProcesses",
       "passedKeys": {
         "limit": "pageSize",
@@ -190,7 +193,7 @@
     },
     {
       "file": "client/src/pages/AgentDetail.tsx",
-      "line": 629,
+      "line": 633,
       "procedure": "agentNetiface",
       "passedKeys": {
         "agentId": "shorthand"
@@ -199,7 +202,7 @@
     },
     {
       "file": "client/src/pages/AgentDetail.tsx",
-      "line": 630,
+      "line": 634,
       "procedure": "agentNetaddr",
       "passedKeys": {
         "agentId": "shorthand"
@@ -208,7 +211,7 @@
     },
     {
       "file": "client/src/pages/AgentDetail.tsx",
-      "line": 778,
+      "line": 782,
       "procedure": "syscheckFiles",
       "passedKeys": {
         "limit": "100",
@@ -219,7 +222,37 @@
     },
     {
       "file": "client/src/pages/AgentDetail.tsx",
-      "line": 982,
+      "line": 1002,
+      "procedure": "agentConfig",
+      "passedKeys": {
+        "component": "pair.component",
+        "configuration": "pair.configuration",
+        "agentId": "shorthand"
+      },
+      "isVoid": false
+    },
+    {
+      "file": "client/src/pages/AgentDetail.tsx",
+      "line": 1009,
+      "procedure": "agentStats",
+      "passedKeys": {
+        "component": "statsComponent",
+        "agentId": "shorthand"
+      },
+      "isVoid": false
+    },
+    {
+      "file": "client/src/pages/AgentDetail.tsx",
+      "line": 1017,
+      "procedure": "agentKey",
+      "passedKeys": {
+        "agentId": "shorthand"
+      },
+      "isVoid": false
+    },
+    {
+      "file": "client/src/pages/AgentDetail.tsx",
+      "line": 1251,
       "procedure": "agentById",
       "passedKeys": {
         "agentId": "shorthand"
@@ -228,42 +261,42 @@
     },
     {
       "file": "client/src/pages/AgentHealth.tsx",
-      "line": 84,
+      "line": 85,
       "procedure": "status",
       "passedKeys": {},
       "isVoid": true
     },
     {
       "file": "client/src/pages/AgentHealth.tsx",
-      "line": 87,
+      "line": 88,
       "procedure": "agentSummaryStatus",
       "passedKeys": {},
       "isVoid": true
     },
     {
       "file": "client/src/pages/AgentHealth.tsx",
-      "line": 88,
+      "line": 89,
       "procedure": "agentSummaryOs",
       "passedKeys": {},
       "isVoid": true
     },
     {
       "file": "client/src/pages/AgentHealth.tsx",
-      "line": 89,
+      "line": 90,
       "procedure": "agentGroups",
       "passedKeys": {},
       "isVoid": true
     },
     {
       "file": "client/src/pages/AgentHealth.tsx",
-      "line": 104,
+      "line": 105,
       "procedure": "agents",
       "passedKeys": {},
       "isVoid": false
     },
     {
       "file": "client/src/pages/AgentHealth.tsx",
-      "line": 110,
+      "line": 111,
       "procedure": "agentsOutdated",
       "passedKeys": {
         "limit": "1",
@@ -273,7 +306,7 @@
     },
     {
       "file": "client/src/pages/AgentHealth.tsx",
-      "line": 111,
+      "line": 112,
       "procedure": "agentsNoGroup",
       "passedKeys": {
         "limit": "1",
@@ -283,7 +316,7 @@
     },
     {
       "file": "client/src/pages/AgentHealth.tsx",
-      "line": 123,
+      "line": 124,
       "procedure": "agentById",
       "passedKeys": {
         "agentId": "selectedAgent ?? \"000\""
@@ -292,7 +325,7 @@
     },
     {
       "file": "client/src/pages/AgentHealth.tsx",
-      "line": 124,
+      "line": 125,
       "procedure": "agentOs",
       "passedKeys": {
         "agentId": "selectedAgent ?? \"000\""
@@ -301,7 +334,7 @@
     },
     {
       "file": "client/src/pages/AgentHealth.tsx",
-      "line": 125,
+      "line": 126,
       "procedure": "agentHardware",
       "passedKeys": {
         "agentId": "selectedAgent ?? \"000\""
@@ -331,7 +364,7 @@
     },
     {
       "file": "client/src/pages/ClusterHealth.tsx",
-      "line": 175,
+      "line": 176,
       "procedure": "clusterNodeStatus",
       "passedKeys": {
         "nodeId": "shorthand"
@@ -340,7 +373,7 @@
     },
     {
       "file": "client/src/pages/ClusterHealth.tsx",
-      "line": 179,
+      "line": 180,
       "procedure": "clusterNodeConfiguration",
       "passedKeys": {
         "nodeId": "shorthand"
@@ -349,7 +382,7 @@
     },
     {
       "file": "client/src/pages/ClusterHealth.tsx",
-      "line": 183,
+      "line": 184,
       "procedure": "clusterNodeDaemonStats",
       "passedKeys": {
         "nodeId": "shorthand"
@@ -358,7 +391,7 @@
     },
     {
       "file": "client/src/pages/ClusterHealth.tsx",
-      "line": 187,
+      "line": 188,
       "procedure": "clusterNodeLogs",
       "passedKeys": {
         "limit": "logPageSize",
@@ -369,7 +402,7 @@
     },
     {
       "file": "client/src/pages/ClusterHealth.tsx",
-      "line": 191,
+      "line": 192,
       "procedure": "clusterNodeLogsSummary",
       "passedKeys": {
         "nodeId": "shorthand"
@@ -378,7 +411,7 @@
     },
     {
       "file": "client/src/pages/ClusterHealth.tsx",
-      "line": 195,
+      "line": 196,
       "procedure": "clusterNodeStatsAnalysisd",
       "passedKeys": {
         "nodeId": "shorthand"
@@ -387,7 +420,7 @@
     },
     {
       "file": "client/src/pages/ClusterHealth.tsx",
-      "line": 199,
+      "line": 200,
       "procedure": "clusterNodeStatsRemoted",
       "passedKeys": {
         "nodeId": "shorthand"
@@ -396,7 +429,7 @@
     },
     {
       "file": "client/src/pages/ClusterHealth.tsx",
-      "line": 203,
+      "line": 204,
       "procedure": "clusterNodeStatsWeekly",
       "passedKeys": {
         "nodeId": "shorthand"
@@ -405,35 +438,35 @@
     },
     {
       "file": "client/src/pages/ClusterHealth.tsx",
-      "line": 401,
+      "line": 402,
       "procedure": "status",
       "passedKeys": {},
       "isVoid": true
     },
     {
       "file": "client/src/pages/ClusterHealth.tsx",
-      "line": 403,
+      "line": 404,
       "procedure": "managerStatus",
       "passedKeys": {},
       "isVoid": true
     },
     {
       "file": "client/src/pages/ClusterHealth.tsx",
-      "line": 404,
+      "line": 405,
       "procedure": "managerInfo",
       "passedKeys": {},
       "isVoid": true
     },
     {
       "file": "client/src/pages/ClusterHealth.tsx",
-      "line": 405,
+      "line": 406,
       "procedure": "statsHourly",
       "passedKeys": {},
       "isVoid": true
     },
     {
       "file": "client/src/pages/ClusterHealth.tsx",
-      "line": 406,
+      "line": 407,
       "procedure": "daemonStats",
       "passedKeys": {
         "daemons": "[\"wazuh-analysisd\", \"wazuh-remoted\", \"wazuh-db\"]"
@@ -442,21 +475,21 @@
     },
     {
       "file": "client/src/pages/ClusterHealth.tsx",
-      "line": 407,
+      "line": 408,
       "procedure": "managerConfigValidation",
       "passedKeys": {},
       "isVoid": true
     },
     {
       "file": "client/src/pages/ClusterHealth.tsx",
-      "line": 408,
+      "line": 409,
       "procedure": "clusterStatus",
       "passedKeys": {},
       "isVoid": true
     },
     {
       "file": "client/src/pages/ClusterHealth.tsx",
-      "line": 409,
+      "line": 410,
       "procedure": "clusterNodes",
       "passedKeys": {},
       "isVoid": true
@@ -539,14 +572,14 @@
     },
     {
       "file": "client/src/pages/FleetInventory.tsx",
-      "line": 146,
+      "line": 147,
       "procedure": "status",
       "passedKeys": {},
       "isVoid": true
     },
     {
       "file": "client/src/pages/FleetInventory.tsx",
-      "line": 163,
+      "line": 164,
       "procedure": "expSyscollectorPackages",
       "passedKeys": {
         "limit": "dynamic",
@@ -557,7 +590,7 @@
     },
     {
       "file": "client/src/pages/FleetInventory.tsx",
-      "line": 164,
+      "line": 165,
       "procedure": "expSyscollectorProcesses",
       "passedKeys": {
         "limit": "dynamic",
@@ -568,7 +601,7 @@
     },
     {
       "file": "client/src/pages/FleetInventory.tsx",
-      "line": 165,
+      "line": 166,
       "procedure": "expSyscollectorPorts",
       "passedKeys": {
         "limit": "dynamic",
@@ -579,7 +612,7 @@
     },
     {
       "file": "client/src/pages/FleetInventory.tsx",
-      "line": 166,
+      "line": 167,
       "procedure": "expSyscollectorOs",
       "passedKeys": {
         "limit": "dynamic",
@@ -590,7 +623,7 @@
     },
     {
       "file": "client/src/pages/FleetInventory.tsx",
-      "line": 167,
+      "line": 168,
       "procedure": "expSyscollectorHardware",
       "passedKeys": {
         "limit": "dynamic",
@@ -601,7 +634,7 @@
     },
     {
       "file": "client/src/pages/FleetInventory.tsx",
-      "line": 168,
+      "line": 169,
       "procedure": "expSyscollectorHotfixes",
       "passedKeys": {
         "limit": "dynamic",
@@ -612,7 +645,7 @@
     },
     {
       "file": "client/src/pages/FleetInventory.tsx",
-      "line": 169,
+      "line": 170,
       "procedure": "expSyscollectorNetaddr",
       "passedKeys": {
         "limit": "dynamic",
@@ -623,7 +656,7 @@
     },
     {
       "file": "client/src/pages/FleetInventory.tsx",
-      "line": 170,
+      "line": 171,
       "procedure": "expSyscollectorNetiface",
       "passedKeys": {
         "limit": "dynamic",
@@ -634,7 +667,7 @@
     },
     {
       "file": "client/src/pages/FleetInventory.tsx",
-      "line": 171,
+      "line": 172,
       "procedure": "expSyscollectorNetproto",
       "passedKeys": {
         "limit": "dynamic",
@@ -714,14 +747,14 @@
     },
     {
       "file": "client/src/pages/ITHygiene.tsx",
-      "line": 91,
+      "line": 92,
       "procedure": "status",
       "passedKeys": {},
       "isVoid": true
     },
     {
       "file": "client/src/pages/ITHygiene.tsx",
-      "line": 99,
+      "line": 100,
       "procedure": "agents",
       "passedKeys": {
         "limit": "100",
@@ -732,7 +765,7 @@
     },
     {
       "file": "client/src/pages/ITHygiene.tsx",
-      "line": 109,
+      "line": 110,
       "procedure": "agentPackages",
       "passedKeys": {
         "limit": "pageSize",
@@ -744,7 +777,7 @@
     },
     {
       "file": "client/src/pages/ITHygiene.tsx",
-      "line": 113,
+      "line": 114,
       "procedure": "agentPorts",
       "passedKeys": {
         "limit": "pageSize",
@@ -755,7 +788,7 @@
     },
     {
       "file": "client/src/pages/ITHygiene.tsx",
-      "line": 117,
+      "line": 118,
       "procedure": "agentProcesses",
       "passedKeys": {
         "limit": "pageSize",
@@ -767,7 +800,7 @@
     },
     {
       "file": "client/src/pages/ITHygiene.tsx",
-      "line": 121,
+      "line": 122,
       "procedure": "agentNetiface",
       "passedKeys": {
         "agentId": "shorthand"
@@ -776,7 +809,7 @@
     },
     {
       "file": "client/src/pages/ITHygiene.tsx",
-      "line": 125,
+      "line": 126,
       "procedure": "agentNetaddr",
       "passedKeys": {
         "agentId": "shorthand"
@@ -785,7 +818,7 @@
     },
     {
       "file": "client/src/pages/ITHygiene.tsx",
-      "line": 129,
+      "line": 130,
       "procedure": "agentNetproto",
       "passedKeys": {
         "agentId": "shorthand"
@@ -794,7 +827,7 @@
     },
     {
       "file": "client/src/pages/ITHygiene.tsx",
-      "line": 133,
+      "line": 134,
       "procedure": "agentHotfixes",
       "passedKeys": {
         "limit": "pageSize",
@@ -805,7 +838,7 @@
     },
     {
       "file": "client/src/pages/ITHygiene.tsx",
-      "line": 139,
+      "line": 140,
       "procedure": "agentBrowserExtensions",
       "passedKeys": {
         "limit": "pageSize",
@@ -816,7 +849,7 @@
     },
     {
       "file": "client/src/pages/ITHygiene.tsx",
-      "line": 145,
+      "line": 146,
       "procedure": "agentServices",
       "passedKeys": {
         "limit": "pageSize",
@@ -827,7 +860,7 @@
     },
     {
       "file": "client/src/pages/ITHygiene.tsx",
-      "line": 151,
+      "line": 152,
       "procedure": "agentUsers",
       "passedKeys": {
         "limit": "pageSize",
@@ -838,7 +871,7 @@
     },
     {
       "file": "client/src/pages/ITHygiene.tsx",
-      "line": 155,
+      "line": 156,
       "procedure": "agentGroups2",
       "passedKeys": {
         "limit": "pageSize",
@@ -892,7 +925,7 @@
     },
     {
       "file": "client/src/pages/RulesetExplorer.tsx",
-      "line": 84,
+      "line": 85,
       "procedure": "ruleFileContent",
       "passedKeys": {
         "filename": "shorthand"
@@ -901,7 +934,7 @@
     },
     {
       "file": "client/src/pages/RulesetExplorer.tsx",
-      "line": 85,
+      "line": 86,
       "procedure": "decoderFileContent",
       "passedKeys": {
         "filename": "shorthand"
@@ -910,21 +943,21 @@
     },
     {
       "file": "client/src/pages/RulesetExplorer.tsx",
-      "line": 179,
+      "line": 180,
       "procedure": "status",
       "passedKeys": {},
       "isVoid": true
     },
     {
       "file": "client/src/pages/RulesetExplorer.tsx",
-      "line": 223,
+      "line": 224,
       "procedure": "rules",
       "passedKeys": {},
       "isVoid": false
     },
     {
       "file": "client/src/pages/RulesetExplorer.tsx",
-      "line": 227,
+      "line": 228,
       "procedure": "decoders",
       "passedKeys": {
         "limit": "500",
@@ -934,7 +967,7 @@
     },
     {
       "file": "client/src/pages/RulesetExplorer.tsx",
-      "line": 231,
+      "line": 232,
       "procedure": "ruleGroups",
       "passedKeys": {},
       "isVoid": true

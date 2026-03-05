@@ -3,6 +3,7 @@ import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
+import { BrokerWarnings } from "@/components/shared/BrokerWarnings";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -442,10 +443,9 @@ export default function ITHygiene() {
                 </TabsTrigger>
               );
             })}
-          </TabsList>
-
-          {/* ── SOFTWARE COLUMN ──────────────────────────────────────── */}
+          </TabsList>          {/* ── SOFTWARE COLUMN ────────────────────────────────────────── */}
           <TabsContent value="packages">
+            <BrokerWarnings data={packagesQ.data} context="Packages" />
             <Suspense fallback={<LazyTabFallback />}>
               <PackagesTab {...tabProps} data={packagesData} rawData={packagesQ.data as Record<string, unknown>} />
             </Suspense>

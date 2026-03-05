@@ -10,28 +10,30 @@
 | Field | Value |
 |-------|-------|
 | JSON artifact | `test-output/vitest.json` |
-| Generated at | 2026-03-05T10:23:49.903Z |
-| Test run started | 2026-03-05T10:21:45.854Z |
+| Generated at | 2026-03-05T11:27:20.184Z |
+| Test run started | 2026-03-05T11:23:14.717Z |
 | Overall success | false |
 
 ## Summary
 
 | Metric | Count |
 |--------|-------|
-| Test files | 71 |
-| Passed files | 70 |
-| Failed files | 1 |
-| Describe blocks (vitest suites) | 579 |
-| Passed suites | 577 |
-| Failed suites | 2 |
-| Total tests | 2071 |
-| Passed tests | 2070 |
-| Failed tests | 1 |
+| Test files | 72 |
+| Passed files | 69 |
+| Failed files | 3 |
+| Describe blocks (vitest suites) | 586 |
+| Passed suites | 579 |
+| Failed suites | 7 |
+| Total tests | 2117 |
+| Passed tests | 2104 |
+| Failed tests | 7 |
 
 ## Per-File Breakdown
 
 | Status | File | Total | Passed | Failed |
 |--------|------|-------|--------|--------|
+| FAIL | `server/agenticPipeline/correlationAgent.test.ts` | 13 | 9 | 4 |
+| FAIL | `server/agenticPipeline/hypothesisAgent.test.ts` | 11 | 3 | 2 |
 | FAIL | `server/baselines/baselineSchedules.test.ts` | 27 | 26 | 1 |
 | PASS | `server/admin/adminUsers.test.ts` | 16 | 16 | 0 |
 | PASS | `server/admin/connectionSettings.test.ts` | 15 | 15 | 0 |
@@ -39,8 +41,6 @@
 | PASS | `server/agentDetail.test.ts` | 39 | 39 | 0 |
 | PASS | `server/agentDetailEnhancements.test.ts` | 69 | 69 | 0 |
 | PASS | `server/agenticPipeline.test.ts` | 144 | 144 | 0 |
-| PASS | `server/agenticPipeline/correlationAgent.test.ts` | 13 | 13 | 0 |
-| PASS | `server/agenticPipeline/hypothesisAgent.test.ts` | 11 | 11 | 0 |
 | PASS | `server/agenticPipeline/livingCaseReportService.test.ts` | 33 | 33 | 0 |
 | PASS | `server/agenticPipeline/resumePipelineHelper.test.ts` | 9 | 9 | 0 |
 | PASS | `server/agenticPipeline/stageOutput.test.ts` | 4 | 4 | 0 |
@@ -91,6 +91,7 @@
 | PASS | `server/splunk/splunkRouter.test.ts` | 124 | 124 | 0 |
 | PASS | `server/sse/alertStreamService.test.ts` | 10 | 10 | 0 |
 | PASS | `server/wazuh/brokerWarnings.test.ts` | 11 | 11 | 0 |
+| PASS | `server/wazuh/configStatsTab.test.ts` | 46 | 46 | 0 |
 | PASS | `server/wazuh/paramBroker.test.ts` | 289 | 289 | 0 |
 | PASS | `server/wazuh/paramPropagation.test.ts` | 8 | 8 | 0 |
 | PASS | `server/wazuh/perUserRateLimit.test.ts` | 10 | 10 | 0 |
@@ -105,6 +106,81 @@
 | PASS | `server/workflowTruth.test.ts` | 23 | 23 | 0 |
 
 ## Failed Test Details
+
+### `server/agenticPipeline/correlationAgent.test.ts`
+
+**Test:** runCorrelationAgent — edge cases handles LLM returning invalid assetCriticality by normalizing to 'unknown'
+
+```
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+    at Timeout.<anonymous> (file:///home/ubuntu/dang/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:44:18)
+    at listOnTimeout (node:internal/timers:594:17)
+    at processTimers (node:internal/timers:529:7)
+```
+
+### `server/agenticPipeline/correlationAgent.test.ts`
+
+**Test:** runCorrelationAgent — edge cases merges LLM-discovered entities with Wazuh-native entities
+
+```
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+    at Timeout.<anonymous> (file:///home/ubuntu/dang/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:44:18)
+    at listOnTimeout (node:internal/timers:594:17)
+    at processTimers (node:internal/timers:529:7)
+```
+
+### `server/agenticPipeline/correlationAgent.test.ts`
+
+**Test:** runCorrelationAgent — edge cases handles synthesis with missing evidence gracefully
+
+```
+AssertionError: expected 1 to be 3 // Object.is equality
+    at /home/ubuntu/dang/server/agenticPipeline/correlationAgent.test.ts:268:62
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at file:///home/ubuntu/dang/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///home/ubuntu/dang/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///home/ubuntu
+```
+
+### `server/agenticPipeline/correlationAgent.test.ts`
+
+**Test:** runCorrelationAgent — edge cases preserves sourceTriageId from input, not from LLM
+
+```
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+    at Timeout.<anonymous> (file:///home/ubuntu/dang/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:44:18)
+    at listOnTimeout (node:internal/timers:594:17)
+    at processTimers (node:internal/timers:529:7)
+```
+
+### `server/agenticPipeline/hypothesisAgent.test.ts`
+
+**Test:** runHypothesisAgent — response action materialization materializes response actions with correct initial state (proposed)
+
+```
+AssertionError: expected +0 to be 2 // Object.is equality
+    at /home/ubuntu/dang/server/agenticPipeline/hypothesisAgent.test.ts:379:51
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at file:///home/ubuntu/dang/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///home/ubuntu/dang/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///home/ubuntu
+```
+
+### `server/agenticPipeline/hypothesisAgent.test.ts`
+
+**Test:** runHypothesisAgent — response action materialization handles hypothesis with zero recommended actions
+
+```
+AssertionError: expected 2 to be +0 // Object.is equality
+    at /home/ubuntu/dang/server/agenticPipeline/hypothesisAgent.test.ts:400:51
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at file:///home/ubuntu/dang/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///home/ubuntu/dang/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///home/ubuntu
+```
 
 ### `server/baselines/baselineSchedules.test.ts`
 

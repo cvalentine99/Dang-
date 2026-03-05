@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { GlassPanel, StatCard, ThreatBadge, RawJsonViewer, RefreshControl } from "@/components/shared";
+import { BrokerWarnings } from "@/components/shared/BrokerWarnings";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
@@ -725,13 +726,11 @@ export default function RulesetExplorer() {
             ? `${filteredRules.length} rules found${complianceFiltersActive > 0 ? " (compliance-filtered)" : ""}`
             : `${filteredDecoders.length} decoders found`}
         </div>
-      </GlassPanel>
-
-      {/* ── Rules Table ───────────────────────────────────────────────────── */}
+      </GlassPanel>      {/* ── Rules Table ─────────────────────────────────────────────────────────── */}
       {activeTab === "rules" && (
         <GlassPanel className="overflow-hidden">
-          {rulesQ.isLoading ? (
-            <TableSkeleton columns={7} rows={12} columnWidths={[1, 1, 4, 2, 1, 1, 1]} />
+          <BrokerWarnings data={rulesQ.data} context="Rules" />
+          {rulesQ.isLoading ? (         <TableSkeleton columns={7} rows={12} columnWidths={[1, 1, 4, 2, 1, 1, 1]} />
           ) : (<>
           {/* Header */}
           <div className="grid grid-cols-[60px_60px_1fr_150px_120px_100px_60px] gap-3 px-4 py-2.5 bg-white/5 border-b border-white/10 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
@@ -1014,6 +1013,7 @@ export default function RulesetExplorer() {
       {/* ── Decoders Table ────────────────────────────────────────────────── */}
       {activeTab === "decoders" && (
         <GlassPanel className="overflow-hidden">
+          <BrokerWarnings data={decodersQ.data} context="Decoders" />
           {decodersQ.isLoading ? (
             <TableSkeleton columns={6} rows={12} columnWidths={[2, 1, 3, 2, 1, 1]} />
           ) : (<>

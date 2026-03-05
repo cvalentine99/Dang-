@@ -2996,3 +2996,34 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Update docs/gap-closure-matrix.md to reference machine-generated proof, remove hand-written count expectations
 - [x] Add "proof:generate" package.json script for reproducibility
 - [x] Add ci-proof job to .github/workflows/ci.yml with JSON reporter + drift detection + artifact upload
+
+## Chase Directive — Scoped Operator Value Sprint (Mar 5, 2026)
+
+### Step 1: Close 5 Gap Matrix Dispositions
+- [x] Identify the 5 unclassified spec gaps in gap-closure-matrix.md
+- [x] Classify each as Implemented / Covered / Deferred / Blocked with rationale
+- [x] No implementation required — just truthful classification
+
+### Step 2: Agent Detail Wiring
+- [x] Wire agentConfig endpoint into Agent Detail page (config viewer panel)
+- [x] Wire agentStats endpoint into Agent Detail page (stats metrics panel)
+- [x] agentKey: design disclosure policy before code (RBAC gate, masking, audit, cache eviction)
+- [x] agentKey: implement admin-only RBAC gate (protectedProcedure + role check)
+- [x] agentKey: masked by default, reveal requires deliberate action
+- [x] agentKey: reveal event logged (who, when, which agent) — audit trail
+- [x] agentKey: copy-to-clipboard is privileged action (log it)
+- [x] agentKey: no caching in client state beyond panel lifecycle (evict from React Query on unmount)
+
+### Step 3: Panel-Local Broker Warning Component
+- [x] Build BrokerWarningBanner component (inline, panel-local, dismissible)
+- [x] Human-readable diff format: "Adjusted 2 parameters: limit capped to 500; sort normalized to +name"
+- [x] "Show details" toggle for raw _brokerWarnings JSON
+- [x] Sticky only for that request, not permanent state
+- [x] Wire into Agent Detail, AgentHealth, FleetInventory, ITHygiene, ClusterHealth, RulesetExplorer
+
+### Step 4: CI Enforcement
+- [x] Regenerate UI parity report after new callsites (117 callsites, 67/113 procedures, 0 violations)
+- [x] Regenerate CI proof artifact from fresh vitest.json (2117 tests, 586 suites, 72 files)
+- [x] Verify CI gate passes with updated artifacts (PASS)
+- [x] TypeScript compilation clean (0 errors)
+- [x] 46 new configStatsTab.test.ts tests — all passing

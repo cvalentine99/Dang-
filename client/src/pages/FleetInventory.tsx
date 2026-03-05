@@ -10,6 +10,7 @@ import { GlassPanel } from "@/components/shared/GlassPanel";
 import { StatCard } from "@/components/shared/StatCard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
+import { BrokerWarnings } from "@/components/shared/BrokerWarnings";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { Input } from "@/components/ui/input";
 import {
@@ -395,6 +396,8 @@ export default function FleetInventory() {
                   <RawJsonViewer data={activeQuery.data as Record<string, unknown>} title={`${TAB_META[tab].label} JSON`} />
                 ) : null}
               </div>
+
+              <BrokerWarnings data={activeQuery.data} context={TAB_META[tab].label} />
 
               {activeQuery.isLoading ? (
                 <TableSkeleton columns={TAB_META[tab].columns.length} rows={8} />

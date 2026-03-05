@@ -53,18 +53,18 @@ function parseRouterSchemas() {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // Detect procedure start: "  procedureName: wazuhProcedure"
-    const procMatch = line.match(/^\s+(\w+):\s*wazuhProcedure/);
+    // Detect procedure start: "  procedureName: wazuhProcedure" or adminProcedure or protectedProcedure
+    const procMatch = line.match(/^\s+(\w+):\s*(?:wazuhProcedure|adminProcedure|protectedProcedure)/);
     if (procMatch) {
       currentProc = procMatch[1];
       // Check if there's no .input() before the next .query()
       // Look ahead for .input( or .query(
       let hasInput = false;
-      for (let j = i + 1; j < Math.min(i + 30, lines.length); j++) {
+      for (let j = i + 1; j < Math.min(i + 50, lines.length); j++) {
         if (lines[j].match(/\.input\(/)) { hasInput = true; break; }
         if (lines[j].match(/\.query\(/)) break;
         // Next procedure
-        if (lines[j].match(/^\s+\w+:\s*wazuhProcedure/)) break;
+        if (lines[j].match(/^\s+\w+:\s*(?:wazuhProcedure|adminProcedure|protectedProcedure)/)) break;
       }
       if (!hasInput) {
         schemas.set(currentProc, { keys: new Map(), line: i + 1, inputType: "void" });

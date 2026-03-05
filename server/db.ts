@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, users, sensitiveAccessAudit, InsertSensitiveAccessAuditRow } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +89,19 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+// ── Sensitive Access Audit ──────────────────────────────────────────────────
+
+/**
+ * Log a sensitive data access event (e.g., agent key reveal).
+ * Fire-and-forget: never throws, never blocks the caller.
+ */
+export async function logSensitiveAccess(entry: Omit<InsertSensitiveAccessAuditRow, "id" | "createdAt">): Promise<void> {
+  try {
+    const db = await getDb();
+    if (!db) return;
+    await db.insert(sensitiveAccessAudit).values(entry);
+  } catch (error) {
+    console.error("[SensitiveAccessAudit] Failed to log:", error);
+    // Swallow — audit failure must not block the operation
+  }
+}

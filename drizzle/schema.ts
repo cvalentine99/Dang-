@@ -1453,3 +1453,37 @@ export const ticketArtifacts = mysqlTable("ticket_artifacts", {
 
 export type TicketArtifactRow = typeof ticketArtifacts.$inferSelect;
 export type InsertTicketArtifactRow = typeof ticketArtifacts.$inferInsert;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Sensitive Access Audit — tracks disclosure of credential material (agent keys)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Every time a user reveals sensitive data (e.g., agent registration key),
+ * a row is written here. This is the accountability trail Chase requires:
+ * "a secret displayed without an audit trail is a lie your system tells about accountability."
+ */
+export const sensitiveAccessAudit = mysqlTable("sensitive_access_audit", {
+  id: int("id").autoincrement().primaryKey(),
+  /** FK to users.id — who accessed the secret */
+  userId: int("userId").notNull(),
+  /** What type of secret was accessed */
+  resourceType: varchar("resourceType", { length: 64 }).notNull(), // e.g., "agent_key"
+  /** Identifier of the specific resource (e.g., agent ID) */
+  resourceId: varchar("resourceId", { length: 128 }).notNull(),
+  /** What action was performed */
+  action: varchar("action", { length: 32 }).notNull(), // "reveal" | "copy"
+  /** IP address of the requester (for forensic context) */
+  ipAddress: varchar("ipAddress", { length: 45 }),
+  /** User-Agent string (for forensic context) */
+  userAgent: text("userAgent"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  index("saa_userId_idx").on(table.userId),
+  index("saa_resourceType_idx").on(table.resourceType),
+  index("saa_resourceId_idx").on(table.resourceId),
+  index("saa_createdAt_idx").on(table.createdAt),
+]));
+
+export type SensitiveAccessAuditRow = typeof sensitiveAccessAudit.$inferSelect;
+export type InsertSensitiveAccessAuditRow = typeof sensitiveAccessAudit.$inferInsert;

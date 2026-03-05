@@ -4,13 +4,16 @@ import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
 import { Button } from "@/components/ui/button";
+import { BrokerWarnings } from "@/components/shared/BrokerWarnings";
 import {
   ArrowLeft, Shield, Activity, Bug, FileSearch, Cpu, Monitor,
   Server, Wifi, WifiOff, Clock, Package, Globe, Users, HardDrive,
   AlertTriangle, ChevronLeft, ChevronRight, ExternalLink, Eye,
-  FolderSearch, Plus, Link2, GitBranch,
+  FolderSearch, Plus, Link2, GitBranch, Settings, BarChart3, Key,
+  Copy, EyeOff, Loader2, Lock, ShieldAlert,
 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { useRoute, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import {
@@ -19,7 +22,7 @@ import {
 } from "recharts";
 
 // ── Types ──────────────────────────────────────────────────────────────────
-type Tab = "overview" | "alerts" | "vulnerabilities" | "fim" | "syscollector" | "timeline";
+type Tab = "overview" | "alerts" | "vulnerabilities" | "fim" | "syscollector" | "timeline" | "config";
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "overview", label: "Overview", icon: <Monitor className="w-3.5 h-3.5" /> },
@@ -28,6 +31,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "fim", label: "File Integrity", icon: <FileSearch className="w-3.5 h-3.5" /> },
   { id: "syscollector", label: "System Info", icon: <Cpu className="w-3.5 h-3.5" /> },
   { id: "timeline", label: "Timeline", icon: <GitBranch className="w-3.5 h-3.5" /> },
+  { id: "config", label: "Config & Stats", icon: <Settings className="w-3.5 h-3.5" /> },
 ];
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -962,6 +966,271 @@ function ActivityTimelineTab({ agentId }: { agentId: string }) {
   );
 }
 
+// ── Config & Stats Tab ───────────────────────────────────────────────────
+
+/** Known Wazuh agent component/configuration pairs for the picker */
+const AGENT_CONFIG_PAIRS: { component: string; configuration: string; label: string }[] = [
+  { component: "agent", configuration: "client", label: "Agent Client" },
+  { component: "agent", configuration: "buffer", label: "Agent Buffer" },
+  { component: "agent", configuration: "labels", label: "Agent Labels" },
+  { component: "agent", configuration: "internal", label: "Agent Internal" },
+  { component: "logcollector", configuration: "logcollector", label: "Log Collector" },
+  { component: "logcollector", configuration: "internal", label: "Log Collector Internal" },
+  { component: "syscheck", configuration: "syscheck", label: "Syscheck (FIM)" },
+  { component: "syscheck", configuration: "internal", label: "Syscheck Internal" },
+  { component: "rootcheck", configuration: "rootcheck", label: "Rootcheck" },
+  { component: "rootcheck", configuration: "internal", label: "Rootcheck Internal" },
+  { component: "wmodules", configuration: "wmodules", label: "Wazuh Modules" },
+  { component: "com", configuration: "active-response", label: "Active Response" },
+  { component: "com", configuration: "internal", label: "COM Internal" },
+  { component: "auth", configuration: "auth", label: "Auth" },
+];
+
+/** Known Wazuh agent stats component options */
+const AGENT_STATS_COMPONENTS = [
+  { value: "logcollector", label: "Log Collector" },
+  { value: "agent", label: "Agent" },
+];
+
+function ConfigStatsTab({ agentId }: { agentId: string }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+
+  // ── Agent Config ──
+  const [configPairIdx, setConfigPairIdx] = useState(0);
+  const pair = AGENT_CONFIG_PAIRS[configPairIdx];
+  const configQ = trpc.wazuh.agentConfig.useQuery(
+    { agentId, component: pair.component, configuration: pair.configuration },
+    { retry: false }
+  );
+
+  // ── Agent Stats ──
+  const [statsComponent, setStatsComponent] = useState("logcollector");
+  const statsQ = trpc.wazuh.agentStats.useQuery(
+    { agentId, component: statsComponent },
+    { retry: false }
+  );
+
+  // ── Agent Key (admin-only, disclosure policy) ──
+  const [keyRevealed, setKeyRevealed] = useState(false);
+  const [keyCopied, setKeyCopied] = useState(false);
+  const keyQ = trpc.wazuh.agentKey.useQuery(
+    { agentId },
+    {
+      enabled: isAdmin && keyRevealed,
+      retry: false,
+      gcTime: 0,          // No cache persistence
+      staleTime: 0,       // Always refetch on reveal
+      refetchOnMount: false,
+      refetchOnWindowFocus: false,
+    }
+  );
+
+  // Evict key data from cache on unmount
+  const utils = trpc.useUtils();
+  useEffect(() => {
+    return () => {
+      utils.wazuh.agentKey.invalidate({ agentId });
+    };
+  }, [agentId, utils]);
+
+  const keyData = (keyQ.data as any)?.data?.affected_items?.[0] ?? null;
+  const keyStr = keyData?.key ?? "";
+
+  const handleRevealKey = useCallback(() => {
+    setKeyRevealed(true);
+    setKeyCopied(false);
+  }, []);
+
+  const handleCopyKey = useCallback(async () => {
+    if (!keyStr) return;
+    try {
+      await navigator.clipboard.writeText(keyStr);
+      setKeyCopied(true);
+      setTimeout(() => setKeyCopied(false), 3000);
+    } catch {
+      // Clipboard API may fail in some contexts
+    }
+  }, [keyStr]);
+
+  const handleHideKey = useCallback(() => {
+    setKeyRevealed(false);
+    setKeyCopied(false);
+    utils.wazuh.agentKey.invalidate({ agentId });
+  }, [agentId, utils]);
+
+  return (
+    <div className="space-y-6">
+      {/* ── Agent Configuration Viewer ── */}
+      <GlassPanel className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-display font-bold text-foreground flex items-center gap-2">
+            <Settings className="w-4 h-4 text-purple-400" /> Agent Configuration
+          </h3>
+          <select
+            value={configPairIdx}
+            onChange={e => setConfigPairIdx(Number(e.target.value))}
+            className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-purple-500/50"
+          >
+            {AGENT_CONFIG_PAIRS.map((p, i) => (
+              <option key={i} value={i} className="bg-gray-900 text-white">
+                {p.label} ({p.component}/{p.configuration})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <BrokerWarnings data={configQ.data} context="Agent Config" />
+
+        <div className="text-[10px] text-muted-foreground mb-3 font-mono">
+          GET /agents/{agentId}/config/{pair.component}/{pair.configuration}
+        </div>
+
+        {configQ.isLoading ? (
+          <div className="animate-pulse space-y-2">
+            {[...Array(6)].map((_, i) => <div key={i} className="h-4 bg-white/5 rounded" />)}
+          </div>
+        ) : configQ.isError ? (
+          <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4">
+            <p className="text-xs text-red-300">Failed to fetch configuration: {configQ.error?.message ?? "Unknown error"}</p>
+          </div>
+        ) : (
+          <RawJsonViewer data={configQ.data} />
+        )}
+      </GlassPanel>
+
+      {/* ── Agent Stats Viewer ── */}
+      <GlassPanel className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-display font-bold text-foreground flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-cyan-400" /> Agent Component Stats
+          </h3>
+          <div className="flex items-center gap-1 p-1 glass-panel rounded-xl border border-white/5">
+            {AGENT_STATS_COMPONENTS.map(c => (
+              <button
+                key={c.value}
+                onClick={() => setStatsComponent(c.value)}
+                className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                  statsComponent === c.value
+                    ? "bg-purple-500/15 text-purple-300 border border-purple-500/30"
+                    : "text-muted-foreground hover:bg-white/5 border border-transparent"
+                }`}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <BrokerWarnings data={statsQ.data} context="Agent Stats" />
+
+        <div className="text-[10px] text-muted-foreground mb-3 font-mono">
+          GET /agents/{agentId}/stats/{statsComponent}
+        </div>
+
+        {statsQ.isLoading ? (
+          <div className="animate-pulse space-y-2">
+            {[...Array(4)].map((_, i) => <div key={i} className="h-4 bg-white/5 rounded" />)}
+          </div>
+        ) : statsQ.isError ? (
+          <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4">
+            <p className="text-xs text-red-300">Failed to fetch stats: {statsQ.error?.message ?? "Unknown error"}</p>
+          </div>
+        ) : (
+          <RawJsonViewer data={statsQ.data} />
+        )}
+      </GlassPanel>
+
+      {/* ── Agent Key (Admin-Only, Full Disclosure Policy) ── */}
+      <GlassPanel className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-display font-bold text-foreground flex items-center gap-2">
+            <Key className="w-4 h-4 text-amber-400" /> Agent Registration Key
+          </h3>
+          {isAdmin && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-medium bg-amber-500/10 text-amber-300 border border-amber-500/20">
+              <ShieldAlert className="w-2.5 h-2.5" /> Admin Only
+            </span>
+          )}
+        </div>
+
+        {!isAdmin ? (
+          <div className="rounded-lg border border-white/10 bg-white/[0.02] p-6 text-center">
+            <Lock className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
+            <p className="text-xs text-muted-foreground">Agent registration keys are restricted to administrators.</p>
+            <p className="text-[10px] text-muted-foreground/60 mt-1">Contact your security administrator if you need access.</p>
+          </div>
+        ) : !keyRevealed ? (
+          <div className="space-y-3">
+            <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
+              <div className="flex items-start gap-3">
+                <ShieldAlert className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                <div className="text-xs space-y-1">
+                  <p className="text-amber-200 font-medium">Disclosure Policy</p>
+                  <ul className="text-amber-200/70 space-y-0.5 list-disc list-inside">
+                    <li>This key is the agent's authentication credential with the Wazuh manager</li>
+                    <li>Revealing this key is logged with your user ID, timestamp, and IP address</li>
+                    <li>The key is not cached — it is fetched fresh each time and discarded on navigation</li>
+                    <li>Treat this key as a secret: do not share it in chat, tickets, or screenshots</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            <Button
+              onClick={handleRevealKey}
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs bg-transparent border-amber-500/30 text-amber-300 hover:bg-amber-500/10"
+            >
+              <Eye className="w-3.5 h-3.5 mr-1.5" /> Reveal Agent Key
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {keyQ.isLoading ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Fetching key (audit logged)...
+              </div>
+            ) : keyQ.isError ? (
+              <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4">
+                <p className="text-xs text-red-300">Failed to fetch key: {keyQ.error?.message ?? "Unknown error"}</p>
+              </div>
+            ) : (
+              <>
+                <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4">
+                  <p className="text-[10px] text-muted-foreground mb-2">Agent Key</p>
+                  <p className="font-mono text-xs text-foreground break-all select-all leading-relaxed">
+                    {keyStr || "(empty)"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleCopyKey}
+                    variant="outline"
+                    size="sm"
+                    disabled={!keyStr}
+                    className="h-7 text-[10px] bg-transparent border-white/10 text-muted-foreground hover:bg-white/5"
+                  >
+                    <Copy className="w-3 h-3 mr-1" /> {keyCopied ? "Copied" : "Copy"}
+                  </Button>
+                  <Button
+                    onClick={handleHideKey}
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[10px] bg-transparent border-white/10 text-muted-foreground hover:bg-white/5"
+                  >
+                    <EyeOff className="w-3 h-3 mr-1" /> Hide
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </GlassPanel>
+    </div>
+  );
+}
+
 // ── Helper ────────────────────────────────────────────────────────────────
 function Row({ label, value, mono, children }: { label: string; value?: string; mono?: boolean; children?: React.ReactNode }) {
   return (
@@ -1071,6 +1340,7 @@ export default function AgentDetail() {
             {activeTab === "fim" && <FIMTab agentId={agentId} />}
             {activeTab === "syscollector" && <SyscollectorTab agentId={agentId} />}
             {activeTab === "timeline" && <ActivityTimelineTab agentId={agentId} />}
+            {activeTab === "config" && <ConfigStatsTab agentId={agentId} />}
           </>
         )}
       </div>

@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
+import { BrokerWarnings } from "@/components/shared/BrokerWarnings";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { Input } from "@/components/ui/input";
 import {
@@ -632,6 +633,8 @@ export default function ClusterHealth() {
             <span className="text-xs text-muted-foreground ml-4">Running:</span>
             <ThreatBadge level={String(clusterStatus.running) === "yes" ? "low" : "critical"} />
           </div>
+          <BrokerWarnings data={clusterNodesQ.data} context="Cluster Nodes" />
+
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {clusterNodes.map((node, i) => {
               const nodeType = String(node.type ?? "worker");

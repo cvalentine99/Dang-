@@ -9,7 +9,7 @@
 
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { protectedProcedure, router } from "../_core/trpc";
+import { protectedProcedure, adminProcedure, router } from "../_core/trpc";
 import { getWazuhConfig, isWazuhConfigured, wazuhGet, getEffectiveWazuhConfig, isWazuhEffectivelyConfigured } from "./wazuhClient";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
@@ -389,11 +389,40 @@ export const wazuhRouter = router({
       proxyGet("/agents", { agents_list: input.agentId })
     ),
 
-  agentKey: wazuhProcedure
+  /**
+   * GET /agents/{agentId}/key — Agent registration key.
+   * ADMIN-ONLY: requires ctx.user.role === 'admin'.
+   * Logs every access to sensitive_access_audit table.
+   * Client MUST set gcTime: 0 to prevent cache persistence.
+   */
+  agentKey: adminProcedure.use(async (opts) => {
+    // Wrap in AsyncLocalStorage so proxyGet can read userId for rate limiting
+    const { ctx, next } = opts;
+    return new Promise<Awaited<ReturnType<typeof next>>>((resolve, reject) => {
+      requestUserStore.run({ userId: ctx.user!.id }, async () => {
+        try {
+          const result = await next({ ctx });
+          resolve(result);
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+  })
     .input(z.object({ agentId: agentIdSchema }))
-    .query(({ input }) =>
-      proxyGet(`/agents/${input.agentId}/key`)
-    ),
+    .query(async ({ input, ctx }) => {
+      // Audit trail: log before returning data
+      const { logSensitiveAccess } = await import("../db");
+      await logSensitiveAccess({
+        userId: ctx.user!.id,
+        resourceType: "agent_key",
+        resourceId: input.agentId,
+        action: "reveal",
+        ipAddress: ctx.req?.ip ?? ctx.req?.socket?.remoteAddress ?? null,
+        userAgent: ctx.req?.headers?.["user-agent"] ?? null,
+      });
+      return proxyGet(`/agents/${input.agentId}/key`);
+    }),
 
   agentDaemonStats: wazuhProcedure
     .input(z.object({ agentId: agentIdSchema }))
