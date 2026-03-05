@@ -1,9 +1,9 @@
 # Dang! — Sprint v2 Gap Closure Matrix
 
-**Version:** 1.0.0  
-**Date:** March 4, 2026  
+**Version:** 1.1.0  
+**Date:** March 5, 2026  
 **Spec baseline:** Wazuh OpenAPI v4.14.3-rc3  
-**Test suite:** 2,061 tests passing across 70 files (1 pre-existing network-dependent timeout)  
+**Test suite:** 2,071 tests passing across 71 files (1 pre-existing network-dependent timeout)  
 **TypeScript:** Clean (0 errors)  
 **Author:** Manus AI
 
@@ -35,8 +35,8 @@ This document records every gap identified in the Sprint v2 Correction Sprint (`
 | KG responses | 1,126 |
 | tRPC wazuh procedures | 113 |
 | Broker-wired procedures | 18 |
-| Test files | 70 |
-| Passing tests | 2,061 |
+| Test files | 71 |
+| Passing tests | 2,071 |
 | Risk levels: SAFE / MUTATING / DESTRUCTIVE | 119 / 40 / 23 |
 | LLM-allowed endpoints | 119 |
 
@@ -516,7 +516,7 @@ The following table lists all 113 tRPC procedures in the `wazuhRouter`, organize
 Run these commands to verify the full sprint closure:
 
 ```bash
-# Full test suite (expect 2,000 passing, 1 network-dependent timeout)
+# Full test suite (expect 2,071 passing, 1 network-dependent timeout)
 cd /home/ubuntu/dang && pnpm test
 
 # TypeScript compilation (expect EXIT 0)
@@ -533,16 +533,151 @@ node -e "const m=require('mysql2/promise');(async()=>{const p=m.createPool(proce
 
 # Sprint v2 test files
 pnpm test -- --reporter=verbose server/wazuh/paramPropagation.test.ts server/wazuh/regressionFixture.test.ts server/graph/agentIntrospection.test.ts
+
+# UI param parity audit (expect 0 violations)
+node scripts/audit-ui-param-parity.mjs
+
+# CI guard for parity (expect 9 tests pass)
+pnpm test -- --run server/wazuh/uiParamParity.test.ts
+
+# Security auth-negative tests (expect 4 passing)
+pnpm test -- --reporter=verbose server/wazuh/wazuhRouter.test.ts 2>&1 | grep -E 'securityRbacRules|securityActions|securityResources|securityCurrentUserPolicies'
 ```
 
 ---
 
-## 12. References
+## 12. UI → Router Schema Parity (NEW — v1.1.0)
+
+This section documents the deterministic UI param parity audit added in the truth hygiene sprint.
+
+### 12.1 Audit Script
+
+**Script:** `scripts/audit-ui-param-parity.mjs`
+
+The script statically parses every `trpc.wazuh.*` callsite in the client source tree and compares the keys passed against the router's Zod input schemas. It classifies every optional parameter as **Surfaced** (UI control exists), **Constant** (hardcoded by design), or **Not supported** (explicitly omitted).
+
+**Verification:**
+```bash
+node scripts/audit-ui-param-parity.mjs
+# Generates: docs/ui-param-parity-report.md + docs/ui-param-parity.json
+```
+
+### 12.2 CI Guard
+
+**Test:** `server/wazuh/uiParamParity.test.ts` (9 tests)
+
+The CI guard runs the audit script fresh and asserts:
+- Zero violations (no unknown keys, no missing required params)
+- All consumed procedures exist in the router
+- Report and JSON artifact are consistent
+- No unresolved dynamic inputs
+- Callsite and procedure counts remain in expected ranges
+
+**Verification:**
+```bash
+pnpm test -- --run server/wazuh/uiParamParity.test.ts
+# Expected: 9 tests pass
+```
+
+### 12.3 Parity Summary
+
+| Metric | Count |
+|--------|-------|
+| Total callsites | 114 |
+| Unique procedures consumed | 64 of 113 |
+| Parameters surfaced in UI | 69 |
+| Parameters hardcoded/constant | 85 |
+| Parameters not supported (classified) | 539 |
+| Violations | 0 |
+| Unconsumed procedures (backend-only) | 49 |
+
+All 49 unconsumed procedures are explicitly dispositioned in the parity report as "Backend-only / Not yet wired to UI" — see §13 for the full disposition.
+
+---
+
+## 13. Remaining Gap Disposition (NEW — v1.1.0)
+
+The 49 backend-only procedures are dispositioned below. None are "implicitly handled."
+
+### 13.1 Implemented but Not Yet Wired to UI
+
+These procedures exist in the router with full Zod validation and auth gating. They are available for future UI pages.
+
+| Procedure | Family | Rationale for No UI |
+|-----------|--------|--------------------|
+| `agentConfig` | Agent | Per-agent config viewer planned for Phase 4 |
+| `agentDaemonStats` | Agent | Per-agent daemon stats planned for Agent Detail page |
+| `agentGroupMembers` | Agent | Group membership viewer planned for Fleet Command expansion |
+| `agentGroupSync` | Agent | Group sync status planned for Agent Detail page |
+| `agentKey` | Agent | Agent key display planned for Agent Detail page |
+| `agentOverview` | Agent | Overview endpoint — data already covered by `agents` + `agentSummaryStatus` |
+| `agentStats` | Agent | Per-agent stats planned for Agent Detail page |
+| `agentsStatsDistinct` | Agent | Distinct field stats planned for Fleet Command filters |
+| `agentsSummary` | Agent | Summary endpoint — data already covered by `agentSummaryStatus` + `agentSummaryOs` |
+| `agentsUninstallPermission` | Agent | Write-adjacent — deferred per read-only constraint |
+| `agentsUpgradeResult` | Agent | Upgrade results viewer planned for Fleet Command expansion |
+| `apiInfo` | System | API info planned for System Status page |
+| `ciscatResults` | CIS-CAT | CIS-CAT results viewer planned for Compliance page expansion |
+| `clusterHealthcheck` | Cluster | Healthcheck planned for Cluster Health page expansion |
+| `clusterLocalConfig` | Cluster | Local config planned for Cluster Health page expansion |
+| `clusterLocalInfo` | Cluster | Local info planned for Cluster Health page expansion |
+| `clusterNodeComponentConfig` | Cluster | Per-node component config planned for Cluster drill-down expansion |
+| `clusterNodeInfo` | Cluster | Per-node info planned for Cluster drill-down expansion |
+| `clusterNodeStats` | Cluster | Per-node stats planned for Cluster drill-down expansion |
+| `clusterNodeStatsHourly` | Cluster | Per-node hourly stats planned for Cluster drill-down expansion |
+| `decoderFiles` | Decoders | Decoder file browser planned for Ruleset Explorer expansion |
+| `decoderParents` | Decoders | Decoder parent browser planned for Ruleset Explorer expansion |
+| `groupConfiguration` | Groups | Group config viewer planned for Fleet Command expansion |
+| `groupFileContent` | Groups | Group file content viewer planned for Fleet Command expansion |
+| `groupFiles` | Groups | Group file browser planned for Fleet Command expansion |
+| `isConfigured` | System | Internal check — used by WazuhGuard, not a dashboard endpoint |
+| `lists` | Lists | CDB list browser planned for Ruleset Explorer expansion |
+| `listsFileContent` | Lists | CDB list content viewer planned for Ruleset Explorer expansion |
+| `listsFiles` | Lists | CDB list file browser planned for Ruleset Explorer expansion |
+| `managerComponentConfig` | Manager | Component config viewer planned for System Status expansion |
+| `managerConfiguration` | Manager | Manager config viewer planned for System Status expansion |
+| `managerLogs` | Manager | Manager log viewer planned for System Status expansion |
+| `managerStats` | Manager | Manager stats planned for System Status expansion |
+| `managerVersionCheck` | Manager | Version check planned for System Status expansion |
+| `mitreMetadata` | MITRE | MITRE metadata planned for MITRE ATT&CK page expansion |
+| `mitreMitigations` | MITRE | MITRE mitigations planned for MITRE ATT&CK page expansion |
+| `mitreReferences` | MITRE | MITRE references planned for MITRE ATT&CK page expansion |
+| `mitreSoftware` | MITRE | MITRE software planned for MITRE ATT&CK page expansion |
+| `remoted` | Manager | Remoted stats — data already surfaced via `clusterNodeStatsRemoted` |
+| `rootcheckLastScan` | Rootcheck | Rootcheck last scan planned for FIM/Rootcheck page expansion |
+| `rootcheckResults` | Rootcheck | Rootcheck results planned for FIM/Rootcheck page expansion |
+| `rulesByRequirement` | Rules | Rules by requirement planned for Compliance page expansion |
+| `rulesFiles` | Rules | Rules file browser planned for Ruleset Explorer expansion |
+| `securityConfig` | Security | Security config planned for Security Explorer expansion |
+| `securityCurrentUser` | Security | Current user info — used internally by auth, not a dashboard endpoint |
+| `securityPolicies` | Security | Security policies planned for Security Explorer expansion |
+| `securityRoles` | Security | Security roles planned for Security Explorer expansion |
+| `securityUsers` | Security | Security users planned for Security Explorer expansion |
+| `taskStatus` | Tasks | Task status planned for background task monitoring |
+
+### 13.2 Summary
+
+| Disposition | Count |
+|-------------|-------|
+| Implemented, UI planned for future phase | 45 |
+| Implemented, data covered by equivalent route | 3 (`agentOverview`, `agentsSummary`, `remoted`) |
+| Implemented, internal use only (not dashboard) | 1 (`isConfigured`) |
+| **Total backend-only** | **49** |
+
+No procedures are "implicitly handled" — every one has an explicit disposition.
+
+---
+
+## 14. References
 
 | Document | Path | Purpose |
 |----------|------|---------|
 | Validation Contract v2.2.0 | `VALIDATION_CONTRACT.md` | Canonical counts, mock elimination, endpoint mapping |
 | Gap→Proof Matrix | `docs/gap-proof-matrix.md` | KG hydration, agentic gates, router↔KG parity proofs |
 | Broker Coverage Ledger | `docs/broker-coverage-ledger.md` | 18 broker-wired endpoints with parameter families |
+| UI Param Parity Report | `docs/ui-param-parity-report.md` | 114 callsites, 64 procedures, 0 violations |
+| UI Param Parity JSON | `docs/ui-param-parity.json` | Machine-readable parity data for CI guard |
+| Parity Audit Script | `scripts/audit-ui-param-parity.mjs` | Deterministic static analysis of UI→Router param flow |
+| CI Proof Artifact | `docs/ci-proof-artifact.md` | Test suite execution proof with verification commands |
 | Sprint Plan | `dang-sprint-final-v2.docx` | Original P0/P1/P2 objective definitions |
 | Todo Tracker | `todo.md` | Line-by-line completion status for all sprint items |

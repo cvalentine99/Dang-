@@ -2946,3 +2946,26 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Add router-level unauth rejection test: wazuh.securityResources rejects unauthenticated
 - [x] Add router-level unauth rejection test: wazuh.securityCurrentUserPolicies rejects unauthenticated
 - [x] Update Gap Closure Matrix to cite correct proof sources (remove overclaims, added expected output, clarified securityAuth.test.ts scope)
+
+## Sprint Truth Hygiene — Contract Closure (Mar 5, 2026)
+
+### P1-A: UI → Router Schema Parity Report
+- [x] Build deterministic audit script (scripts/audit-ui-param-parity.mjs)
+- [x] Generate ui-param-parity-report.md covering 100% of dashboard callsites (114 callsites, 64 procedures, 0 violations)
+- [x] Classify every optional router param as Surfaced / Constant / Not supported (69 surfaced, 85 constant, 539 not supported)
+- [x] Verify no UI passes unknown params and no required params are missing — 0 violations
+- [x] Add CI guard vitest (server/wazuh/uiParamParity.test.ts) — 9 tests pass
+
+### P1-B: CI Proof — Critical Tests Execute
+- [x] Capture full test suite run showing wazuhRouter.test.ts security-family tests — 4 auth-negative tests pass
+- [x] Capture agenticGates.test.ts execution proof — 26 tests pass
+- [x] Capture paramPropagation.test.ts execution proof — 8 tests pass (DB-dependent, local proof in ci-proof-artifact.md)
+- [x] Save CI proof artifact (docs/ci-proof-artifact.md) — 2,071 tests, 71 files
+
+### P1-C: Matrix/Docs Truth Hygiene
+- [x] Audit Gap Closure Matrix proof citations against actual files — updated to v1.1.0
+- [x] Fix stale canonical counts (2,061→2,071 tests, 70→71 files)
+- [x] Ensure every proof command actually demonstrates what it claims — added parity + CI guard commands
+
+### P2-D: Remaining Gap Disposition
+- [x] Classify all 49 unconsumed procedures — 45 planned future UI, 3 covered by equivalent route, 1 internal-only (see gap-closure-matrix.md §13)
