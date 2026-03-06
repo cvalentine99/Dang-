@@ -22,7 +22,7 @@ import {
 } from "recharts";
 
 // ── Types ──────────────────────────────────────────────────────────────────
-type Tab = "overview" | "alerts" | "vulnerabilities" | "fim" | "syscollector" | "timeline" | "config" | "rootcheck";
+type Tab = "overview" | "alerts" | "vulnerabilities" | "fim" | "syscollector" | "timeline" | "config" | "rootcheck" | "ciscat";
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "overview", label: "Overview", icon: <Monitor className="w-3.5 h-3.5" /> },
@@ -33,6 +33,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "timeline", label: "Timeline", icon: <GitBranch className="w-3.5 h-3.5" /> },
   { id: "config", label: "Config & Stats", icon: <Settings className="w-3.5 h-3.5" /> },
   { id: "rootcheck", label: "Rootcheck", icon: <ShieldAlert className="w-3.5 h-3.5" /> },
+  { id: "ciscat", label: "CIS-CAT", icon: <Shield className="w-3.5 h-3.5" /> },
 ];
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -63,6 +64,12 @@ function OverviewTab({ agentId, agent }: { agentId: string; agent: any }) {
   const hwQ = trpc.wazuh.agentHardware.useQuery({ agentId }, { retry: false });
   const scaQ = trpc.wazuh.scaPolicies.useQuery({ agentId }, { retry: false });
   const lastScanQ = trpc.wazuh.syscheckLastScan.useQuery({ agentId }, { retry: false });
+  const groupSyncQ = trpc.wazuh.agentGroupSync.useQuery({ agentId }, { retry: false });
+
+  const groupSyncRaw = groupSyncQ.data as Record<string, unknown> | undefined;
+  const groupSyncInner = (groupSyncRaw?.data && typeof groupSyncRaw.data === "object") ? (groupSyncRaw.data as Record<string, unknown>) : groupSyncRaw;
+  const groupSyncItems = Array.isArray(groupSyncInner?.affected_items) ? (groupSyncInner.affected_items as Array<Record<string, unknown>>) : [];
+  const groupSyncStatus = groupSyncItems[0] ? String((groupSyncItems[0] as any).synced ?? "unknown") : null;
 
   const os = (osQ.data as any)?.data?.affected_items?.[0] ?? null;
   const hw = (hwQ.data as any)?.data?.affected_items?.[0] ?? null;
@@ -94,6 +101,18 @@ function OverviewTab({ agentId, agent }: { agentId: string; agent: any }) {
               </Row>
               <Row label="Version" value={String(agent?.version ?? "—")} mono />
               <Row label="Groups" value={Array.isArray(agent?.group) ? (agent.group as string[]).join(", ") : "—"} />
+              <Row label="Group Sync">
+                {groupSyncQ.isLoading ? (
+                  <span className="text-muted-foreground">Loading...</span>
+                ) : groupSyncStatus !== null ? (
+                  <span className={`inline-flex items-center gap-1.5 font-medium ${groupSyncStatus === "true" || groupSyncStatus === "synced" ? "text-threat-low" : "text-threat-medium"}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${groupSyncStatus === "true" || groupSyncStatus === "synced" ? "bg-threat-low" : "bg-threat-medium"}`} />
+                    {groupSyncStatus === "true" || groupSyncStatus === "synced" ? "Synced" : groupSyncStatus}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </Row>
               <Row label="Last Keep Alive" value={agent?.lastKeepAlive ? new Date(String(agent.lastKeepAlive)).toLocaleString() : "—"} />
               <Row label="Registration Date" value={agent?.dateAdd ? new Date(String(agent.dateAdd)).toLocaleString() : "—"} />
             </div>
@@ -1513,6 +1532,167 @@ function RootcheckTab({ agentId }: { agentId: string }) {
   );
 }
 
+// ── CIS-CAT Tab ──────────────────────────────────────────────────────────
+function CiscatTab({ agentId }: { agentId: string }) {
+  const [page, setPage] = useState(0);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [benchmarkFilter, setBenchmarkFilter] = useState("");
+  const [profileFilter, setProfileFilter] = useState("");
+  const PAGE_SIZE = 20;
+
+  const resultsQ = trpc.wazuh.ciscatResults.useQuery(
+    {
+      agentId,
+      limit: PAGE_SIZE,
+      offset: page * PAGE_SIZE,
+      ...(searchTerm ? { search: searchTerm } : {}),
+      ...(benchmarkFilter ? { benchmark: benchmarkFilter } : {}),
+      ...(profileFilter ? { profile: profileFilter } : {}),
+    },
+    { retry: 1, staleTime: 30_000, enabled: !!agentId }
+  );
+
+  const raw = resultsQ.data as Record<string, unknown> | undefined;
+  const inner = (raw?.data && typeof raw.data === "object") ? (raw.data as Record<string, unknown>) : raw;
+  const items = Array.isArray(inner?.affected_items) ? (inner.affected_items as Array<Record<string, unknown>>) : [];
+  const totalItems = typeof inner?.total_affected_items === "number" ? inner.total_affected_items : items.length;
+  const totalPages = Math.max(1, Math.ceil((totalItems as number) / PAGE_SIZE));
+
+  const hasFilters = searchTerm || benchmarkFilter || profileFilter;
+
+  return (
+    <div className="space-y-4">
+      <GlassPanel>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+            <Shield className="h-4 w-4 text-primary" /> CIS-CAT Results
+            <span className="text-[10px] font-mono text-muted-foreground">({totalItems as number} total)</span>
+          </h3>
+          <div className="flex items-center gap-2">
+            {resultsQ.data ? <RawJsonViewer data={resultsQ.data} title="CIS-CAT Results JSON" /> : null}
+          </div>
+        </div>
+        <BrokerWarnings data={resultsQ.data} context="ciscatResults" />
+
+        {/* Filters */}
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search..."
+              value={searchTerm}
+              onChange={(e) => { setSearchTerm(e.target.value); setPage(0); }}
+              className="h-8 pl-8 pr-3 rounded-lg bg-secondary/30 border border-border/30 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 w-48"
+            />
+          </div>
+          <input
+            type="text"
+            placeholder="Benchmark filter..."
+            value={benchmarkFilter}
+            onChange={(e) => { setBenchmarkFilter(e.target.value); setPage(0); }}
+            className="h-8 px-3 rounded-lg bg-secondary/30 border border-border/30 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 w-44"
+          />
+          <input
+            type="text"
+            placeholder="Profile filter..."
+            value={profileFilter}
+            onChange={(e) => { setProfileFilter(e.target.value); setPage(0); }}
+            className="h-8 px-3 rounded-lg bg-secondary/30 border border-border/30 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 w-44"
+          />
+          {hasFilters ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setSearchTerm(""); setBenchmarkFilter(""); setProfileFilter(""); setPage(0); }}
+              className="h-8 text-[10px] bg-transparent border-white/10 text-muted-foreground hover:bg-white/5"
+            >
+              Clear Filters
+            </Button>
+          ) : null}
+        </div>
+
+        {/* Results Table */}
+        {resultsQ.isLoading ? (
+          <TableSkeleton columns={7} rows={8} />
+        ) : resultsQ.isError ? (
+          <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4">
+            <p className="text-xs text-red-300">{resultsQ.error.message}</p>
+          </div>
+        ) : items.length === 0 ? (
+          <div className="text-center py-8">
+            <Shield className="h-8 w-8 text-muted-foreground mx-auto mb-2 opacity-40" />
+            <p className="text-xs text-muted-foreground">No CIS-CAT results found</p>
+            <p className="text-[10px] text-muted-foreground mt-1">CIS-CAT may not be configured for this agent</p>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border/30">
+                    <th className="text-left py-2 px-3 text-muted-foreground font-medium">Benchmark</th>
+                    <th className="text-left py-2 px-3 text-muted-foreground font-medium">Profile</th>
+                    <th className="text-right py-2 px-3 text-muted-foreground font-medium">Pass</th>
+                    <th className="text-right py-2 px-3 text-muted-foreground font-medium">Fail</th>
+                    <th className="text-right py-2 px-3 text-muted-foreground font-medium">Error</th>
+                    <th className="text-right py-2 px-3 text-muted-foreground font-medium">Not Checked</th>
+                    <th className="text-right py-2 px-3 text-muted-foreground font-medium">Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item, idx) => {
+                    const score = Number(item.score ?? 0);
+                    const scoreColor = score >= 80 ? "text-[oklch(0.765_0.177_163.223)]" : score >= 50 ? "text-[oklch(0.795_0.184_86.047)]" : "text-[oklch(0.637_0.237_25.331)]";
+                    return (
+                      <tr key={idx} className="border-b border-border/10 hover:bg-secondary/20">
+                        <td className="py-2 px-3 text-foreground max-w-[200px] truncate" title={String(item.benchmark ?? "")}>{String(item.benchmark ?? "\u2014")}</td>
+                        <td className="py-2 px-3 text-foreground max-w-[200px] truncate" title={String(item.profile ?? "")}>{String(item.profile ?? "\u2014")}</td>
+                        <td className="py-2 px-3 text-right font-mono text-[oklch(0.765_0.177_163.223)]">{String(item.pass ?? "\u2014")}</td>
+                        <td className="py-2 px-3 text-right font-mono text-[oklch(0.637_0.237_25.331)]">{String(item.fail ?? "\u2014")}</td>
+                        <td className="py-2 px-3 text-right font-mono text-[oklch(0.795_0.184_86.047)]">{String(item.error ?? "\u2014")}</td>
+                        <td className="py-2 px-3 text-right font-mono text-muted-foreground">{String(item.notchecked ?? "\u2014")}</td>
+                        <td className={`py-2 px-3 text-right font-mono font-bold ${scoreColor}`}>{score > 0 ? `${score}%` : "\u2014"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            <div className="flex items-center justify-between mt-4">
+              <p className="text-[10px] text-muted-foreground">
+                Page {page + 1} of {totalPages} ({totalItems as number} results)
+              </p>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className="h-7 text-[10px] bg-transparent border-white/10 text-muted-foreground hover:bg-white/5"
+                >
+                  <ChevronLeft className="w-3 h-3" /> Prev
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="h-7 text-[10px] bg-transparent border-white/10 text-muted-foreground hover:bg-white/5"
+                >
+                  Next <ChevronRight className="w-3 h-3" />
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+      </GlassPanel>
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────
 export default function AgentDetail() {
   const [, params] = useRoute("/fleet/:agentId");
@@ -1614,6 +1794,7 @@ export default function AgentDetail() {
             {activeTab === "timeline" && <ActivityTimelineTab agentId={agentId} />}
             {activeTab === "config" && <ConfigStatsTab agentId={agentId} />}
             {activeTab === "rootcheck" && <RootcheckTab agentId={agentId} />}
+            {activeTab === "ciscat" && <CiscatTab agentId={agentId} />}
           </>
         )}
       </div>

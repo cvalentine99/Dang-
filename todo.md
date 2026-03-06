@@ -3179,3 +3179,32 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [ ] securityUsers is admin-gated
 - [ ] No MUTATING or DESTRUCTIVE procedures wired — Phase 1 read-only
 - [ ] Analyst Notes NOT listed as next step (done in Phase 9 + Phase 36)
+
+## Final Wiring Sprint — All 13 Remaining Procedures (Mar 5, 2026)
+
+### Task 6: Misc Uncovered — 3 procedures
+- [x] Wire agentsSummary — SOC Console summary panel in Home.tsx (after Manager Stats row)
+- [x] Wire isConfigured — config validation panel in Status.tsx (WazuhApiIntelligence)
+
+### CIS-CAT Results — 1 procedure
+- [x] Wire ciscatResults — new CIS-CAT tab in AgentDetail.tsx with pagination, benchmark/profile filters
+
+### MITRE Sub-Endpoints — 3 procedures
+- [x] Wire mitreSoftware — new Software tab in MitreAttack.tsx (reusable MitreSubEndpointTab)
+- [x] Wire mitreMitigations — new Mitigations tab in MitreAttack.tsx (reusable MitreSubEndpointTab)
+- [x] Wire mitreReferences — new References tab in MitreAttack.tsx (reusable MitreSubEndpointTab)
+
+### Remaining Procedures — 6 procedures
+- [x] Wire decoderParents — new Decoder Parents tab in RulesetExplorer.tsx with pagination/search
+- [x] Wire rulesByRequirement — new Rules by Requirement tab in RulesetExplorer.tsx with requirement input
+- [x] Wire managerComponentConfig — component config panel in Status.tsx with component/configuration selectors
+- [x] Wire agentGroupSync — Group Sync status row in AgentDetail.tsx OverviewTab
+- [x] Wire agentsUninstallPermission — uninstall permission panel in Status.tsx
+- [x] Wire agentsUpgradeResult — upgrade results table in AgentHealth.tsx (Fleet Command)
+- [x] Wire taskStatus — task status panel in Status.tsx
+
+### Acceptance Criteria
+- [x] Parity audit 113/113 — PASS
+- [x] All 75 test files pass (2307 assertions) — zero regressions
+- [x] New vitest tests for every newly wired procedure (server/final-wiring-sprint.test.ts)
+- [x] No MUTATING or DESTRUCTIVE procedures — Phase 1 read-only

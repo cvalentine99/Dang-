@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge, threatLevelFromNumber } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
+import { BrokerWarnings } from "@/components/shared/BrokerWarnings";
 import { ExportButton } from "@/components/shared/ExportButton";
 import { ThreatMap } from "@/components/shared/ThreatMap";
 import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
@@ -167,6 +168,7 @@ export default function Home() {
   const logsSummaryQ = trpc.wazuh.managerLogsSummary.useQuery(undefined, { retry: false, staleTime: 60_000, enabled: isConnected });
   const managerStatsQ = trpc.wazuh.managerStats.useQuery(undefined, { retry: false, staleTime: 60_000, enabled: isConnected });
   const remotedStatsQ = trpc.wazuh.remoted.useQuery(undefined, { retry: false, staleTime: 60_000, enabled: isConnected });
+  const agentsSummaryQ = trpc.wazuh.agentsSummary.useQuery(undefined, { retry: false, staleTime: 60_000, enabled: isConnected });
 
   // ── Indexer queries ─────────────────────────────────────────────────────────
   const indexerStatusQ = trpc.indexer.status.useQuery(undefined, { retry: 1, staleTime: 60_000 });
@@ -991,11 +993,60 @@ export default function Home() {
             </GlassPanel>
           </div>
         )}
+        {/* ── Row 8: Agent Summary (GET /agents/summary) ──────────────── */}
+        {isConnected && (
+          <GlassPanel>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Users className="h-4 w-4 text-primary" /> Agent Summary
+                <span className="text-[10px] font-mono text-muted-foreground">(GET /agents/summary)</span>
+              </h3>
+              <div className="flex items-center gap-2">
+                <SourceBadge source="server" />
+                {agentsSummaryQ.data ? <RawJsonViewer data={agentsSummaryQ.data as Record<string, unknown>} title="Agent Summary JSON" /> : null}
+              </div>
+            </div>
+            <BrokerWarnings data={agentsSummaryQ.data} context="agentsSummary" />
+            {agentsSummaryQ.isLoading ? (
+              <div className="animate-pulse space-y-2">
+                {[...Array(3)].map((_, i) => <div key={i} className="h-4 bg-white/5 rounded" />)}
+              </div>
+            ) : agentsSummaryQ.isError ? (
+              <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3">
+                <p className="text-xs text-red-300">Failed to load agent summary: {agentsSummaryQ.error?.message}</p>
+              </div>
+            ) : agentsSummaryQ.data ? (
+              <AgentsSummaryTable data={agentsSummaryQ.data} />
+            ) : null}
+          </GlassPanel>
+        )}
       </div>
     </WazuhGuard>
   );
 }
-
+/** Renders GET /agents/summary data as a structured table */
+function AgentsSummaryTable({ data }: { data: unknown }) {
+  const raw = data as Record<string, unknown>;
+  const inner = (raw?.data && typeof raw.data === "object") ? (raw.data as Record<string, unknown>) : raw;
+  const items = Array.isArray(inner?.affected_items) ? (inner.affected_items as Array<Record<string, unknown>>) : [];
+  if (!items.length) {
+    return <p className="text-xs text-muted-foreground">No summary data available.</p>;
+  }
+  const summary = items[0];
+  const entries = Object.entries(summary).filter(([k]) => !k.startsWith("_"));
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+      {entries.map(([key, val]) => (
+        <div key={key} className="bg-secondary/20 rounded-lg p-3 border border-border/20">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{key.replace(/_/g, " ")}</p>
+          <p className="text-sm font-medium font-mono text-foreground mt-1">
+            {typeof val === "object" && val !== null ? JSON.stringify(val) : String(val ?? "\u2014")}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
 /** Renders manager/remoted stats as a key-value table */
 function ManagerStatsTable({ data }: { data: unknown }) {
   const raw = data as Record<string, unknown>;
