@@ -7,6 +7,7 @@ import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
+import { BrokerWarnings } from "@/components/shared/BrokerWarnings";
 
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -17,7 +18,8 @@ import {
 } from "@/components/ui/tabs";
 import {
   Crosshair, Shield, Layers, Grid3X3, Target, ExternalLink,
-  Database, Activity, TrendingUp, Flame, Clock, Loader2,
+  Database, Activity, TrendingUp, Flame, Clock, Loader2, Info,
+  Wrench, ShieldCheck, Link2, ChevronLeft, ChevronRight, Search,
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import {
@@ -118,6 +120,23 @@ export default function MitreAttack() {
   const techniquesQ = trpc.wazuh.mitreTechniques.useQuery({ limit: 500 }, { retry: 1, staleTime: 60_000, enabled: isConnected });
   const groupsQ = trpc.wazuh.mitreGroups.useQuery({ limit: 100 }, { retry: 1, staleTime: 120_000, enabled: isConnected });
   const rulesQ = trpc.wazuh.rules.useQuery({ limit: 500, offset: 0, sort: "-level" }, { retry: 1, staleTime: 60_000, enabled: isConnected });
+  const mitreMetadataQ = trpc.wazuh.mitreMetadata.useQuery(undefined, { retry: 1, staleTime: 300_000, enabled: isConnected });
+  const [softwarePage, setSoftwarePage] = useState(0);
+  const [mitigationsPage, setMitigationsPage] = useState(0);
+  const [referencesPage, setReferencesPage] = useState(0);
+  const MITRE_PAGE_SIZE = 20;
+  const mitreSoftwareQ = trpc.wazuh.mitreSoftware.useQuery(
+    { limit: MITRE_PAGE_SIZE, offset: softwarePage * MITRE_PAGE_SIZE },
+    { retry: 1, staleTime: 120_000, enabled: isConnected }
+  );
+  const mitreMitigationsQ = trpc.wazuh.mitreMitigations.useQuery(
+    { limit: MITRE_PAGE_SIZE, offset: mitigationsPage * MITRE_PAGE_SIZE },
+    { retry: 1, staleTime: 120_000, enabled: isConnected }
+  );
+  const mitreReferencesQ = trpc.wazuh.mitreReferences.useQuery(
+    { limit: MITRE_PAGE_SIZE, offset: referencesPage * MITRE_PAGE_SIZE },
+    { retry: 1, staleTime: 120_000, enabled: isConnected }
+  );
 
   // Indexer MITRE aggregation
   const mitreTimeWindow = useMemo(() => ({
@@ -338,6 +357,10 @@ export default function MitreAttack() {
             <TabsTrigger value="heatmap" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary"><Flame className="h-3 w-3 mr-1" /> Detection Heatmap</TabsTrigger>
             <TabsTrigger value="alerts" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary"><Database className="h-3 w-3 mr-1" /> Alert Activity</TabsTrigger>
             <TabsTrigger value="groups" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary"><Target className="h-3 w-3 mr-1" /> Threat Groups</TabsTrigger>
+            <TabsTrigger value="metadata" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary"><Info className="h-3 w-3 mr-1" /> Metadata</TabsTrigger>
+            <TabsTrigger value="software" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary"><Wrench className="h-3 w-3 mr-1" /> Software</TabsTrigger>
+            <TabsTrigger value="mitigations" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary"><ShieldCheck className="h-3 w-3 mr-1" /> Mitigations</TabsTrigger>
+            <TabsTrigger value="references" className="text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary"><Link2 className="h-3 w-3 mr-1" /> References</TabsTrigger>
           </TabsList>
 
           {/* ── ATT&CK Matrix Tab ──────────────────────────────────────── */}
@@ -595,6 +618,114 @@ export default function MitreAttack() {
               </div>
             </GlassPanel>
           </TabsContent>
+          {/* ── MITRE Metadata Tab ────────────────────────────────────────── */}
+          <TabsContent value="metadata" className="space-y-4 mt-4">
+            <GlassPanel>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <Info className="h-4 w-4 text-primary" /> MITRE ATT&CK Metadata
+                  <SourceBadge source="server" />
+                </h3>
+                {mitreMetadataQ.data ? <RawJsonViewer data={mitreMetadataQ.data} title="MITRE Metadata JSON" /> : null}
+              </div>
+              <BrokerWarnings data={mitreMetadataQ.data} context="mitreMetadata" />
+              {mitreMetadataQ.isLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                </div>
+              ) : mitreMetadataQ.isError ? (
+                <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4">
+                  <p className="text-xs text-red-300">{mitreMetadataQ.error.message}</p>
+                </div>
+              ) : mitreMetadataQ.data ? (
+                (() => {
+                  const raw = mitreMetadataQ.data as Record<string, unknown>;
+                  const inner = (raw?.data && typeof raw.data === "object") ? (raw.data as Record<string, unknown>) : raw;
+                  const items = Array.isArray(inner?.affected_items) ? (inner.affected_items as Array<Record<string, unknown>>) : [];
+                  if (items.length === 0) {
+                    // Show flat key-value if no affected_items
+                    const entries = Object.entries(inner).filter(([k]) => k !== "_brokerWarnings" && k !== "error");
+                    return (
+                      <div className="space-y-2">
+                        {entries.map(([key, value]) => (
+                          <div key={key} className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground capitalize">{key.replace(/([A-Z])/g, " $1").replace(/_/g, " ").trim()}</span>
+                            <span className="font-mono text-foreground truncate max-w-[60%] text-right">{typeof value === "object" ? JSON.stringify(value) : String(value ?? "—")}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-border/30">
+                            {Object.keys(items[0]).map(k => (
+                              <th key={k} className="text-left py-2 px-3 text-muted-foreground font-medium capitalize">{k.replace(/_/g, " ")}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {items.map((item, idx) => (
+                            <tr key={idx} className="border-b border-border/10 hover:bg-secondary/20">
+                              {Object.values(item).map((v, vi) => (
+                                <td key={vi} className="py-2 px-3 font-mono text-foreground truncate max-w-[200px]">{typeof v === "object" ? JSON.stringify(v) : String(v ?? "—")}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()
+              ) : (
+                <p className="text-xs text-muted-foreground italic">No metadata available</p>
+              )}
+            </GlassPanel>
+          </TabsContent>
+
+          {/* Software Tab */}
+          <TabsContent value="software" className="space-y-4 mt-4">
+            <MitreSubEndpointTab
+              title="MITRE Software"
+              icon={<Wrench className="h-4 w-4 text-primary" />}
+              query={mitreSoftwareQ}
+              context="mitreSoftware"
+              page={softwarePage}
+              setPage={setSoftwarePage}
+              pageSize={MITRE_PAGE_SIZE}
+              columns={["id", "name", "description", "x_mitre_platforms", "x_mitre_aliases"]}
+            />
+          </TabsContent>
+
+          {/* Mitigations Tab */}
+          <TabsContent value="mitigations" className="space-y-4 mt-4">
+            <MitreSubEndpointTab
+              title="MITRE Mitigations"
+              icon={<ShieldCheck className="h-4 w-4 text-primary" />}
+              query={mitreMitigationsQ}
+              context="mitreMitigations"
+              page={mitigationsPage}
+              setPage={setMitigationsPage}
+              pageSize={MITRE_PAGE_SIZE}
+              columns={["id", "name", "description", "x_mitre_version"]}
+            />
+          </TabsContent>
+
+          {/* References Tab */}
+          <TabsContent value="references" className="space-y-4 mt-4">
+            <MitreSubEndpointTab
+              title="MITRE References"
+              icon={<Link2 className="h-4 w-4 text-primary" />}
+              query={mitreReferencesQ}
+              context="mitreReferences"
+              page={referencesPage}
+              setPage={setReferencesPage}
+              pageSize={MITRE_PAGE_SIZE}
+              columns={["id", "name", "description", "url", "source_name"]}
+            />
+          </TabsContent>
         </Tabs>
 
         {/* Technique Detail Dialog */}
@@ -651,5 +782,125 @@ export default function MitreAttack() {
         </Dialog>
       </div>
     </WazuhGuard>
+  );
+}
+
+/** Reusable paginated table for MITRE sub-endpoints (software, mitigations, references) */
+function MitreSubEndpointTab({
+  title,
+  icon,
+  query,
+  context,
+  page,
+  setPage,
+  pageSize,
+  columns,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  query: { data?: unknown; isLoading: boolean; isError: boolean; error?: { message: string } | null };
+  context: string;
+  page: number;
+  setPage: React.Dispatch<React.SetStateAction<number>>;
+  pageSize: number;
+  columns: string[];
+}) {
+  const raw = query.data as Record<string, unknown> | undefined;
+  const inner = (raw?.data && typeof raw.data === "object") ? (raw.data as Record<string, unknown>) : raw;
+  const items = Array.isArray(inner?.affected_items) ? (inner.affected_items as Array<Record<string, unknown>>) : [];
+  const totalItems = typeof inner?.total_affected_items === "number" ? inner.total_affected_items : items.length;
+  const totalPages = Math.max(1, Math.ceil((totalItems as number) / pageSize));
+
+  return (
+    <GlassPanel>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+          {icon} {title}
+          <span className="text-[10px] font-mono text-muted-foreground">({totalItems as number} total)</span>
+        </h3>
+        <div className="flex items-center gap-2">
+          {query.data ? <RawJsonViewer data={query.data as Record<string, unknown>} title={`${title} JSON`} /> : null}
+        </div>
+      </div>
+      <BrokerWarnings data={query.data} context={context} />
+
+      {query.isLoading ? (
+        <TableSkeleton columns={columns.length} rows={8} />
+      ) : query.isError ? (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4">
+          <p className="text-xs text-red-300">{query.error?.message ?? "Failed to load"}</p>
+        </div>
+      ) : items.length === 0 ? (
+        <div className="text-center py-8">
+          <Layers className="h-8 w-8 text-muted-foreground mx-auto mb-2 opacity-40" />
+          <p className="text-xs text-muted-foreground">No {title.toLowerCase()} data available</p>
+        </div>
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border/30">
+                  {columns.map(col => (
+                    <th key={col} className="text-left py-2 px-3 text-muted-foreground font-medium capitalize">
+                      {col.replace(/x_mitre_/g, "").replace(/_/g, " ")}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item, idx) => (
+                  <tr key={idx} className="border-b border-border/10 hover:bg-secondary/20">
+                    {columns.map(col => {
+                      const val = item[col];
+                      const display = val == null ? "\u2014"
+                        : Array.isArray(val) ? val.join(", ")
+                        : typeof val === "object" ? JSON.stringify(val)
+                        : String(val);
+                      const isId = col === "id";
+                      const isUrl = col === "url";
+                      return (
+                        <td key={col} className={`py-2 px-3 max-w-[300px] truncate ${isId ? "font-mono text-primary" : isUrl ? "text-primary underline" : "text-foreground"}`} title={display}>
+                          {isUrl && val ? (
+                            <a href={String(val)} target="_blank" rel="noopener noreferrer" className="hover:text-primary/80">{display}</a>
+                          ) : display}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          <div className="flex items-center justify-between mt-4">
+            <p className="text-[10px] text-muted-foreground">
+              Page {page + 1} of {totalPages} ({totalItems as number} total)
+            </p>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className="h-7 text-[10px] bg-transparent border-white/10 text-muted-foreground hover:bg-white/5"
+              >
+                <ChevronLeft className="w-3 h-3" /> Prev
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                disabled={page >= totalPages - 1}
+                className="h-7 text-[10px] bg-transparent border-white/10 text-muted-foreground hover:bg-white/5"
+              >
+                Next <ChevronRight className="w-3 h-3" />
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
+    </GlassPanel>
   );
 }

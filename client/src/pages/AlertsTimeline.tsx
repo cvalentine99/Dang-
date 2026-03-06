@@ -5,6 +5,7 @@ import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/comp
 import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { SavedSearchPanel } from "@/components/shared/SavedSearchPanel";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge, threatLevelFromNumber } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
@@ -28,7 +29,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { useSearch } from "wouter";
+import { useSearch, useLocation } from "wouter";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
   ResponsiveContainer, Legend, AreaChart, Area,
@@ -142,6 +143,7 @@ function SendToQueueButton({ alert }: { alert: Record<string, unknown> }) {
 
 export default function AlertsTimeline() {
   const utils = trpc.useUtils();
+  const [, navigate] = useLocation();
   const searchString = useSearch();
   const urlParams = useMemo(() => new URLSearchParams(searchString), [searchString]);
 
@@ -319,7 +321,32 @@ export default function AlertsTimeline() {
   return (
     <WazuhGuard>
       <div className="space-y-6">
-        <PageHeader title="Alert Intelligence" subtitle="Dense SOC-grade alert table — severity trends, rule distribution, and weekly heatmap" onRefresh={handleRefresh} isLoading={isLoading} />
+        <PageHeader title="Alert Intelligence" subtitle="Dense SOC-grade alert table — severity trends, rule distribution, and weekly heatmap" onRefresh={handleRefresh} isLoading={isLoading}>
+          <div className="flex items-center gap-2">
+            <SavedSearchPanel
+              searchType="alerts"
+              label="Alerts"
+              getCurrentFilters={() => ({ timeRange, levelFilter, agentFilter, searchQuery, countryFilter, srcipFilter })}
+              onLoadSearch={(f) => {
+                if (f.timeRange !== undefined) setTimeRange(f.timeRange as string);
+                if (f.levelFilter !== undefined) setLevelFilter(f.levelFilter as string);
+                if (f.agentFilter !== undefined) setAgentFilter(f.agentFilter as string);
+                if (f.searchQuery !== undefined) setSearchQuery(f.searchQuery as string);
+                if (f.countryFilter !== undefined) setCountryFilter(f.countryFilter as string);
+                if (f.srcipFilter !== undefined) setSrcipFilter(f.srcipFilter as string);
+                setPage(0);
+              }}
+              filterSummary={[
+                ...(searchQuery ? [{ label: "Search", value: searchQuery }] : []),
+                ...(levelFilter !== "all" ? [{ label: "Level", value: levelFilter }] : []),
+                ...(agentFilter !== "all" ? [{ label: "Agent", value: agentFilter }] : []),
+                ...(countryFilter ? [{ label: "Country", value: countryFilter }] : []),
+                ...(srcipFilter ? [{ label: "Source IP", value: srcipFilter }] : []),
+                { label: "Time Range", value: timeRange },
+              ]}
+            />
+          </div>
+        </PageHeader>
 
         {/* Time Range Presets */}
         <GlassPanel className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
@@ -563,7 +590,11 @@ export default function AlertsTimeline() {
                       <td className="py-1.5 px-2 font-mono text-primary text-[10px]">{String(rule.id ?? "—")}</td>
                       <td className="py-1.5 px-2 text-foreground max-w-[300px] truncate">{String(rule.description ?? "—")}</td>
                       <td className="py-1.5 px-2">
-                        <span className="text-[10px] font-mono text-muted-foreground">{String(agent.id ?? "")}</span>
+                        <span
+                          className="text-[10px] font-mono text-primary hover:text-primary/80 cursor-pointer underline decoration-dotted underline-offset-2"
+                          onClick={(e) => { e.stopPropagation(); if (agent.id) navigate(`/fleet/${String(agent.id)}`); }}
+                          title={agent.id ? `Drilldown to agent ${agent.id}` : undefined}
+                        >{String(agent.id ?? "")}</span>
                         <span className="text-[10px] text-foreground ml-1">{String(agent.name ?? "")}</span>
                       </td>
                       <td className="py-1.5 px-2">
@@ -634,15 +665,19 @@ export default function AlertsTimeline() {
                     {([
                       ["Timestamp", selectedAlert.timestamp ? new Date(String(selectedAlert.timestamp)).toLocaleString() : "—"],
                       ["Rule ID", rule.id], ["Level", level],
-                      ["Agent", `${agent.id} — ${agent.name}`], ["Agent IP", agent.ip],
+                      ["Agent", agent.id ? `${agent.id} — ${agent.name}` : "—", agent.id ? () => navigate(`/fleet/${String(agent.id)}`) : undefined], ["Agent IP", agent.ip],
                       ["Manager", (selectedAlert.manager as Record<string, unknown>)?.name],
                       ["Decoder", (selectedAlert.decoder as Record<string, unknown>)?.name],
                       ["Location", selectedAlert.location],
                       ["Source IP", data.srcip], ["Dest IP", data.dstip],
-                    ] as [string, unknown][]).map(([label, val]) => (
+                    ] as [string, unknown, ((() => void) | undefined)?][]).map(([label, val, onClick]) => (
                       <div key={label} className="bg-secondary/30 rounded-lg p-3 border border-border/30">
                         <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</p>
-                        <p className="text-sm font-medium text-foreground mt-1 truncate font-mono">{String(val ?? "—")}</p>
+                        {onClick ? (
+                          <p className="text-sm font-medium text-primary mt-1 truncate font-mono cursor-pointer hover:text-primary/80 underline decoration-dotted underline-offset-2" onClick={onClick}>{String(val ?? "—")}</p>
+                        ) : (
+                          <p className="text-sm font-medium text-foreground mt-1 truncate font-mono">{String(val ?? "—")}</p>
+                        )}
                       </div>
                     ))}
                   </div>

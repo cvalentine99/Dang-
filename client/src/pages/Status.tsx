@@ -547,6 +547,33 @@ function WazuhApiIntelligence() {
     retry: 1,
   });
 
+  const managerStatsQ = trpc.wazuh.managerStats.useQuery(undefined, {
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  const isConfiguredQ = trpc.wazuh.isConfigured.useQuery(undefined, {
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  const [compConfigComponent, setCompConfigComponent] = useState("agent");
+  const [compConfigConfiguration, setCompConfigConfiguration] = useState("internal");
+  const managerCompConfigQ = trpc.wazuh.managerComponentConfig.useQuery(
+    { component: compConfigComponent, configuration: compConfigConfiguration },
+    { staleTime: 60_000, retry: 1 }
+  );
+
+  const agentsUninstallPermQ = trpc.wazuh.agentsUninstallPermission.useQuery(undefined, {
+    staleTime: 120_000,
+    retry: 1,
+  });
+
+  const taskStatusQ = trpc.wazuh.taskStatus.useQuery(
+    {},
+    { staleTime: 60_000, retry: 1 }
+  );
+
   const isLoading = apiInfoQ.isLoading || versionCheckQ.isLoading || securityConfigQ.isLoading;
 
   return (
@@ -556,7 +583,44 @@ function WazuhApiIntelligence() {
         Wazuh API Intelligence
       </h2>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      {/* Config Validation Panel */}
+      <GlassPanel className="mb-0">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+            <Settings2 className="h-4 w-4 text-primary" /> Configuration Validation
+            <span className="text-[10px] font-mono text-muted-foreground">(isConfigured)</span>
+          </h3>
+          <div className="flex items-center gap-2">
+            {isConfiguredQ.data ? <RawJsonViewer data={isConfiguredQ.data as Record<string, unknown>} title="Config Validation JSON" /> : null}
+          </div>
+        </div>
+        {isConfiguredQ.isLoading ? (
+          <div className="animate-pulse h-6 bg-white/5 rounded w-48" />
+        ) : isConfiguredQ.isError ? (
+          <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3">
+            <p className="text-xs text-red-300">{isConfiguredQ.error.message}</p>
+          </div>
+        ) : isConfiguredQ.data ? (
+          <div className="flex items-center gap-4">
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium ${
+              (isConfiguredQ.data as Record<string, unknown>).configured
+                ? "bg-[oklch(0.765_0.177_163.223/10%)] border-[oklch(0.765_0.177_163.223/20%)] text-[oklch(0.765_0.177_163.223)]"
+                : "bg-[oklch(0.637_0.237_25.331/10%)] border-[oklch(0.637_0.237_25.331/20%)] text-[oklch(0.637_0.237_25.331)]"
+            }`}>
+              {(isConfiguredQ.data as Record<string, unknown>).configured ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+              {(isConfiguredQ.data as Record<string, unknown>).configured ? "Configured" : "Not Configured"}
+            </div>
+            {(isConfiguredQ.data as Record<string, unknown>).host ? (
+              <span className="text-xs font-mono text-muted-foreground">
+                Host: {String((isConfiguredQ.data as Record<string, unknown>).host)}
+                :{String((isConfiguredQ.data as Record<string, unknown>).port ?? "55000")}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </GlassPanel>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-5">
         {/* API Info — GET / */}
         <GlassPanel className="p-0 overflow-hidden">
           <div className="px-5 py-4 border-b border-[oklch(0.3_0.04_286/20%)]">
@@ -669,6 +733,150 @@ function WazuhApiIntelligence() {
               <p className="text-xs text-muted-foreground italic">No data available</p>
             )}
           </div>
+        </GlassPanel>
+        {/* Manager Stats — GET /manager/stats */}
+        <GlassPanel className="p-0 overflow-hidden">
+          <div className="px-5 py-4 border-b border-[oklch(0.3_0.04_286/20%)]">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground font-[Space_Grotesk] flex items-center gap-2">
+                <Activity className="w-4 h-4 text-[oklch(0.7_0.15_286)]" />
+                Manager Stats
+              </h3>
+              {managerStatsQ.data ? <RawJsonViewer data={managerStatsQ.data} title="Manager Stats JSON" /> : null}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">GET /manager/stats — Runtime statistics</p>
+          </div>
+          <BrokerWarnings data={managerStatsQ.data} context="managerStats" />
+          <div className="px-5 py-3">
+            {managerStatsQ.isLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-violet-400" />
+              </div>
+            ) : managerStatsQ.isError ? (
+              <div className="flex items-center gap-2 text-red-400 text-xs">
+                <XCircle className="w-4 h-4" />
+                <span>{managerStatsQ.error.message}</span>
+              </div>
+            ) : managerStatsQ.data ? (
+              <div className="space-y-2">
+                {extractKeyValues(managerStatsQ.data).map(([key, value]) => (
+                  <div key={key} className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground capitalize">{formatKey(key)}</span>
+                    <span className="font-mono text-foreground truncate max-w-[60%] text-right">{String(value)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground italic">No data available</p>
+            )}
+          </div>
+        </GlassPanel>
+      </div>
+
+      {/* Manager Component Config */}
+      <GlassPanel>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+            <Settings2 className="h-4 w-4 text-primary" /> Manager Component Config
+            <span className="text-[10px] font-mono text-muted-foreground">(GET /manager/configuration/{'{component}'}/{'{configuration}'})</span>
+          </h3>
+          <div className="flex items-center gap-2">
+            {managerCompConfigQ.data ? <RawJsonViewer data={managerCompConfigQ.data as Record<string, unknown>} title="Manager Component Config JSON" /> : null}
+          </div>
+        </div>
+        <BrokerWarnings data={managerCompConfigQ.data} context="managerComponentConfig" />
+        <div className="flex items-center gap-2 mb-3">
+          <select
+            value={compConfigComponent}
+            onChange={(e) => setCompConfigComponent(e.target.value)}
+            className="h-8 px-3 rounded-lg bg-secondary/30 border border-border/30 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+          >
+            {["agent", "agentless", "analysis", "auth", "com", "csyslogd", "integratord", "logcollector", "mail", "monitor", "request", "syscheck", "wmodules"].map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <select
+            value={compConfigConfiguration}
+            onChange={(e) => setCompConfigConfiguration(e.target.value)}
+            className="h-8 px-3 rounded-lg bg-secondary/30 border border-border/30 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+          >
+            {["internal", "global", "logging", "cluster", "active-response", "alerts", "command", "decoders", "localfile", "remote", "rootcheck", "rules", "syscheck", "wmodules"].map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+        {managerCompConfigQ.isLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-violet-400" />
+          </div>
+        ) : managerCompConfigQ.isError ? (
+          <div className="flex items-center gap-2 text-red-400 text-xs">
+            <XCircle className="w-4 h-4" />
+            <span>{managerCompConfigQ.error.message}</span>
+          </div>
+        ) : managerCompConfigQ.data ? (
+          <pre className="bg-black/30 rounded-lg p-4 text-xs font-mono text-slate-300 overflow-auto max-h-[300px] whitespace-pre-wrap">
+            {JSON.stringify(managerCompConfigQ.data, null, 2)}
+          </pre>
+        ) : (
+          <p className="text-xs text-muted-foreground italic">No data available</p>
+        )}
+      </GlassPanel>
+
+      {/* Agents Uninstall Permission + Task Status row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <GlassPanel>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Shield className="h-4 w-4 text-primary" /> Agents Uninstall Permission
+              <span className="text-[10px] font-mono text-muted-foreground">(GET /agents/uninstall)</span>
+            </h3>
+            {agentsUninstallPermQ.data ? <RawJsonViewer data={agentsUninstallPermQ.data as Record<string, unknown>} title="Uninstall Permission JSON" /> : null}
+          </div>
+          <BrokerWarnings data={agentsUninstallPermQ.data} context="agentsUninstallPermission" />
+          {agentsUninstallPermQ.isLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-violet-400" />
+            </div>
+          ) : agentsUninstallPermQ.isError ? (
+            <div className="flex items-center gap-2 text-red-400 text-xs">
+              <XCircle className="w-4 h-4" />
+              <span>{agentsUninstallPermQ.error.message}</span>
+            </div>
+          ) : agentsUninstallPermQ.data ? (
+            <pre className="bg-black/30 rounded-lg p-4 text-xs font-mono text-slate-300 overflow-auto max-h-[200px] whitespace-pre-wrap">
+              {JSON.stringify(agentsUninstallPermQ.data, null, 2)}
+            </pre>
+          ) : (
+            <p className="text-xs text-muted-foreground italic">No data available</p>
+          )}
+        </GlassPanel>
+
+        <GlassPanel>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Clock className="h-4 w-4 text-primary" /> Task Status
+              <span className="text-[10px] font-mono text-muted-foreground">(GET /tasks/status)</span>
+            </h3>
+            {taskStatusQ.data ? <RawJsonViewer data={taskStatusQ.data as Record<string, unknown>} title="Task Status JSON" /> : null}
+          </div>
+          <BrokerWarnings data={taskStatusQ.data} context="taskStatus" />
+          {taskStatusQ.isLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-violet-400" />
+            </div>
+          ) : taskStatusQ.isError ? (
+            <div className="flex items-center gap-2 text-red-400 text-xs">
+              <XCircle className="w-4 h-4" />
+              <span>{taskStatusQ.error.message}</span>
+            </div>
+          ) : taskStatusQ.data ? (
+            <pre className="bg-black/30 rounded-lg p-4 text-xs font-mono text-slate-300 overflow-auto max-h-[200px] whitespace-pre-wrap">
+              {JSON.stringify(taskStatusQ.data, null, 2)}
+            </pre>
+          ) : (
+            <p className="text-xs text-muted-foreground italic">No data available</p>
+          )}
         </GlassPanel>
       </div>
     </div>

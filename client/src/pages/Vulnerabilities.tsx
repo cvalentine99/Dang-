@@ -5,6 +5,7 @@ import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/comp
 import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { SavedSearchPanel } from "@/components/shared/SavedSearchPanel";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
@@ -26,6 +27,7 @@ import {
   Database, Globe, Package, Server, Loader2,
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
+import { useLocation } from "wouter";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
@@ -90,6 +92,7 @@ type ViewMode = "fleet" | "agent";
 
 export default function Vulnerabilities() {
   const utils = trpc.useUtils();
+  const [, navigate] = useLocation();
   const [viewMode, setViewMode] = useState<ViewMode>("fleet");
   const [agentId, setAgentId] = useState("001");
   const [sevFilter, setSevFilter] = useState<string>("all");
@@ -308,7 +311,28 @@ export default function Vulnerabilities() {
   return (
     <WazuhGuard>
       <div className="space-y-6">
-        <PageHeader title="Vulnerability Intelligence" subtitle="Fleet-wide CVE analysis — severity scoring, affected packages, top vulnerable agents, and NVD deep-links" onRefresh={handleRefresh} isLoading={statusQ.isLoading || indexerStatusQ.isLoading} />
+        <PageHeader title="Vulnerability Intelligence" subtitle="Fleet-wide CVE analysis — severity scoring, affected packages, top vulnerable agents, and NVD deep-links" onRefresh={handleRefresh} isLoading={statusQ.isLoading || indexerStatusQ.isLoading}>
+          <div className="flex items-center gap-2">
+            <SavedSearchPanel
+              searchType="vulnerabilities"
+              label="Vulnerability"
+              getCurrentFilters={() => ({ viewMode, agentId, search, sevFilter })}
+              onLoadSearch={(f) => {
+                if (f.viewMode !== undefined) setViewMode(f.viewMode as "fleet" | "agent");
+                if (f.agentId !== undefined) setAgentId(f.agentId as string);
+                if (f.search !== undefined) setSearch(f.search as string);
+                if (f.sevFilter !== undefined) setSevFilter(f.sevFilter as string);
+                setPage(0);
+              }}
+              filterSummary={[
+                ...(search ? [{ label: "Search", value: search }] : []),
+                ...(sevFilter !== "all" ? [{ label: "Severity", value: sevFilter }] : []),
+                { label: "View", value: viewMode },
+                ...(viewMode === "agent" && agentId ? [{ label: "Agent", value: agentId }] : []),
+              ]}
+            />
+          </div>
+        </PageHeader>
 
         {/* View Mode Toggle + Agent Selector */}
         <GlassPanel className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
@@ -566,7 +590,13 @@ export default function Vulnerabilities() {
                       <td className="py-2 px-3 text-foreground font-medium">{String(v.name ?? "—")}</td>
                       <td className="py-2 px-3 font-mono text-muted-foreground text-[10px]">{String(v.version ?? "—")}</td>
                       {viewMode === "fleet" ? (
-                        <td className="py-2 px-3 text-muted-foreground text-[10px]">{String(v.agent_name ?? v.agent_id ?? "—")}</td>
+                        <td className="py-2 px-3 text-[10px]">
+                          <span
+                            className="text-primary hover:text-primary/80 cursor-pointer underline decoration-dotted underline-offset-2 font-mono"
+                            onClick={(e) => { e.stopPropagation(); const aid = v.agent_id ?? v.agent_name; if (aid) navigate(`/fleet/${String(aid)}`); }}
+                            title={v.agent_id ? `Drilldown to agent ${v.agent_id}` : undefined}
+                          >{String(v.agent_name ?? v.agent_id ?? "—")}</span>
+                        </td>
                       ) : (
                         <td className="py-2 px-3 text-muted-foreground text-[10px] max-w-[200px] truncate">{String(v.title ?? "—")}</td>
                       )}
@@ -620,11 +650,15 @@ export default function Vulnerabilities() {
                     ["Architecture", selectedVuln.architecture], ["Status", selectedVuln.status ?? selectedVuln.condition],
                     ["Published", selectedVuln.published], ["Updated", selectedVuln.updated],
                     ["Detection Time", selectedVuln.detection_time],
-                    ...(selectedVuln.agent_name ? [["Agent", `${selectedVuln.agent_id} — ${selectedVuln.agent_name}`]] : []),
-                  ] as [string, unknown][]).map(([label, val]) => (
+                    ...(selectedVuln.agent_name ? [["Agent", `${selectedVuln.agent_id} — ${selectedVuln.agent_name}`, selectedVuln.agent_id ? () => navigate(`/fleet/${String(selectedVuln.agent_id)}`) : undefined]] : []),
+                  ] as [string, unknown, ((() => void) | undefined)?][]).map(([label, val, onClick]) => (
                     <div key={label} className="bg-secondary/30 rounded-lg p-3 border border-border/30">
                       <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</p>
-                      <p className="text-sm font-medium text-foreground mt-1 truncate">{String(val ?? "—")}</p>
+                      {onClick ? (
+                        <p className="text-sm font-medium text-primary mt-1 truncate cursor-pointer hover:text-primary/80 underline decoration-dotted underline-offset-2" onClick={onClick}>{String(val ?? "—")}</p>
+                      ) : (
+                        <p className="text-sm font-medium text-foreground mt-1 truncate">{String(val ?? "—")}</p>
+                      )}
                     </div>
                   ))}
                 </div>

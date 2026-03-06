@@ -10,22 +10,22 @@
 | Field | Value |
 |-------|-------|
 | JSON artifact | `test-output/vitest.json` |
-| Generated at | 2026-03-05T15:48:45.936Z |
-| Test run started | 2026-03-05T15:48:02.884Z |
+| Generated at | 2026-03-06T09:33:52.250Z |
+| Test run started | 2026-03-06T09:33:13.277Z |
 | Overall success | true |
 
 ## Summary
 
 | Metric | Count |
 |--------|-------|
-| Test files | 73 |
-| Passed files | 73 |
+| Test files | 77 |
+| Passed files | 77 |
 | Failed files | 0 |
-| Describe blocks (vitest suites) | 604 |
-| Passed suites | 604 |
+| Describe blocks (vitest suites) | 77 |
+| Passed suites | 77 |
 | Failed suites | 0 |
-| Total tests | 2208 |
-| Passed tests | 2208 |
+| Total tests | 2375 |
+| Passed tests | 2375 |
 | Failed tests | 0 |
 
 ## Per-File Breakdown
@@ -49,6 +49,7 @@
 | PASS | `server/alertQueue/alertQueueRouter.test.ts` | 26 | 26 | 0 |
 | PASS | `server/alertQueue/autoQueue.test.ts` | 19 | 19 | 0 |
 | PASS | `server/alertQueue/queueNotifier.test.ts` | 20 | 20 | 0 |
+| PASS | `server/audit-sprint-features.test.ts` | 36 | 36 | 0 |
 | PASS | `server/auth.logout.test.ts` | 1 | 1 | 0 |
 | PASS | `server/baselines/anomalyDetection.test.ts` | 28 | 28 | 0 |
 | PASS | `server/baselines/baselineSchedules.test.ts` | 27 | 27 | 0 |
@@ -62,9 +63,11 @@
 | PASS | `server/directions8-10.test.ts` | 43 | 43 | 0 |
 | PASS | `server/enhancedLLM/priorityQueue.test.ts` | 4 | 4 | 0 |
 | PASS | `server/exportUtils.test.ts` | 17 | 17 | 0 |
+| PASS | `server/final-wiring-sprint.test.ts` | 63 | 63 | 0 |
 | PASS | `server/graph/agenticGates.test.ts` | 37 | 37 | 0 |
 | PASS | `server/graph/agentIntrospection.test.ts` | 10 | 10 | 0 |
 | PASS | `server/graph/graph.test.ts` | 23 | 23 | 0 |
+| PASS | `server/graph/investigations.schema.test.ts` | 32 | 32 | 0 |
 | PASS | `server/graph/kg-hydration.test.ts` | 31 | 31 | 0 |
 | PASS | `server/graph/provenance.test.ts` | 13 | 13 | 0 |
 | PASS | `server/hunt-persistence.test.ts` | 11 | 11 | 0 |
@@ -90,6 +93,7 @@
 | PASS | `server/splunk/splunkConfig.test.ts` | 5 | 5 | 0 |
 | PASS | `server/splunk/splunkRouter.test.ts` | 124 | 124 | 0 |
 | PASS | `server/sse/alertStreamService.test.ts` | 10 | 10 | 0 |
+| PASS | `server/task5-managerStats-rootcheck.test.ts` | 36 | 36 | 0 |
 | PASS | `server/trustDocSprint.test.ts` | 39 | 39 | 0 |
 | PASS | `server/wazuh/brokerWarnings.test.ts` | 11 | 11 | 0 |
 | PASS | `server/wazuh/configStatsTab.test.ts` | 97 | 97 | 0 |

@@ -5,6 +5,8 @@ import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/comp
 import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { SavedSearchPanel } from "@/components/shared/SavedSearchPanel";
+import { ExportButton } from "@/components/shared/ExportButton";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { BrokerWarnings } from "@/components/shared/BrokerWarnings";
@@ -21,7 +23,7 @@ import {
 import {
   Users, Activity, AlertTriangle, Wifi, WifiOff, Clock, Search,
   Monitor, Server, Cpu, ChevronLeft, ChevronRight, X,
-  ArrowDownCircle, FolderX, BarChart3, Filter, Code,
+  ArrowDownCircle, FolderX, BarChart3, Filter, Code, ArrowUpCircle,
 } from "lucide-react";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
@@ -121,6 +123,11 @@ export default function AgentHealth() {
     return Number(d?.total_affected_items ?? 0);
   }, [noGroupQ.data]);
 
+  const upgradeResultQ = trpc.wazuh.agentsUpgradeResult.useQuery(
+    {},
+    { retry: 1, staleTime: 60_000, enabled: isConnected }
+  );
+
   const agentDetailQ = trpc.wazuh.agentById.useQuery({ agentId: selectedAgent ?? "000" }, { enabled: !!selectedAgent && isConnected });
   const agentOsQ = trpc.wazuh.agentOs.useQuery({ agentId: selectedAgent ?? "000" }, { enabled: !!selectedAgent && isConnected });
   const agentHwQ = trpc.wazuh.agentHardware.useQuery({ agentId: selectedAgent ?? "000" }, { enabled: !!selectedAgent && isConnected });
@@ -217,7 +224,28 @@ export default function AgentHealth() {
     <WazuhGuard>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <PageHeader title="Fleet Command" subtitle="Agent lifecycle management — status, OS distribution, groups, and deep inspection" onRefresh={handleRefresh} isLoading={isLoading} />
+          <PageHeader title="Fleet Command" subtitle="Agent lifecycle management — status, OS distribution, groups, and deep inspection" onRefresh={handleRefresh} isLoading={isLoading}>
+            <div className="flex items-center gap-2">
+              <SavedSearchPanel
+                searchType="fleet"
+                label="Fleet"
+                getCurrentFilters={() => ({ statusFilter, groupFilter, search, osPlatformFilter })}
+                onLoadSearch={(f) => {
+                  if (f.statusFilter !== undefined) setStatusFilter(f.statusFilter as string);
+                  if (f.groupFilter !== undefined) setGroupFilter(f.groupFilter as string);
+                  if (f.search !== undefined) setSearch(f.search as string);
+                  if (f.osPlatformFilter !== undefined) setOsPlatformFilter(f.osPlatformFilter as string);
+                  setPage(0);
+                }}
+                filterSummary={[
+                  ...(search ? [{ label: "Search", value: search }] : []),
+                  ...(statusFilter !== "all" ? [{ label: "Status", value: statusFilter }] : []),
+                  ...(groupFilter !== "all" ? [{ label: "Group", value: groupFilter }] : []),
+                  ...(osPlatformFilter ? [{ label: "OS", value: osPlatformFilter }] : []),
+                ]}
+              />
+            </div>
+          </PageHeader>
           <Button
             variant="outline"
             size="sm"
@@ -301,6 +329,73 @@ export default function AgentHealth() {
           </GlassPanel>
         </div>
         )}
+
+        {/* Upgrade Results */}
+        <GlassPanel>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <ArrowUpCircle className="h-4 w-4 text-primary" /> Agent Upgrade Results
+              <span className="text-[10px] font-mono text-muted-foreground">(GET /agents/upgrade_result)</span>
+            </h3>
+            <div className="flex items-center gap-2">
+              {upgradeResultQ.data ? <RawJsonViewer data={upgradeResultQ.data as Record<string, unknown>} title="Upgrade Results JSON" /> : null}
+              <ExportButton
+                getData={() => {
+                  const raw = upgradeResultQ.data as Record<string, unknown> | undefined;
+                  const inner = (raw?.data && typeof raw.data === "object") ? (raw.data as Record<string, unknown>) : raw;
+                  return Array.isArray(inner?.affected_items) ? (inner.affected_items as Array<Record<string, unknown>>) : [];
+                }}
+                baseName="upgrade-results"
+                columns={[
+                  { key: "agent", label: "Agent ID" },
+                  { key: "task_id", label: "Task ID" },
+                  { key: "create_time", label: "Created" },
+                  { key: "status", label: "Status" },
+                ]}
+                compact
+              />
+            </div>
+          </div>
+          <BrokerWarnings data={upgradeResultQ.data} context="agentsUpgradeResult" />
+          {upgradeResultQ.isLoading ? (
+            <TableSkeleton columns={4} rows={3} />
+          ) : upgradeResultQ.isError ? (
+            <div className="flex items-center gap-2 text-red-400 text-xs">
+              <AlertTriangle className="w-4 h-4" />
+              <span>{upgradeResultQ.error.message}</span>
+            </div>
+          ) : (() => {
+            const raw = upgradeResultQ.data as Record<string, unknown> | undefined;
+            const inner = (raw?.data && typeof raw.data === "object") ? (raw.data as Record<string, unknown>) : raw;
+            const items = Array.isArray(inner?.affected_items) ? (inner.affected_items as Array<Record<string, unknown>>) : [];
+            return items.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">No upgrade results available</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border/30">
+                      <th className="text-left py-2 px-3 text-muted-foreground font-medium">Agent ID</th>
+                      <th className="text-left py-2 px-3 text-muted-foreground font-medium">Status</th>
+                      <th className="text-left py-2 px-3 text-muted-foreground font-medium">Message</th>
+                      <th className="text-left py-2 px-3 text-muted-foreground font-medium">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item, idx) => (
+                      <tr key={idx} className="border-b border-border/10 hover:bg-secondary/20">
+                        <td className="py-2 px-3 font-mono text-primary">{String(item.agent ?? item.agent_id ?? "\u2014")}</td>
+                        <td className="py-2 px-3">{String(item.status ?? "\u2014")}</td>
+                        <td className="py-2 px-3 text-foreground max-w-[300px] truncate">{String(item.message ?? item.error_message ?? "\u2014")}</td>
+                        <td className="py-2 px-3 text-muted-foreground font-mono max-w-[200px] truncate">{String(item.task_id ?? item.node ?? "\u2014")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+        </GlassPanel>
 
         {/* Agent Table */}
         <GlassPanel>

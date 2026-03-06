@@ -1,0 +1,399 @@
+{
+  "numTotalTestSuites": 77,
+  "numPassedTestSuites": 77,
+  "numFailedTestSuites": 0,
+  "numTotalTests": 2375,
+  "numPassedTests": 2375,
+  "numFailedTests": 0,
+  "numSkippedTests": 0,
+  "success": true,
+  "startTime": "2026-03-06T09:33:13.277Z",
+  "duration": 25500,
+  "testResults": [
+    {
+      "name": "server/agenticPipeline.test.ts",
+      "numTests": 144,
+      "status": "passed"
+    },
+    {
+      "name": "server/wazuh/paramBroker.test.ts",
+      "numTests": 289,
+      "status": "passed"
+    },
+    {
+      "name": "server/wazuh/configStatsTab.test.ts",
+      "numTests": 97,
+      "status": "passed"
+    },
+    {
+      "name": "server/directions8-10.test.ts",
+      "numTests": 43,
+      "status": "passed"
+    },
+    {
+      "name": "server/pipelineHandoff.test.ts",
+      "numTests": 110,
+      "status": "passed"
+    },
+    {
+      "name": "server/splunk/splunkRouter.test.ts",
+      "numTests": 124,
+      "status": "passed"
+    },
+    {
+      "name": "server/graph/agenticGates.test.ts",
+      "numTests": 37,
+      "status": "passed"
+    },
+    {
+      "name": "server/responseActions.test.ts",
+      "numTests": 44,
+      "status": "passed"
+    },
+    {
+      "name": "server/agenticPipeline/stageOutput.test.ts",
+      "numTests": 4,
+      "status": "passed"
+    },
+    {
+      "name": "server/alertQueue/alertQueueRouter.test.ts",
+      "numTests": 26,
+      "status": "passed"
+    },
+    {
+      "name": "server/agentDetailEnhancements.test.ts",
+      "numTests": 69,
+      "status": "passed"
+    },
+    {
+      "name": "server/agenticPipeline/livingCaseReportService.test.ts",
+      "numTests": 33,
+      "status": "passed"
+    },
+    {
+      "name": "server/directions1-6.test.ts",
+      "numTests": 61,
+      "status": "passed"
+    },
+    {
+      "name": "server/counterDrift.test.ts",
+      "numTests": 23,
+      "status": "passed"
+    },
+    {
+      "name": "server/agenticPipeline/triageAgent.test.ts",
+      "numTests": 20,
+      "status": "passed"
+    },
+    {
+      "name": "server/agenticPipeline/hypothesisAgent.test.ts",
+      "numTests": 11,
+      "status": "passed"
+    },
+    {
+      "name": "server/indexer/indexerClient.test.ts",
+      "numTests": 37,
+      "status": "passed"
+    },
+    {
+      "name": "server/graph/kg-hydration.test.ts",
+      "numTests": 31,
+      "status": "passed"
+    },
+    {
+      "name": "server/agenticReadiness/readinessService.test.ts",
+      "numTests": 34,
+      "status": "passed"
+    },
+    {
+      "name": "server/agenticPipeline/stateMachine.test.ts",
+      "numTests": 36,
+      "status": "passed"
+    },
+    {
+      "name": "server/final-wiring-sprint.test.ts",
+      "numTests": 63,
+      "status": "passed"
+    },
+    {
+      "name": "server/graph/provenance.test.ts",
+      "numTests": 13,
+      "status": "passed"
+    },
+    {
+      "name": "server/agenticPipeline/correlationAgent.test.ts",
+      "numTests": 13,
+      "status": "passed"
+    },
+    {
+      "name": "server/baselines/driftDetection.test.ts",
+      "numTests": 16,
+      "status": "passed"
+    },
+    {
+      "name": "server/agenticPipeline/resumePipelineHelper.test.ts",
+      "numTests": 9,
+      "status": "passed"
+    },
+    {
+      "name": "server/baselines/driftAnalytics.test.ts",
+      "numTests": 15,
+      "status": "passed"
+    },
+    {
+      "name": "server/workflowTruth.test.ts",
+      "numTests": 23,
+      "status": "passed"
+    },
+    {
+      "name": "server/baselines/notificationAndSuppression.test.ts",
+      "numTests": 38,
+      "status": "passed"
+    },
+    {
+      "name": "server/wazuh/wazuhRouter.test.ts",
+      "numTests": 47,
+      "status": "passed"
+    },
+    {
+      "name": "server/alertQueue/autoQueue.test.ts",
+      "numTests": 19,
+      "status": "passed"
+    },
+    {
+      "name": "server/trustDocSprint.test.ts",
+      "numTests": 39,
+      "status": "passed"
+    },
+    {
+      "name": "server/agentDetail.test.ts",
+      "numTests": 39,
+      "status": "passed"
+    },
+    {
+      "name": "server/notes/notesRouter.test.ts",
+      "numTests": 21,
+      "status": "passed"
+    },
+    {
+      "name": "server/partialRunContinuation.test.ts",
+      "numTests": 26,
+      "status": "passed"
+    },
+    {
+      "name": "server/baselines/anomalyDetection.test.ts",
+      "numTests": 28,
+      "status": "passed"
+    },
+    {
+      "name": "server/indexer/indexerRouter.test.ts",
+      "numTests": 19,
+      "status": "passed"
+    },
+    {
+      "name": "server/hunt-table-ruleset.test.ts",
+      "numTests": 28,
+      "status": "passed"
+    },
+    {
+      "name": "server/graph/graph.test.ts",
+      "numTests": 23,
+      "status": "passed"
+    },
+    {
+      "name": "server/task5-managerStats-rootcheck.test.ts",
+      "numTests": 36,
+      "status": "passed"
+    },
+    {
+      "name": "server/graph/investigations.schema.test.ts",
+      "numTests": 32,
+      "status": "passed"
+    },
+    {
+      "name": "server/wazuh/brokerWarnings.test.ts",
+      "numTests": 11,
+      "status": "passed"
+    },
+    {
+      "name": "server/wazuh/paramPropagation.test.ts",
+      "numTests": 8,
+      "status": "passed"
+    },
+    {
+      "name": "server/admin/connectionSettings.test.ts",
+      "numTests": 15,
+      "status": "passed"
+    },
+    {
+      "name": "server/wazuh/regressionFixture.test.ts",
+      "numTests": 69,
+      "status": "passed"
+    },
+    {
+      "name": "server/wazuh/uiWiring.test.ts",
+      "numTests": 57,
+      "status": "passed"
+    },
+    {
+      "name": "server/llm/llmService.test.ts",
+      "numTests": 13,
+      "status": "passed"
+    },
+    {
+      "name": "server/baselines/baselinesRouter.test.ts",
+      "numTests": 14,
+      "status": "passed"
+    },
+    {
+      "name": "server/audit-sprint-features.test.ts",
+      "numTests": 36,
+      "status": "passed"
+    },
+    {
+      "name": "server/hunt-persistence.test.ts",
+      "numTests": 11,
+      "status": "passed"
+    },
+    {
+      "name": "server/llm/llmRouter.test.ts",
+      "numTests": 12,
+      "status": "passed"
+    },
+    {
+      "name": "server/kg-enhancements.test.ts",
+      "numTests": 13,
+      "status": "passed"
+    },
+    {
+      "name": "server/securityHardening.test.ts",
+      "numTests": 19,
+      "status": "passed"
+    },
+    {
+      "name": "server/localAuth/localAuth.test.ts",
+      "numTests": 11,
+      "status": "passed"
+    },
+    {
+      "name": "server/graph/agentIntrospection.test.ts",
+      "numTests": 10,
+      "status": "passed"
+    },
+    {
+      "name": "server/kg-multiselect.test.ts",
+      "numTests": 7,
+      "status": "passed"
+    },
+    {
+      "name": "server/exportUtils.test.ts",
+      "numTests": 17,
+      "status": "passed"
+    },
+    {
+      "name": "server/alertQueue/queueNotifier.test.ts",
+      "numTests": 20,
+      "status": "passed"
+    },
+    {
+      "name": "server/kg-context-menu-export.test.ts",
+      "numTests": 8,
+      "status": "passed"
+    },
+    {
+      "name": "server/admin/adminUsers.test.ts",
+      "numTests": 16,
+      "status": "passed"
+    },
+    {
+      "name": "server/wazuh/securityAuth.test.ts",
+      "numTests": 16,
+      "status": "passed"
+    },
+    {
+      "name": "server/savedSearches/savedSearchesRouter.test.ts",
+      "numTests": 15,
+      "status": "passed"
+    },
+    {
+      "name": "server/chart-skeleton-error-boundary.test.ts",
+      "numTests": 15,
+      "status": "passed"
+    },
+    {
+      "name": "server/wazuh/wazuhSpecCoverage.test.ts",
+      "numTests": 11,
+      "status": "passed"
+    },
+    {
+      "name": "server/soundEngine.test.ts",
+      "numTests": 11,
+      "status": "passed"
+    },
+    {
+      "name": "server/wazuh/perUserRateLimit.test.ts",
+      "numTests": 10,
+      "status": "passed"
+    },
+    {
+      "name": "server/baselines/baselineSchedules.test.ts",
+      "numTests": 27,
+      "status": "passed"
+    },
+    {
+      "name": "server/sse/alertStreamService.test.ts",
+      "numTests": 10,
+      "status": "passed"
+    },
+    {
+      "name": "server/wazuh/uiParamParity.test.ts",
+      "numTests": 9,
+      "status": "passed"
+    },
+    {
+      "name": "server/admin/hostValidation.test.ts",
+      "numTests": 19,
+      "status": "passed"
+    },
+    {
+      "name": "server/enhancedLLM/priorityQueue.test.ts",
+      "numTests": 4,
+      "status": "passed"
+    },
+    {
+      "name": "server/hybridrag/hybridragRouter.test.ts",
+      "numTests": 6,
+      "status": "passed"
+    },
+    {
+      "name": "server/otx/otxRouter.test.ts",
+      "numTests": 12,
+      "status": "passed"
+    },
+    {
+      "name": "server/wazuh/wazuhConnectivity.test.ts",
+      "numTests": 4,
+      "status": "passed"
+    },
+    {
+      "name": "server/wazuh/wazuhConnection.test.ts",
+      "numTests": 8,
+      "status": "passed"
+    },
+    {
+      "name": "server/auth.logout.test.ts",
+      "numTests": 1,
+      "status": "passed"
+    },
+    {
+      "name": "server/llm/llmConfig.test.ts",
+      "numTests": 5,
+      "status": "passed"
+    },
+    {
+      "name": "server/splunk/splunkConfig.test.ts",
+      "numTests": 5,
+      "status": "passed"
+    }
+  ]
+}

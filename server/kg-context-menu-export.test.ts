@@ -27,7 +27,9 @@ function createAuthContext(): TrpcContext {
   };
 }
 
-describe("Knowledge Graph — Context Menu Support", () => {
+const HAS_DB = !!process.env.DATABASE_URL;
+
+describe.skipIf(!HAS_DB)("Knowledge Graph — Context Menu Support", () => {
   it("endpointsByResource supports 'Show Connected Nodes' for resource nodes", async () => {
     const caller = appRouter.createCaller(createAuthContext());
     // "Show Connected" triggers endpointsByResource for resource nodes
@@ -89,7 +91,7 @@ describe("Knowledge Graph — Context Menu Support", () => {
   });
 });
 
-describe("Knowledge Graph — Add to Investigation", () => {
+describe.skipIf(!HAS_DB)("Knowledge Graph — Add to Investigation", () => {
   it("listInvestigations returns sessions array for investigation picker", async () => {
     const caller = appRouter.createCaller(createAuthContext());
     const result = await caller.graph.listInvestigations({ status: "active" });
@@ -152,7 +154,7 @@ describe("Knowledge Graph — Add to Investigation", () => {
   });
 });
 
-describe("Knowledge Graph — Export Data Availability", () => {
+describe.skipIf(!HAS_DB)("Knowledge Graph — Export Data Availability", () => {
   it("overviewGraph returns enough data for graph export", async () => {
     const caller = appRouter.createCaller(createAuthContext());
     const result = await caller.graph.overviewGraph({ limit: 50 });

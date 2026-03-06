@@ -14,19 +14,23 @@
 import { describe, it, expect, afterAll } from "vitest";
 import mysql from "mysql2/promise";
 
-const DB_URL = process.env.DATABASE_URL || "";
-const parsed = new URL(DB_URL);
-const pool = mysql.createPool({
-  host: parsed.hostname,
-  port: Number(parsed.port),
-  user: parsed.username,
-  password: parsed.password,
-  database: parsed.pathname.slice(1),
-  ssl: { rejectUnauthorized: false },
-});
+const HAS_DB = !!process.env.DATABASE_URL;
+
+const DB_URL = process.env.DATABASE_URL || "mysql://x:x@localhost:3306/x";
+const parsed = (() => { try { return new URL(DB_URL); } catch { return new URL("mysql://x:x@localhost:3306/x"); } })();
+const pool = HAS_DB
+  ? mysql.createPool({
+      host: parsed.hostname,
+      port: Number(parsed.port),
+      user: parsed.username,
+      password: parsed.password,
+      database: parsed.pathname.slice(1),
+      ssl: { rejectUnauthorized: false },
+    })
+  : (null as unknown as ReturnType<typeof mysql.createPool>);
 
 afterAll(async () => {
-  await pool.end();
+  if (HAS_DB && pool) await pool.end();
 });
 
 /**
@@ -81,7 +85,7 @@ const PHASE_1_2_CONTRACTS: Array<{
   { path: "/", method: "GET", risk: "SAFE", minQueryParams: 0, hasBody: false },
 ];
 
-describe("P1 Obj5 — Regression Fixture for Phase 1/2/3 Closed Gaps", () => {
+describe.skipIf(!HAS_DB)("P1 Obj5 — Regression Fixture for Phase 1/2/3 Closed Gaps", () => {
   describe("Endpoint existence in KG", () => {
     for (const contract of PHASE_1_2_CONTRACTS) {
       it(`${contract.method} ${contract.path} exists in KG`, async () => {

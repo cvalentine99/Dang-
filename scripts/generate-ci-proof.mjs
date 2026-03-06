@@ -53,12 +53,22 @@ const startTime = new Date(report.startTime).toISOString();
 
 // Per-file breakdown
 const files = report.testResults.map((ts) => {
-  const name = ts.name.replace(ROOT + "/", "");
-  const passed = ts.assertionResults.filter((a) => a.status === "passed").length;
-  const failed = ts.assertionResults.filter((a) => a.status === "failed").length;
-  const total = ts.assertionResults.length;
-  const status = failed > 0 ? "FAIL" : "PASS";
-  return { name, total, passed, failed, status };
+  const name = (ts.name || "").replace(ROOT + "/", "");
+  // Support both native vitest JSON (assertionResults) and parsed format (numTests)
+  if (ts.assertionResults && Array.isArray(ts.assertionResults)) {
+    const passed = ts.assertionResults.filter((a) => a.status === "passed").length;
+    const failed = ts.assertionResults.filter((a) => a.status === "failed").length;
+    const total = ts.assertionResults.length;
+    const status = failed > 0 ? "FAIL" : "PASS";
+    return { name, total, passed, failed, status };
+  } else {
+    // Parsed from raw vitest output
+    const total = ts.numTests || 0;
+    const status = ts.status === "passed" ? "PASS" : "FAIL";
+    const passed = status === "PASS" ? total : 0;
+    const failed = status === "FAIL" ? total : 0;
+    return { name, total, passed, failed, status };
+  }
 });
 
 // Sort: failures first, then alphabetical
@@ -71,13 +81,15 @@ files.sort((a, b) => {
 // Failed test details
 const failedDetails = [];
 for (const ts of report.testResults) {
-  for (const ar of ts.assertionResults) {
-    if (ar.status === "failed") {
-      failedDetails.push({
-        file: ts.name.replace(ROOT + "/", ""),
-        test: ar.fullName,
-        message: (ar.failureMessages || []).join("\n").slice(0, 500),
-      });
+  if (ts.assertionResults && Array.isArray(ts.assertionResults)) {
+    for (const ar of ts.assertionResults) {
+      if (ar.status === "failed") {
+        failedDetails.push({
+          file: (ts.name || "").replace(ROOT + "/", ""),
+          test: ar.fullName,
+          message: (ar.failureMessages || []).join("\n").slice(0, 500),
+        });
+      }
     }
   }
 }

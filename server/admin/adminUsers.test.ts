@@ -53,7 +53,9 @@ function createUnauthContext(): TrpcContext {
   };
 }
 
-describe("adminUsers router", () => {
+const HAS_DB = !!process.env.DATABASE_URL;
+
+describe.skipIf(!HAS_DB)("adminUsers router", () => {
   describe("access control", () => {
     it("rejects unauthenticated users from listing users", async () => {
       const caller = appRouter.createCaller(createUnauthContext());

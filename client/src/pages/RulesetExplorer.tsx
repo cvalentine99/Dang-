@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { GlassPanel, StatCard, ThreatBadge, RawJsonViewer, RefreshControl } from "@/components/shared";
 import { BrokerWarnings } from "@/components/shared/BrokerWarnings";
+import { ExportButton } from "@/components/shared/ExportButton";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
@@ -73,7 +74,7 @@ const CHART_COLORS = [
   "oklch(0.7 0.15 320)",
 ];
 
-type TabType = "rules" | "decoders";
+type TabType = "rules" | "decoders" | "rulesFiles" | "decoderFiles" | "cdbLists" | "decoderParents" | "rulesByReq";
 
 // ─── View Source File Button ────────────────────────────────────────────────
 function ViewSourceButton({ type, filename }: { type: "rules" | "decoders"; filename: string }) {
@@ -232,6 +233,46 @@ export default function RulesetExplorer() {
   const ruleGroupsQ = trpc.wazuh.ruleGroups.useQuery(undefined, {
     enabled: isConfigured,
   });
+
+  // ─── New file-level queries (Task 4: Ruleset File Content) ──────────────
+  const rulesFilesQ = trpc.wazuh.rulesFiles.useQuery(
+    { limit: 500, offset: 0 },
+    { enabled: isConfigured && activeTab === "rulesFiles" }
+  );
+  const decoderFilesQ = trpc.wazuh.decoderFiles.useQuery(
+    { limit: 500, offset: 0 },
+    { enabled: isConfigured && activeTab === "decoderFiles" }
+  );
+  const listsQ = trpc.wazuh.lists.useQuery(
+    { limit: 500, offset: 0 },
+    { enabled: isConfigured && activeTab === "cdbLists" }
+  );
+  const listsFilesQ = trpc.wazuh.listsFiles.useQuery(
+    { limit: 500, offset: 0 },
+    { enabled: isConfigured && activeTab === "cdbLists" }
+  );
+
+  // ─── Decoder Parents ──────────────────────────────────────────────────
+  const [decoderParentsPage, setDecoderParentsPage] = useState(0);
+  const [decoderParentsSearch, setDecoderParentsSearch] = useState("");
+  const DP_PAGE_SIZE = 50;
+  const decoderParentsQ = trpc.wazuh.decoderParents.useQuery(
+    { limit: DP_PAGE_SIZE, offset: decoderParentsPage * DP_PAGE_SIZE, ...(decoderParentsSearch ? { search: decoderParentsSearch } : {}) },
+    { enabled: isConfigured && activeTab === "decoderParents" }
+  );
+  // ─── Rules by Requirement ─────────────────────────────────────────────
+  const [requirementInput, setRequirementInput] = useState("PCI_DSS_10.6.1");
+  const [activeRequirement, setActiveRequirement] = useState("PCI_DSS_10.6.1");
+  const rulesByReqQ = trpc.wazuh.rulesByRequirement.useQuery(
+    { requirement: activeRequirement },
+    { enabled: isConfigured && activeTab === "rulesByReq" && !!activeRequirement }
+  );
+  // ─── CDB List file viewer state ────────────────────────────────────────
+  const [cdbFileToView, setCdbFileToView] = useState<string | null>(null);
+  const cdbFileContentQ = trpc.wazuh.listsFileContent.useQuery(
+    { filename: cdbFileToView ?? "" },
+    { enabled: !!cdbFileToView }
+  );
 
   // ─── Data ────────────────────────────────────────────────────────────────
   const rulesRaw = rulesQ.data ?? { data: { affected_items: [] } };
@@ -547,6 +588,61 @@ export default function RulesetExplorer() {
           >
             <Code className="h-4 w-4" />
             Decoders ({decoders.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("rulesFiles")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeTab === "rulesFiles"
+                ? "bg-violet-500/20 text-violet-300 border-b-2 border-violet-400"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+            }`}
+          >
+            <FileText className="h-4 w-4" />
+            Rule Files
+          </button>
+          <button
+            onClick={() => setActiveTab("decoderFiles")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeTab === "decoderFiles"
+                ? "bg-violet-500/20 text-violet-300 border-b-2 border-violet-400"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+            }`}
+          >
+            <Terminal className="h-4 w-4" />
+            Decoder Files
+          </button>
+          <button
+            onClick={() => setActiveTab("cdbLists")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeTab === "cdbLists"
+                ? "bg-violet-500/20 text-violet-300 border-b-2 border-violet-400"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+            }`}
+          >
+            <Database className="h-4 w-4" />
+            CDB Lists
+          </button>
+          <button
+            onClick={() => setActiveTab("decoderParents")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeTab === "decoderParents"
+                ? "bg-violet-500/20 text-violet-300 border-b-2 border-violet-400"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+            }`}
+          >
+            <Layers className="h-4 w-4" />
+            Decoder Parents
+          </button>
+          <button
+            onClick={() => setActiveTab("rulesByReq")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeTab === "rulesByReq"
+                ? "bg-violet-500/20 text-violet-300 border-b-2 border-violet-400"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+            }`}
+          >
+            <Scale className="h-4 w-4" />
+            Rules by Requirement
           </button>
         </div>
 
@@ -1183,6 +1279,404 @@ export default function RulesetExplorer() {
             </div>
           )}
           </>)}
+        </GlassPanel>
+      )}
+
+      {/* ── Rule Files Tab ──────────────────────────────────────────────── */}
+      {activeTab === "rulesFiles" && (
+        <GlassPanel>
+          <BrokerWarnings data={rulesFilesQ.data} context="rulesFiles" />
+          <h3 className="text-sm font-semibold text-violet-300 mb-3">Rule Files</h3>
+          {rulesFilesQ.isLoading ? (
+            <TableSkeleton columns={3} rows={10} />
+          ) : (() => {
+            const items = ((rulesFilesQ.data as any)?.data?.affected_items ?? []) as Array<Record<string, unknown>>;
+            return items.length === 0 ? (
+              <div className="py-12 text-center text-slate-500">
+                <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No rule files found</p>
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs text-slate-500 uppercase border-b border-white/10">
+                        <th className="py-2 px-3">Filename</th>
+                        <th className="py-2 px-3">Relative Path</th>
+                        <th className="py-2 px-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((f, i) => (
+                        <tr key={i} className="border-b border-white/5 hover:bg-white/5">
+                          <td className="py-2 px-3 font-mono text-xs text-violet-300">{String(f.filename ?? "")}</td>
+                          <td className="py-2 px-3 font-mono text-xs text-slate-400">{String(f.relative_dirname ?? "")}</td>
+                          <td className="py-2 px-3">
+                            <ViewSourceButton type="rules" filename={String(f.filename ?? "")} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <RawJsonViewer data={rulesFilesQ.data} title="rulesFiles" />
+              </>
+            );
+          })()}
+        </GlassPanel>
+      )}
+
+      {/* ── Decoder Files Tab ──────────────────────────────────────────── */}
+      {activeTab === "decoderFiles" && (
+        <GlassPanel>
+          <BrokerWarnings data={decoderFilesQ.data} context="decoderFiles" />
+          <h3 className="text-sm font-semibold text-violet-300 mb-3">Decoder Files</h3>
+          {decoderFilesQ.isLoading ? (
+            <TableSkeleton columns={3} rows={10} />
+          ) : (() => {
+            const items = ((decoderFilesQ.data as any)?.data?.affected_items ?? []) as Array<Record<string, unknown>>;
+            return items.length === 0 ? (
+              <div className="py-12 text-center text-slate-500">
+                <Terminal className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No decoder files found</p>
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs text-slate-500 uppercase border-b border-white/10">
+                        <th className="py-2 px-3">Filename</th>
+                        <th className="py-2 px-3">Relative Path</th>
+                        <th className="py-2 px-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((f, i) => (
+                        <tr key={i} className="border-b border-white/5 hover:bg-white/5">
+                          <td className="py-2 px-3 font-mono text-xs text-violet-300">{String(f.filename ?? "")}</td>
+                          <td className="py-2 px-3 font-mono text-xs text-slate-400">{String(f.relative_dirname ?? "")}</td>
+                          <td className="py-2 px-3">
+                            <ViewSourceButton type="decoders" filename={String(f.filename ?? "")} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <RawJsonViewer data={decoderFilesQ.data} title="decoderFiles" />
+              </>
+            );
+          })()}
+        </GlassPanel>
+      )}
+
+      {/* ── CDB Lists Tab ──────────────────────────────────────────────── */}
+      {activeTab === "cdbLists" && (
+        <>
+          <GlassPanel>
+            <BrokerWarnings data={listsQ.data} context="lists" />
+            <h3 className="text-sm font-semibold text-violet-300 mb-3">CDB Lists</h3>
+            {listsQ.isLoading ? (
+              <TableSkeleton columns={3} rows={8} />
+            ) : (() => {
+              const items = ((listsQ.data as any)?.data?.affected_items ?? []) as Array<Record<string, unknown>>;
+              return items.length === 0 ? (
+                <div className="py-12 text-center text-slate-500">
+                  <Database className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No CDB lists found</p>
+                </div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs text-slate-500 uppercase border-b border-white/10">
+                          <th className="py-2 px-3">Relative Path</th>
+                          <th className="py-2 px-3">Items</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((l, i) => (
+                          <tr key={i} className="border-b border-white/5 hover:bg-white/5">
+                            <td className="py-2 px-3 font-mono text-xs text-violet-300">{String(l.relative_dirname ?? "")}/{String(l.filename ?? "")}</td>
+                            <td className="py-2 px-3 font-mono text-xs text-slate-400">{String((l.items as any[])?.length ?? 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <RawJsonViewer data={listsQ.data} title="lists" />
+                </>
+              );
+            })()}
+          </GlassPanel>
+
+          <GlassPanel>
+            <BrokerWarnings data={listsFilesQ.data} context="listsFiles" />
+            <h3 className="text-sm font-semibold text-violet-300 mb-3">CDB List Files</h3>
+            {listsFilesQ.isLoading ? (
+              <TableSkeleton columns={3} rows={8} />
+            ) : (() => {
+              const items = ((listsFilesQ.data as any)?.data?.affected_items ?? []) as Array<Record<string, unknown>>;
+              return items.length === 0 ? (
+                <div className="py-12 text-center text-slate-500">
+                  <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No CDB list files found</p>
+                </div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs text-slate-500 uppercase border-b border-white/10">
+                          <th className="py-2 px-3">Filename</th>
+                          <th className="py-2 px-3">Relative Path</th>
+                          <th className="py-2 px-3">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((f, i) => (
+                          <tr key={i} className="border-b border-white/5 hover:bg-white/5">
+                            <td className="py-2 px-3 font-mono text-xs text-violet-300">{String(f.filename ?? "")}</td>
+                            <td className="py-2 px-3 font-mono text-xs text-slate-400">{String(f.relative_dirname ?? "")}</td>
+                            <td className="py-2 px-3">
+                              <button
+                                onClick={() => setCdbFileToView(String(f.filename ?? ""))}
+                                className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1"
+                              >
+                                <Eye className="h-3 w-3" /> View Content
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <RawJsonViewer data={listsFilesQ.data} title="listsFiles" />
+                </>
+              );
+            })()}
+          </GlassPanel>
+
+          {/* CDB List File Content Viewer */}
+          {cdbFileToView && (
+            <GlassPanel>
+              <BrokerWarnings data={cdbFileContentQ.data} context="listsFileContent" />
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-violet-300">
+                  <span className="font-mono">{cdbFileToView}</span> — Content
+                </h3>
+                <button
+                  onClick={() => setCdbFileToView(null)}
+                  className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1"
+                >
+                  <X className="h-3 w-3" /> Close
+                </button>
+              </div>
+              {cdbFileContentQ.isLoading ? (
+                <TableSkeleton columns={2} rows={6} />
+              ) : (
+                <>
+                  <pre className="bg-black/30 rounded-lg p-4 text-xs font-mono text-slate-300 overflow-auto max-h-[400px] whitespace-pre-wrap">
+                    {JSON.stringify(cdbFileContentQ.data, null, 2)}
+                  </pre>
+                  <RawJsonViewer data={cdbFileContentQ.data} title="listsFileContent" />
+                </>
+              )}
+            </GlassPanel>
+          )}
+         </>
+      )}
+
+      {/* Decoder Parents Tab */}
+      {activeTab === "decoderParents" && (
+        <GlassPanel>
+          <BrokerWarnings data={decoderParentsQ.data} context="decoderParents" />
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-violet-300 flex items-center gap-2">
+              <Layers className="h-4 w-4" /> Decoder Parents
+              <span className="text-[10px] font-mono text-slate-500">(GET /decoders/parents)</span>
+            </h3>
+            <div className="flex items-center gap-2">
+              {decoderParentsQ.data ? <RawJsonViewer data={decoderParentsQ.data} title="Decoder Parents" /> : null}
+              <ExportButton
+                getData={() => {
+                  const dpRaw = decoderParentsQ.data as Record<string, unknown> | undefined;
+                  const dpInner = (dpRaw?.data && typeof dpRaw.data === "object") ? (dpRaw.data as Record<string, unknown>) : dpRaw;
+                  return Array.isArray(dpInner?.affected_items) ? (dpInner.affected_items as Array<Record<string, unknown>>) : [];
+                }}
+                baseName="decoder-parents"
+                columns={[
+                  { key: "name", label: "Name" },
+                  { key: "file", label: "File" },
+                  { key: "position", label: "Position" },
+                  { key: "status", label: "Status" },
+                ]}
+                compact
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2 mb-4">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
+              <input
+                type="text"
+                placeholder="Search parent decoders..."
+                value={decoderParentsSearch}
+                onChange={(e) => { setDecoderParentsSearch(e.target.value); setDecoderParentsPage(0); }}
+                className="h-8 pl-8 pr-3 w-full rounded-lg bg-white/5 border border-white/10 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+              />
+            </div>
+          </div>
+          {decoderParentsQ.isLoading ? (
+            <TableSkeleton columns={4} rows={10} />
+          ) : (() => {
+            const dpRaw = decoderParentsQ.data as Record<string, unknown> | undefined;
+            const dpInner = (dpRaw?.data && typeof dpRaw.data === "object") ? (dpRaw.data as Record<string, unknown>) : dpRaw;
+            const dpItems = Array.isArray(dpInner?.affected_items) ? (dpInner.affected_items as Array<Record<string, unknown>>) : [];
+            const dpTotal = typeof dpInner?.total_affected_items === "number" ? dpInner.total_affected_items : dpItems.length;
+            const dpTotalPages = Math.max(1, Math.ceil((dpTotal as number) / DP_PAGE_SIZE));
+            return dpItems.length === 0 ? (
+              <div className="py-12 text-center text-slate-500">
+                <Layers className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No parent decoders found</p>
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs text-slate-500 uppercase border-b border-white/10">
+                        <th className="py-2 px-3">Name</th>
+                        <th className="py-2 px-3">File</th>
+                        <th className="py-2 px-3">Position</th>
+                        <th className="py-2 px-3">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dpItems.map((d, i) => (
+                        <tr key={i} className="border-b border-white/5 hover:bg-white/5">
+                          <td className="py-2 px-3 font-mono text-xs text-violet-300">{String(d.name ?? "\u2014")}</td>
+                          <td className="py-2 px-3 font-mono text-xs text-slate-400">{String(d.filename ?? d.file ?? "\u2014")}</td>
+                          <td className="py-2 px-3 text-xs text-slate-400">{String(d.position ?? "\u2014")}</td>
+                          <td className="py-2 px-3 text-xs text-slate-400">{String(d.status ?? "\u2014")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex items-center justify-between mt-4">
+                  <p className="text-[10px] text-slate-500">Page {decoderParentsPage + 1} of {dpTotalPages} ({dpTotal as number} total)</p>
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="sm" onClick={() => setDecoderParentsPage(p => Math.max(0, p - 1))} disabled={decoderParentsPage === 0} className="h-7 text-[10px] bg-transparent border-white/10 text-slate-400 hover:bg-white/5">Prev</Button>
+                    <Button variant="outline" size="sm" onClick={() => setDecoderParentsPage(p => Math.min(dpTotalPages - 1, p + 1))} disabled={decoderParentsPage >= dpTotalPages - 1} className="h-7 text-[10px] bg-transparent border-white/10 text-slate-400 hover:bg-white/5">Next</Button>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+        </GlassPanel>
+      )}
+
+      {/* Rules by Requirement Tab */}
+      {activeTab === "rulesByReq" && (
+        <GlassPanel>
+          <BrokerWarnings data={rulesByReqQ.data} context="rulesByRequirement" />
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-violet-300 flex items-center gap-2">
+              <Scale className="h-4 w-4" /> Rules by Requirement
+              <span className="text-[10px] font-mono text-slate-500">(GET /rules/requirement/{'{requirement}'})</span>
+            </h3>
+            <div className="flex items-center gap-2">
+              {rulesByReqQ.data ? <RawJsonViewer data={rulesByReqQ.data} title="Rules by Requirement" /> : null}
+              <ExportButton
+                getData={() => {
+                  const reqRaw = rulesByReqQ.data as Record<string, unknown> | undefined;
+                  const reqInner = (reqRaw?.data && typeof reqRaw.data === "object") ? (reqRaw.data as Record<string, unknown>) : reqRaw;
+                  return Array.isArray(reqInner?.affected_items) ? (reqInner.affected_items as Array<Record<string, unknown>>) : [];
+                }}
+                baseName="rules-by-requirement"
+                context={activeRequirement}
+                columns={[
+                  { key: "id", label: "Rule ID" },
+                  { key: "level", label: "Level" },
+                  { key: "description", label: "Description" },
+                  { key: "groups", label: "Groups" },
+                ]}
+                compact
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2 mb-4">
+            <input
+              type="text"
+              placeholder="e.g. PCI_DSS_10.6.1"
+              value={requirementInput}
+              onChange={(e) => setRequirementInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && requirementInput.trim()) setActiveRequirement(requirementInput.trim()); }}
+              className="h-8 px-3 rounded-lg bg-white/5 border border-white/10 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-violet-500/50 w-64"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { if (requirementInput.trim()) setActiveRequirement(requirementInput.trim()); }}
+              className="h-8 text-xs bg-transparent border-white/10 text-slate-400 hover:bg-white/5"
+            >
+              <Search className="h-3.5 w-3.5 mr-1" /> Search
+            </Button>
+          </div>
+          <p className="text-[10px] text-slate-500 mb-3">Common requirements: PCI_DSS_10.6.1, PCI_DSS_11.4, GPG13_4.12, GDPR_IV_35.7.d, HIPAA_164.312.b, TSC_CC6.1</p>
+          {rulesByReqQ.isLoading ? (
+            <TableSkeleton columns={4} rows={8} />
+          ) : rulesByReqQ.isError ? (
+            <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4">
+              <p className="text-xs text-red-300">{rulesByReqQ.error?.message ?? "Failed to load"}</p>
+            </div>
+          ) : (() => {
+            const reqRaw = rulesByReqQ.data as Record<string, unknown> | undefined;
+            const reqInner = (reqRaw?.data && typeof reqRaw.data === "object") ? (reqRaw.data as Record<string, unknown>) : reqRaw;
+            const reqItems = Array.isArray(reqInner?.affected_items) ? (reqInner.affected_items as Array<Record<string, unknown>>) : [];
+            return reqItems.length === 0 ? (
+              <div className="py-12 text-center text-slate-500">
+                <Scale className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No rules found for requirement "{activeRequirement}"</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-slate-500 uppercase border-b border-white/10">
+                      <th className="py-2 px-3">Rule ID</th>
+                      <th className="py-2 px-3">Level</th>
+                      <th className="py-2 px-3">Description</th>
+                      <th className="py-2 px-3">Groups</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reqItems.map((r, i) => (
+                      <tr key={i} className="border-b border-white/5 hover:bg-white/5">
+                        <td className="py-2 px-3 font-mono text-xs text-violet-300">{String(r.id ?? "\u2014")}</td>
+                        <td className="py-2 px-3 text-xs">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                            Number(r.level ?? 0) >= 12 ? "bg-red-500/15 text-red-400 border border-red-500/20"
+                            : Number(r.level ?? 0) >= 8 ? "bg-orange-500/15 text-orange-400 border border-orange-500/20"
+                            : Number(r.level ?? 0) >= 4 ? "bg-yellow-500/15 text-yellow-400 border border-yellow-500/20"
+                            : "bg-slate-500/15 text-slate-400 border border-slate-500/20"
+                          }`}>{String(r.level ?? "\u2014")}</span>
+                        </td>
+                        <td className="py-2 px-3 text-xs text-slate-300 max-w-[400px] truncate" title={String(r.description ?? "")}>{String(r.description ?? "\u2014")}</td>
+                        <td className="py-2 px-3 text-xs text-slate-400">
+                          {Array.isArray(r.groups) ? (r.groups as string[]).slice(0, 3).join(", ") : "\u2014"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
         </GlassPanel>
       )}
     </div>

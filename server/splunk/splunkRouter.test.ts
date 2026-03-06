@@ -7,7 +7,9 @@
 
 import { describe, it, expect, vi, beforeAll } from "vitest";
 
-describe("Splunk HEC Configuration", () => {
+const HAS_SPLUNK = !!process.env.SPLUNK_HOST;
+
+describe.skipIf(!HAS_SPLUNK)("Splunk HEC Configuration", () => {
   it("should have SPLUNK_HOST env var set", () => {
     const host = process.env.SPLUNK_HOST;
     expect(host).toBeDefined();
