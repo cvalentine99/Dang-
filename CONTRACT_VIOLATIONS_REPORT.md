@@ -12,10 +12,10 @@
 |---------------------------|----------|------|--------|-----|-------|
 | API Route Violations      | 1        | 2    | 2      | 0   | 5     |
 | Client-Side Violations    | 3        | 3    | 3      | 2   | 11    |
-| Validation & Schema       | 1        | 2    | 2      | 1   | 6     |
+| Validation & Schema       | 3        | 3    | 5      | 2   | 13    |
 | Runtime & Deployment      | 0        | 1    | 5      | 2   | 8     |
 | Environment Configuration | 0        | 1    | 3      | 1   | 5     |
-| **Total**                 | **5**    | **9**| **15** | **6**| **35**|
+| **Total**                 | **7**    | **10**| **18** | **7**| **42**|
 
 ---
 
@@ -136,42 +136,87 @@
 
 ## 3. Validation & Schema Contract Violations
 
-### 3.1 [CRITICAL] Server-Side `as any` in Production Code
+### 3.1 [CRITICAL] Placeholder Schemas Inserted into Database
+
+**Locations:**
+- `server/agenticPipeline/triageAgent.ts:299` — `triageData: {} as any` inserted before LLM response
+- `server/agenticPipeline/correlationAgent.ts:726` — `bundleData: {} as any` placeholder insert
+
+**Details:** DB rows are inserted with empty objects cast as `any`, violating the `TriageObject` schema contract (requires `schemaVersion`, `triageId`, `alertId`, etc.). If the LLM invocation fails after insert, rows contain invalid schema objects. Downstream agents (correlation, hypothesis) will fail reading incomplete rows.
+**Fix:** Insert minimal valid placeholder with required fields, or defer insert until LLM responds.
+
+### 3.2 [CRITICAL] Server-Side `as any` in Production Code
 
 **Locations:**
 - `server/hybridrag/hybridragRouter.ts:227` — `await (db.delete(ragSessions) as any).where(...)` — bypasses Drizzle type checking
 - `server/hunt/huntRouter.ts:295` — `results: input.results as any` — unvalidated input passed through
 - `server/storage.ts:60` — `new Blob([data as any], { type: contentType })` — data type not validated
+- `server/agenticPipeline/stateMachine.ts:171` — `.set(updatePayload as any)` bypasses Drizzle schema validation
+- `server/agenticPipeline/responseActionsRouter.ts:79-82` — `category: input.category as any, urgency: input.urgency as any`
 
 **Impact:** Type safety bypassed in production code paths, not just tests.
 
-### 3.2 [HIGH] Test Files Rely Heavily on `as any` (36+ instances)
+### 3.3 [CRITICAL] Unsafe Enum Casts in Zod Schemas
+
+**Location:** `server/agenticPipeline/responseActionsRouter.ts:53, 56, 79, 82`
+**Details:** Uses `as unknown as [string, ...string[]]` to satisfy Zod's tuple type. If `RESPONSE_ACTION_CATEGORIES` or `RESPONSE_ACTION_URGENCY` arrays are modified incorrectly, Zod won't catch invalid values. Double-cast issue: input validated by `z.enum()` then cast again as `any` for DB insert, losing type safety.
+**Fix:** Create a type-safe helper: `const createZodEnum = <T extends readonly string[]>(arr: T) => z.enum(arr as [T[number], ...T[number][]]);`
+
+### 3.4 [HIGH] Unvalidated `z.record(z.string(), z.unknown())` Patterns
 
 **Locations:**
-- `server/directions1-6.test.ts` — 16 instances of `as any` for test data
-- `server/pipelineHandoff.test.ts` — 14 instances of `as any` for assertions
+- `server/agenticPipeline/pipelineRouter.ts:58` — `rawAlert: z.record(z.string(), z.unknown())`
+- `server/enhancedLLM/enhancedLLMRouter.ts` — `alertData: z.record(z.string(), z.unknown())`
+- `server/graph/graphRouter.ts` — `data: z.record(z.string(), z.unknown())`
+
+**Details:** Accepts completely unvalidated JSON. Required fields like `alertId` and `ruleId` extracted with fallbacks to `"unknown"`, violating the `TriageObject` contract that requires proper identifiers. Downstream correlation and deduplication logic may fail.
+
+### 3.5 [HIGH] Test Files Rely Heavily on `as any` (36+ instances)
+
+**Locations:**
+- `server/directions1-6.test.ts` — 16 instances
+- `server/pipelineHandoff.test.ts` — 14 instances
 - `server/agentDetail.test.ts` — 4 instances
 - `server/counterDrift.test.ts` — 2 instances
 - `server/kg-enhancements.test.ts` — 3 instances
 
-**Impact:** Tests don't validate type contracts. Schema changes won't cause test failures, reducing test effectiveness.
+**Impact:** Tests don't validate type contracts. Schema changes won't cause test failures.
 
-### 3.3 [HIGH] No Contract Tests for Full Request Chain
+### 3.6 [HIGH] No Contract Tests for Full Request Chain
 
-**Details:** No test validates the complete chain: client request → tRPC input schema → server handler → external API call → response transformation → tRPC output schema → client consumption. Each layer is tested (if at all) in isolation.
+**Details:** No test validates the complete chain: client request → tRPC input schema → server handler → external API call → response transformation → tRPC output schema → client consumption.
 
-### 3.4 [MEDIUM] Shared Schemas Not Imported in Server Routers
+### 3.7 [MEDIUM] Missing Status Transition Validation
 
-**Details:** `shared/agenticSchemas.ts` defines canonical schemas for triage, correlation, and living case objects, but server routers define their own inline schemas or use `z.any()` for complex objects.
+**Locations:** `server/agenticPipeline/pipelineRouter.ts:144-146`, `hypothesisAgent.ts:90-91`
+**Details:** Status checks are string-based (`status !== "completed"`) without enum type narrowing. If the DB enum adds new states (e.g., `"paused"`), code might incorrectly reject valid states. No centralized enum definition shared between client and server.
 
-### 3.5 [MEDIUM] Missing `VITE_APP_ID` in Environment Validation
+### 3.8 [MEDIUM] Missing FK Validation on `caseLink.suggestedCaseId`
+
+**Location:** `server/agenticPipeline/triageAgent.ts:206-217`
+**Details:** `suggestedCaseId` references `investigation_sessions` but has no FK constraint validation. Frontend may try to link to non-existent cases.
+
+### 3.9 [MEDIUM] Inconsistent State Machine Definitions
+
+**Details:** `stateMachine.ts` defines `ActionState = "proposed" | "approved" | "rejected" | "executed" | "deferred"` as a type union, while `responseActionsRouter.ts` uses `RESPONSE_ACTION_STATES` array. If one is updated without the other, they'll diverge.
+
+### 3.10 [MEDIUM] Shared Schemas Not Imported in Server Routers
+
+**Details:** `shared/agenticSchemas.ts` defines canonical schemas but server routers define inline schemas or use `z.any()`.
+
+### 3.11 [MEDIUM] Missing `VITE_APP_ID` in Environment Validation
 
 **Location:** `server/_core/envValidation.ts`
-**Details:** `VITE_APP_ID` is used in `localAuthService.ts` (line 159) for JWT session signing but not listed in `ENV_CHECKS`. Silently defaults to `"dang-local"`.
+**Details:** Used in `localAuthService.ts:159` for JWT signing but not in `ENV_CHECKS`. Defaults to `"dang-local"`.
 
-### 3.6 [LOW] `process.env.JWT_SECRET` Defaults to Empty String
+### 3.12 [LOW] `process.env.JWT_SECRET` Defaults to Empty String
 
-**Location:** `server/_core/env.ts:3` — `cookieSecret: process.env.JWT_SECRET ?? ""` provides empty-string fallback for a security-critical value. While `envValidation.ts` checks for it, the fallback means code can run with an empty secret if validation is bypassed.
+**Location:** `server/_core/env.ts:3` — `cookieSecret: process.env.JWT_SECRET ?? ""` fallback for security-critical value.
+
+### 3.13 [LOW] Timestamp Validation Missing
+
+**Location:** `shared/agenticSchemas.ts` vs `drizzle/schema.ts`
+**Details:** `TriageObject.alertTimestamp` is `string` (ISO-8601) stored as `varchar(64)`. No validation that the string is a valid timestamp — `"2026-13-45T99:99:99Z"` would be accepted.
 
 ---
 
@@ -249,16 +294,19 @@
 
 ### Immediate (P0) — Critical Violations
 1. **Remove or version-gate** `wazuh.agentVulnerabilities` REST call (§1.1)
-2. **Import shared types** from `agenticSchemas.ts` in client pages, replacing `as any` (§2.1, §2.2)
-3. **Fix `as any` in production server code** — `hybridragRouter.ts`, `huntRouter.ts`, `storage.ts` (§3.1)
+2. **Replace `{} as any` placeholder DB inserts** in `triageAgent.ts:299` and `correlationAgent.ts:726` with minimal valid schema objects (§3.1)
+3. **Import shared types** from `agenticSchemas.ts` in client pages, replacing `as any` (§2.1, §2.2)
+4. **Fix `as any` in production server code** — `hybridragRouter.ts`, `huntRouter.ts`, `storage.ts`, `stateMachine.ts`, `responseActionsRouter.ts` (§3.2)
+5. **Create type-safe Zod enum helper** to replace `as unknown as [string, ...string[]]` casts (§3.3)
 
 ### Short-Term (P1) — High Violations
-4. **Add `readiness` rate limit group** to rate limit config (§1.3)
-5. **Change `canRunTicketing` default to `false`** (§2.6)
-6. **Add error code discrimination** to mutation error handlers (§2.4)
-7. **Add batch operation deduplication** to prevent race conditions (§2.5)
-8. **Document or remove undocumented env vars** (§5.1)
-9. **Add `VITE_APP_ID` to env validation** (§3.5)
+6. **Add required-field validation** to `z.record(z.string(), z.unknown())` inputs for Wazuh alerts (§3.4)
+7. **Add `readiness` rate limit group** to rate limit config (§1.3)
+8. **Change `canRunTicketing` default to `false`** (§2.6)
+9. **Add error code discrimination** to mutation error handlers (§2.4)
+10. **Add batch operation deduplication** to prevent race conditions (§2.5)
+11. **Document or remove undocumented env vars** (§5.1)
+12. **Add `VITE_APP_ID` to env validation** (§3.11)
 
 ### Medium-Term (P2) — Medium Violations
 10. Add deprecation-aware logic for Wazuh endpoints (§1.2)
@@ -273,6 +321,11 @@
 
 | File | Violation Count | Severity Range |
 |------|----------------|----------------|
+| `server/agenticPipeline/responseActionsRouter.ts` | 6 | CRITICAL-MEDIUM |
+| `server/agenticPipeline/triageAgent.ts` | 4 | CRITICAL-MEDIUM |
+| `server/agenticPipeline/correlationAgent.ts` | 2 | CRITICAL |
+| `server/agenticPipeline/stateMachine.ts` | 2 | CRITICAL-MEDIUM |
+| `server/agenticPipeline/pipelineRouter.ts` | 3 | HIGH-MEDIUM |
 | `client/src/pages/AgentDetail.tsx` | 12 | CRITICAL-MEDIUM |
 | `server/pipelineHandoff.test.ts` | 14 | HIGH |
 | `server/directions1-6.test.ts` | 16 | HIGH |
