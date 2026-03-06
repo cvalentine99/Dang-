@@ -2,7 +2,12 @@
 # Dang! SIEM — Continuous Integration
 #
 # Runs on every push (all branches) and pull request to main.
-# Steps: install → typecheck → test (with MySQL) → contract audit → build
+# Steps: install → typecheck → test (with MySQL + JSON reporter) →
+#         contract audit → ui parity → ci-proof (consumes test artifact) → build
+#
+# The ci-proof job does NOT re-run tests. It downloads the vitest.json
+# artifact produced by the test job (which has a real MySQL service) and
+# generates the proof document from that authoritative source.
 # ============================================================================
 
 name: CI
@@ -112,8 +117,18 @@ jobs:
       - name: Run database migrations
         run: npx drizzle-kit migrate
 
-      - name: Run tests
-        run: pnpm test
+      - name: Run tests with JSON reporter
+        run: |
+          mkdir -p test-output
+          pnpm test -- --run --reporter=default --reporter=json --outputFile.json=test-output/vitest.json
+
+      - name: Upload vitest JSON report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-json-report
+          path: test-output/vitest.json
+          retention-days: 30
 
       - name: Test summary
         if: always()
@@ -124,6 +139,19 @@ jobs:
           echo "- **Node:** $(node --version)" >> $GITHUB_STEP_SUMMARY
           echo "- **Database:** MySQL 8.0 (service container)" >> $GITHUB_STEP_SUMMARY
           echo "- **CI env:** \`CI=true\` (network-dependent tests auto-skip)" >> $GITHUB_STEP_SUMMARY
+          if [ -f test-output/vitest.json ]; then
+            FILES=$(node -e "const j=JSON.parse(require('fs').readFileSync('test-output/vitest.json','utf-8')); console.log(j.testResults.length)")
+            TESTS=$(node -e "const j=JSON.parse(require('fs').readFileSync('test-output/vitest.json','utf-8')); console.log(j.numTotalTests)")
+            PASSED=$(node -e "const j=JSON.parse(require('fs').readFileSync('test-output/vitest.json','utf-8')); console.log(j.numPassedTests)")
+            FAILED=$(node -e "const j=JSON.parse(require('fs').readFileSync('test-output/vitest.json','utf-8')); console.log(j.numFailedTests)")
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Test files | $FILES |" >> $GITHUB_STEP_SUMMARY
+            echo "| Total tests | $TESTS |" >> $GITHUB_STEP_SUMMARY
+            echo "| Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   # ── API Contract Audit Gate ──────────────────────────────────────────────
   contract-audit:
@@ -249,7 +277,12 @@ jobs:
             echo "| Violations | $VIOLATIONS |" >> $GITHUB_STEP_SUMMARY
           fi
 
-  # ── CI Proof Artifact Generation ──────────────────────────────────────────────
+  # ── CI Proof Artifact Generation ──────────────────────────────────────────
+  #
+  # This job does NOT re-run tests. It downloads the vitest.json artifact
+  # produced by the test job (which has a real MySQL service container) and
+  # generates the proof document from that authoritative JSON.
+  # ────────────────────────────────────────────────────────────────────────────
   ci-proof:
     name: CI Proof Artifact
     runs-on: ubuntu-latest
@@ -270,20 +303,22 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run tests with JSON reporter
-        run: pnpm test -- --run --reporter=json --outputFile.json=test-output/vitest.json
-        continue-on-error: true
-        env:
-          DATABASE_URL: "mysql://test:test@localhost:3306/test"
-          JWT_SECRET: "ci-test-secret-not-for-production"
-          WAZUH_HOST: "127.0.0.1"
-          WAZUH_PORT: "55000"
-          WAZUH_USER: "ci"
-          WAZUH_PASS: "ci"
-          WAZUH_INDEXER_HOST: "127.0.0.1"
-          WAZUH_INDEXER_PORT: "9200"
-          WAZUH_INDEXER_USER: "ci"
-          WAZUH_INDEXER_PASS: "ci"
+      - name: Download vitest JSON from test job
+        uses: actions/download-artifact@v4
+        with:
+          name: vitest-json-report
+          path: test-output/
+
+      - name: Verify vitest.json was downloaded
+        run: |
+          if [ ! -f test-output/vitest.json ]; then
+            echo "::error::vitest.json artifact not found. The test job must produce test-output/vitest.json."
+            exit 1
+          fi
+          echo "✓ vitest.json downloaded from test job"
+          FILES=$(node -e "const j=JSON.parse(require('fs').readFileSync('test-output/vitest.json','utf-8')); console.log(j.testResults.length)")
+          TESTS=$(node -e "const j=JSON.parse(require('fs').readFileSync('test-output/vitest.json','utf-8')); console.log(j.numTotalTests)")
+          echo "  → $FILES test files, $TESTS total tests"
 
       - name: Generate proof artifact from JSON
         run: pnpm proof:generate
@@ -292,23 +327,22 @@ jobs:
         run: |
           echo "Checking for uncommitted CI proof changes..."
           if ! git diff --exit-code docs/ci-proof-artifact.md; then
-            echo "::error::CI proof artifact is stale. Run 'pnpm test -- --run --reporter=json --outputFile.json=test-output/vitest.json && pnpm proof:generate' locally and commit the updated files."
+            echo "::error::CI proof artifact is stale. Run the following locally and commit:"
+            echo "  pnpm test -- --run --reporter=json --outputFile.json=test-output/vitest.json"
+            echo "  pnpm proof:generate"
+            echo ""
+            echo "Diff:"
+            git diff docs/ci-proof-artifact.md
             exit 1
           fi
           echo "✓ CI proof artifact is up-to-date"
-
-      - name: Upload JSON report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: vitest-json-report
-          path: test-output/vitest.json
-          retention-days: 30
 
       - name: Proof summary
         if: always()
         run: |
           echo "## CI Proof Artifact" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> Generated from test job's vitest.json artifact (MySQL-backed)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ -f test-output/vitest.json ]; then
             FILES=$(node -e "const j=JSON.parse(require('fs').readFileSync('test-output/vitest.json','utf-8')); console.log(j.testResults.length)")

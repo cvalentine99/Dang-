@@ -3290,7 +3290,7 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Updated SavedSearchPanel.tsx to import SavedSearchType from shared constant
 - [x] Updated savedSearchesRouter.ts — Zod enum derived from SAVED_SEARCH_TYPES (no duplicated strings)
 - [x] Updated drizzle/schema.ts — mysqlEnum spread from [...SAVED_SEARCH_TYPES]
-- [x] All 3 layers now derive from single source — 0 TS errors
+- [x] All 3 layers derive enum list from shared constant — consumer callsites still use literal strings (type-checked by TS)
 
 ### Item 2: Real Drizzle migration for enum change
 - [x] Created drizzle/0014_saved_search_types.sql — ALTER TABLE MODIFY COLUMN enum expansion
@@ -3301,7 +3301,7 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 ### Item 3: Fix backend router Zod enums
 - [x] list.input.searchType — uses searchTypeEnum derived from SAVED_SEARCH_TYPES (line 27)
 - [x] create.input.searchType — uses searchTypeEnum derived from SAVED_SEARCH_TYPES (line 53)
-- [x] No duplicated enum strings — single z.enum(SAVED_SEARCH_TYPES) at line 20
+- [x] Router uses single z.enum(SAVED_SEARCH_TYPES) — page callsites still pass literal strings validated by SavedSearchType union
 
 ### Item 4: DB-backed integration tests for new values
 - [x] server/savedSearches/savedSearches.integration.test.ts — DB-backed tests
@@ -3323,3 +3323,40 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] docs/ci-proof-artifact.md — generated from vitest.json, counts match
 - [x] docs/wiring-ledger.md + docs/wiring-ledger.json — 113/113 wired, 0 unwired
 - [x] docs/ui-param-parity-report.md + docs/ui-param-parity.json — 168 callsites, 113/113, 0 violations
+
+## SSOT + CI + Router Integration Follow-ups
+
+### Follow-up 1: Tighten SSOT claim wording
+- [x] Audited all consumer callsites: 7 pages pass literal strings (searchType="alerts" etc.) — expected, type-checked by TS
+- [x] Updated shared/searchTypes.ts comment: explicitly states SSOT does NOT eliminate literal strings at callsites
+- [x] Updated savedSearchesRouter.ts comment: removed "never duplicate" overclaim
+- [x] Updated SavedSearchPanel.tsx comment: "must match a value" instead of "derived from"
+- [x] Updated todo.md Items 1+3: replaced overclaiming wording with accurate description
+- [x] No docs/ files contained false SSOT claims (verified by grep)
+
+### Follow-up 2: Harden CI workflow
+- [x] Reviewed .github/workflows/ci.yml — ci-proof job was re-running tests without MySQL service
+- [x] Chose Option B: ci-proof job now downloads vitest.json artifact from test job via actions/download-artifact@v4
+- [x] Test job now produces vitest.json with --reporter=json --outputFile.json alongside default reporter
+- [x] Test job uploads vitest.json via actions/upload-artifact@v4
+- [x] ci-proof job verifies artifact exists before generating proof doc
+- [x] Eliminated redundant test run — single authoritative test execution with MySQL service
+- [x] Valid YAML verified
+
+### Follow-up 3: Router-level real-DB integration test for savedSearchesRouter
+- [x] Created server/savedSearches/savedSearchesRouter.integration.test.ts
+- [x] Tests create/list/delete via appRouter.createCaller() against real MySQL
+- [x] Covers all 3 new types: alerts, vulnerabilities, fleet
+- [x] Ownership enforcement: cross-user delete/update rejection
+- [x] Input validation: invalid searchType, empty name, name >256 chars
+- [x] 15 tests, all passing (3.66s)
+- [x] Gated by describe.skipIf(!HAS_DB) — skips gracefully without MySQL
+- [x] Verified: create returns valid ID, list filters by type, delete removes record, update persists changes
+
+### Acceptance Criteria
+- [x] No overclaimed SSOT wording in any shipped doc (verified by grep + manual audit)
+- [x] CI workflow consumes vitest.json artifact from MySQL-backed test job (no redundant re-run)
+- [x] Router-level integration test passes with real DB (15 tests, all passing)
+- [x] Full suite: 79 files, 2,403 tests, 0 failures
+- [x] Proof artifacts regenerated: ci-proof-artifact.md, wiring-ledger.md/json, ui-param-parity-report.md/json
+- [x] TypeScript: 0 errors

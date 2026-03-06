@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import type { SavedSearchType } from "@shared/searchTypes";
 
 interface SavedSearchPanelProps {
-  /** The search type key for this page — derived from shared/searchTypes.ts */
+  /** The search type key for this page — must match a value in shared/searchTypes.ts */
   searchType: SavedSearchType;
   /** Label shown in the UI (e.g., "Alerts", "Vulnerability", "Fleet") */
   label: string;

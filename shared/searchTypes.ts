@@ -1,9 +1,17 @@
 /**
  * Canonical list of saved-search types.
- * This is the SINGLE SOURCE OF TRUTH — every layer derives from here:
- *   - Drizzle schema enum (drizzle/schema.ts)
- *   - Router Zod enums (server/savedSearches/savedSearchesRouter.ts)
- *   - UI prop types (client/src/components/shared/SavedSearchPanel.tsx)
+ *
+ * This file governs the allowed values for the saved-search enum.
+ * Three layers derive their type definitions from this constant:
+ *   - Drizzle schema enum (drizzle/schema.ts) — [...SAVED_SEARCH_TYPES]
+ *   - Router Zod enum (server/savedSearches/savedSearchesRouter.ts) — z.enum(SAVED_SEARCH_TYPES)
+ *   - UI prop type (client/src/components/shared/SavedSearchPanel.tsx) — SavedSearchType
+ *
+ * Consumer callsites in page components still pass literal strings
+ * (e.g. searchType="alerts") — this is expected and type-checked by
+ * TypeScript against the SavedSearchType union. The SSOT ensures that
+ * adding or removing a value only requires editing this file + a DB
+ * migration; it does NOT eliminate literal strings at callsites.
  *
  * To add a new search type:
  *   1. Add it to SAVED_SEARCH_TYPES below

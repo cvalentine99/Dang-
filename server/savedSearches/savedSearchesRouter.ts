@@ -4,7 +4,8 @@
  * Allows analysts to save, name, load, and delete search queries
  * for reuse across sessions.
  *
- * Search types are derived from shared/searchTypes.ts — the single source of truth.
+ * Search types are derived from shared/searchTypes.ts (the canonical enum list).
+ * Consumer callsites still pass literal strings; TypeScript validates them against SavedSearchType.
  */
 
 import { requireDb } from "../dbGuard";
@@ -16,7 +17,7 @@ import { getDb } from "../db";
 import { savedSearches } from "../../drizzle/schema";
 import { SAVED_SEARCH_TYPES } from "@shared/searchTypes";
 
-/** Zod enum derived from the shared constant — never duplicate these strings */
+/** Zod enum derived from the shared constant */
 const searchTypeEnum = z.enum(SAVED_SEARCH_TYPES);
 
 export const savedSearchesRouter = router({
