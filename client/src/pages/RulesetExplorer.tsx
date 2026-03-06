@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { GlassPanel, StatCard, ThreatBadge, RawJsonViewer, RefreshControl } from "@/components/shared";
 import { BrokerWarnings } from "@/components/shared/BrokerWarnings";
+import { ExportButton } from "@/components/shared/ExportButton";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
@@ -1498,7 +1499,24 @@ export default function RulesetExplorer() {
               <Layers className="h-4 w-4" /> Decoder Parents
               <span className="text-[10px] font-mono text-slate-500">(GET /decoders/parents)</span>
             </h3>
-            {decoderParentsQ.data ? <RawJsonViewer data={decoderParentsQ.data} title="Decoder Parents" /> : null}
+            <div className="flex items-center gap-2">
+              {decoderParentsQ.data ? <RawJsonViewer data={decoderParentsQ.data} title="Decoder Parents" /> : null}
+              <ExportButton
+                getData={() => {
+                  const dpRaw = decoderParentsQ.data as Record<string, unknown> | undefined;
+                  const dpInner = (dpRaw?.data && typeof dpRaw.data === "object") ? (dpRaw.data as Record<string, unknown>) : dpRaw;
+                  return Array.isArray(dpInner?.affected_items) ? (dpInner.affected_items as Array<Record<string, unknown>>) : [];
+                }}
+                baseName="decoder-parents"
+                columns={[
+                  { key: "name", label: "Name" },
+                  { key: "file", label: "File" },
+                  { key: "position", label: "Position" },
+                  { key: "status", label: "Status" },
+                ]}
+                compact
+              />
+            </div>
           </div>
           <div className="flex items-center gap-2 mb-4">
             <div className="relative flex-1 max-w-xs">
@@ -1571,7 +1589,25 @@ export default function RulesetExplorer() {
               <Scale className="h-4 w-4" /> Rules by Requirement
               <span className="text-[10px] font-mono text-slate-500">(GET /rules/requirement/{'{requirement}'})</span>
             </h3>
-            {rulesByReqQ.data ? <RawJsonViewer data={rulesByReqQ.data} title="Rules by Requirement" /> : null}
+            <div className="flex items-center gap-2">
+              {rulesByReqQ.data ? <RawJsonViewer data={rulesByReqQ.data} title="Rules by Requirement" /> : null}
+              <ExportButton
+                getData={() => {
+                  const reqRaw = rulesByReqQ.data as Record<string, unknown> | undefined;
+                  const reqInner = (reqRaw?.data && typeof reqRaw.data === "object") ? (reqRaw.data as Record<string, unknown>) : reqRaw;
+                  return Array.isArray(reqInner?.affected_items) ? (reqInner.affected_items as Array<Record<string, unknown>>) : [];
+                }}
+                baseName="rules-by-requirement"
+                context={activeRequirement}
+                columns={[
+                  { key: "id", label: "Rule ID" },
+                  { key: "level", label: "Level" },
+                  { key: "description", label: "Description" },
+                  { key: "groups", label: "Groups" },
+                ]}
+                compact
+              />
+            </div>
           </div>
           <div className="flex items-center gap-2 mb-4">
             <input

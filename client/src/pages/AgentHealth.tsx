@@ -5,6 +5,8 @@ import { IndexerLoadingState, IndexerErrorState, StatCardSkeleton } from "@/comp
 import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { SavedSearchPanel } from "@/components/shared/SavedSearchPanel";
+import { ExportButton } from "@/components/shared/ExportButton";
 import { WazuhGuard } from "@/components/shared/WazuhGuard";
 import { RawJsonViewer } from "@/components/shared/RawJsonViewer";
 import { BrokerWarnings } from "@/components/shared/BrokerWarnings";
@@ -222,7 +224,28 @@ export default function AgentHealth() {
     <WazuhGuard>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <PageHeader title="Fleet Command" subtitle="Agent lifecycle management — status, OS distribution, groups, and deep inspection" onRefresh={handleRefresh} isLoading={isLoading} />
+          <PageHeader title="Fleet Command" subtitle="Agent lifecycle management — status, OS distribution, groups, and deep inspection" onRefresh={handleRefresh} isLoading={isLoading}>
+            <div className="flex items-center gap-2">
+              <SavedSearchPanel
+                searchType="fleet"
+                label="Fleet"
+                getCurrentFilters={() => ({ statusFilter, groupFilter, search, osPlatformFilter })}
+                onLoadSearch={(f) => {
+                  if (f.statusFilter !== undefined) setStatusFilter(f.statusFilter as string);
+                  if (f.groupFilter !== undefined) setGroupFilter(f.groupFilter as string);
+                  if (f.search !== undefined) setSearch(f.search as string);
+                  if (f.osPlatformFilter !== undefined) setOsPlatformFilter(f.osPlatformFilter as string);
+                  setPage(0);
+                }}
+                filterSummary={[
+                  ...(search ? [{ label: "Search", value: search }] : []),
+                  ...(statusFilter !== "all" ? [{ label: "Status", value: statusFilter }] : []),
+                  ...(groupFilter !== "all" ? [{ label: "Group", value: groupFilter }] : []),
+                  ...(osPlatformFilter ? [{ label: "OS", value: osPlatformFilter }] : []),
+                ]}
+              />
+            </div>
+          </PageHeader>
           <Button
             variant="outline"
             size="sm"
@@ -314,7 +337,24 @@ export default function AgentHealth() {
               <ArrowUpCircle className="h-4 w-4 text-primary" /> Agent Upgrade Results
               <span className="text-[10px] font-mono text-muted-foreground">(GET /agents/upgrade_result)</span>
             </h3>
-            {upgradeResultQ.data ? <RawJsonViewer data={upgradeResultQ.data as Record<string, unknown>} title="Upgrade Results JSON" /> : null}
+            <div className="flex items-center gap-2">
+              {upgradeResultQ.data ? <RawJsonViewer data={upgradeResultQ.data as Record<string, unknown>} title="Upgrade Results JSON" /> : null}
+              <ExportButton
+                getData={() => {
+                  const raw = upgradeResultQ.data as Record<string, unknown> | undefined;
+                  const inner = (raw?.data && typeof raw.data === "object") ? (raw.data as Record<string, unknown>) : raw;
+                  return Array.isArray(inner?.affected_items) ? (inner.affected_items as Array<Record<string, unknown>>) : [];
+                }}
+                baseName="upgrade-results"
+                columns={[
+                  { key: "agent", label: "Agent ID" },
+                  { key: "task_id", label: "Task ID" },
+                  { key: "create_time", label: "Created" },
+                  { key: "status", label: "Status" },
+                ]}
+                compact
+              />
+            </div>
           </div>
           <BrokerWarnings data={upgradeResultQ.data} context="agentsUpgradeResult" />
           {upgradeResultQ.isLoading ? (

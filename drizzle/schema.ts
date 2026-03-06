@@ -100,7 +100,7 @@ export const savedSearches = mysqlTable("saved_searches", {
   /** Human-readable name for the saved search */
   name: varchar("name", { length: 256 }).notNull(),
   /** Type of search: 'siem' or 'hunting' */
-  searchType: mysqlEnum("searchType", ["siem", "hunting"]).notNull(),
+  searchType: mysqlEnum("searchType", ["siem", "hunting", "alerts", "vulnerabilities", "fleet"]).notNull(),
   /** Serialized filter state (JSON) */
   filters: json("filters").$type<Record<string, unknown>>().notNull(),
   /** Optional description */

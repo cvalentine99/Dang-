@@ -5,6 +5,7 @@ import { ChartSkeleton } from "@/components/shared/ChartSkeleton";
 import { ThreatBadge } from "@/components/shared/ThreatBadge";
 import { Button } from "@/components/ui/button";
 import { BrokerWarnings } from "@/components/shared/BrokerWarnings";
+import { ExportButton } from "@/components/shared/ExportButton";
 import {
   ArrowLeft, Shield, Activity, Bug, FileSearch, Cpu, Monitor,
   Server, Wifi, WifiOff, Clock, Package, Globe, Users, HardDrive,
@@ -1570,6 +1571,21 @@ function CiscatTab({ agentId }: { agentId: string }) {
           </h3>
           <div className="flex items-center gap-2">
             {resultsQ.data ? <RawJsonViewer data={resultsQ.data} title="CIS-CAT Results JSON" /> : null}
+            <ExportButton
+              getData={() => items}
+              baseName="ciscat-results"
+              context={`agent-${agentId}`}
+              columns={[
+                { key: "benchmark", label: "Benchmark" },
+                { key: "profile", label: "Profile" },
+                { key: "pass", label: "Pass" },
+                { key: "fail", label: "Fail" },
+                { key: "error", label: "Error" },
+                { key: "notchecked", label: "Not Checked" },
+                { key: "score", label: "Score" },
+              ]}
+              compact
+            />
           </div>
         </div>
         <BrokerWarnings data={resultsQ.data} context="ciscatResults" />

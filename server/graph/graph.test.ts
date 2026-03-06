@@ -215,7 +215,9 @@ describe("graph.analystQuery", () => {
   });
 });
 
-describe("graph.investigations CRUD", () => {
+const HAS_DB = !!process.env.DATABASE_URL;
+
+describe.skipIf(!HAS_DB)("graph.investigations CRUD", () => {
   it("creates an investigation and lists it", async () => {
     const caller = appRouter.createCaller(createAdminContext());
 

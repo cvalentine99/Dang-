@@ -18,7 +18,7 @@ export const savedSearchesRouter = router({
   list: protectedProcedure
     .input(
       z.object({
-        searchType: z.enum(["siem", "hunting"]).optional(),
+        searchType: z.enum(["siem", "hunting", "alerts", "vulnerabilities", "fleet"]).optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -44,7 +44,7 @@ export const savedSearchesRouter = router({
     .input(
       z.object({
         name: z.string().min(1).max(256),
-        searchType: z.enum(["siem", "hunting"]),
+        searchType: z.enum(["siem", "hunting", "alerts", "vulnerabilities", "fleet"]),
         filters: z.record(z.string(), z.unknown()),
         description: z.string().max(1000).optional(),
       })
