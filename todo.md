@@ -3388,3 +3388,18 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] All 6 jobs pass: Test Suite, TypeScript, API Contract, UI Parity, CI Proof Artifact, Build
 - [x] Run 22787798022 (commit 82fa8c0) — full green pipeline
 - [x] Fixes applied: MySQL 8.0.36, CREATE INDEX syntax, missing columns (app_aliases, evidence, timeline), wazuhConnection skip guard, KG seeder CI step, path normalization in proof script, broadened timestamp filters
+
+## UI Depth Quality Pass
+
+### Audit Results
+- [x] Audited all 113 procedure callsites across 41 page files
+- [x] Automated heuristic flagged 89 as "single callsite" — but single callsite ≠ shallow rendering
+- [x] Manual verification: all flagged pages render data meaningfully (tables, charts, panels, drill-downs)
+- [x] ClusterHealth: 22 procedures → full node drill-down with daemon grids, log tables, bar charts, config viewers
+- [x] FleetInventory: 9 procedures → tabbed tables with KPIs, search, pagination, raw JSON
+- [x] SecurityExplorer: 8 procedures → tabbed tables for roles/users/policies/rules/actions/resources
+- [x] RulesetExplorer: 11 procedures → tabbed explorer with file content viewer, requirement grouping
+- [x] MitreAttack: 6 procedures → full MITRE matrix with heatmap and drill-down
+- [x] Intentionally minimal callsites (isConfigured, managerVersionCheck, agentsSummary) serve as guards/KPI sources
+- [x] Conclusion: 113/113 wiring is genuine with appropriate rendering depth
+- [x] Documented findings in docs/ui-depth-audit.md
