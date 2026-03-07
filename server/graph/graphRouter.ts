@@ -68,7 +68,7 @@ export const graphRouter = router({
   /** Get overview graph showing all 4 layers and their connections. */
   overviewGraph: protectedProcedure
     .input(z.object({
-      layer: z.enum(["all", "api_ontology", "operational_semantics", "schema_lineage", "error_failure"]).default("all"),
+      layer: z.enum(["all", "api_ontology", "operational_semantics", "schema_lineage", "error_graph"]).default("all"),
       riskLevel: z.enum(["SAFE", "MUTATING", "DESTRUCTIVE"]).optional(),
       limit: z.number().min(1).max(500).default(100),
     }).optional())

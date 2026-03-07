@@ -532,7 +532,7 @@ export const kgUseCases = mysqlTable("kg_use_cases", {
   semanticType: varchar("semantic_type", { length: 64 }).notNull(),
   domain: varchar("domain", { length: 64 }).notNull(),
   description: text("description"),
-  endpointIds: json("endpoint_ids").$type<number[]>(),
+  endpointIds: json("endpoint_ids").$type<string[]>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });

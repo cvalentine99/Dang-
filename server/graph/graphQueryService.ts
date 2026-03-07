@@ -356,7 +356,7 @@ export async function getOverviewGraph(options?: { layer?: string; riskLevel?: s
   }
 
   // Layer 4: Error Patterns
-  if (!options?.layer || options.layer === "error_failure" || options.layer === "all") {
+  if (!options?.layer || options.layer === "error_graph" || options.layer === "all") {
     const errors = await db.select().from(kgErrorPatterns);
     for (const err of errors) {
       const errNodeId = `error-${err.id}`;
@@ -549,7 +549,7 @@ export async function getUseCases(): Promise<Array<{
   description: string | null;
   semanticType: string;
   domain: string;
-  endpointIds: number[] | null;
+  endpointIds: string[] | null;
 }>> {
   const db = await getDb();
   if (!db) return [];

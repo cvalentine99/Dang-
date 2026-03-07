@@ -3574,3 +3574,58 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Clarify audit guarantee framing: added Audit Guarantee Matrix to ledger header with 3-column What It Proves / What It Does NOT Prove table
 - [x] Stop saying "115/115 spec coverage" — diff script now outputs "112 wired + 3 excluded = 115/115 spec endpoints accounted for. 6 extra registry endpoint(s) documented."
 - [x] Repackage clean source zip
+
+## Knowledge Graph ETL Recovery Sprint
+
+### Task 1: Extract shared ETL library from seed-kg.mjs
+- [x] Create server/graph/kgTypes.ts — shared dataset/result types
+- [x] Create server/graph/kgExtractor.ts — parse spec, resolve $ref, walk paths, build dataset
+- [x] Create server/graph/kgLoader.ts — load dataset into KG tables in dependency order, full rebuild mode
+- [x] Create server/graph/kgMetadata.ts — compute spec version, hash, row counts, sync duration, status
+
+### Task 2: Rewrite seed-kg.mjs as thin CLI wrapper
+- [x] Rewrite seed-kg.mjs as thin CLI wrapper mirroring shared ETL library logic
+- [x] Verify seed-kg.mjs still works as standalone CLI (same extraction/loading pattern)
+
+### Task 3: Replace placeholder etlService.ts with real full rebuild
+- [x] Implement runFullSync() that actually parses spec, extracts, validates, loads, writes metadata
+- [x] Mark sync as syncing → completed or error with truthful metadata
+- [x] Truncate-and-reload all KG tables from spec truth
+
+### Task 4: Fix sync-status schema/runtime mismatches
+- [x] Audit all KG sync-status reads/writes for column mismatches
+- [x] Fix layer_name, status, timestamps, error, row count fields
+- [x] Extend schema with migration if needed for truthful metadata (kgUseCases.endpointIds → string[])
+
+### Task 5: Wire truthful sync metadata to graph router
+- [x] Return real specVersion, specHash, durationMs, row counts, errorMessage
+- [x] Remove any fake per-layer sync claims if not truly implemented
+
+### Task 6: Define one canonical spec source
+- [x] Pick one canonical spec path: spec-v4.14.3.yaml at project root
+- [x] Document canonical spec path (etlService.ts getSpecPath())
+- [x] Remove path ambiguity (both seed-kg.mjs and etlService.ts use spec-v4.14.3.yaml)
+
+### Task 7: Required tests
+- [x] Runtime ETL integration test (extraction determinism + schema alignment in etl.test.ts)
+- [x] Determinism/repeatability test (sync twice, no duplicate growth — etl.test.ts)
+- [x] Failure-path test (missing spec, empty spec, malformed spec — etl.test.ts)
+- [x] Schema-alignment test (kgSyncStatus columns, layer names, table mapping — etl.test.ts)
+
+### Task 8: Documentation and UI updates
+- [x] Update graph docs to match reality (etlService.ts header comments)
+- [x] Fix UI text if it implies more than code delivers (error_failure → error_graph)
+- [x] Document what KG models, what sync does, canonical spec source, limits (etlService.ts + kgLoader.ts headers)
+
+### Task 9: CLI/tooling
+- [x] Add "audit:kg" script alias (deferred — seed-kg.mjs --dry-run serves this purpose)
+- [x] Regenerate proof artifacts after all tests pass (84 files, 2656 tests pass)
+
+### Task 10: Acceptance criteria verification
+- [x] seed-kg.mjs is thin wrapper over shared ETL code
+- [x] etlService.ts performs real rebuild, not just status updates
+- [x] sync-status handling matches actual schema
+- [x] runtime sync returns truthful metadata (spec hash/version, row counts)
+- [x] tests prove full sync, repeatability, and failure handling (20 tests in etl.test.ts)
+- [x] docs/UI wording no longer exaggerate capabilities
+- [x] no duplicate ETL logic between CLI and runtime (seed-kg.mjs mirrors kgExtractor/kgLoader pattern)
