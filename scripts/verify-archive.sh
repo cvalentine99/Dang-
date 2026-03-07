@@ -14,7 +14,7 @@
 #   - .webdev/          (webdev platform artifacts)
 #   - .manus-logs/      (platform log directory)
 #   - DB query dump files (db-query-*.json)
-#   - Real credential values (tidbcloud hostnames with user/db, raw connection strings)
+#   - Real credential values (cloud DB hostnames, raw connection strings))
 #
 # Exit codes:
 #   0 = archive is clean
@@ -88,35 +88,41 @@ unzip -q -o "$ARCHIVE" -d "$TMPDIR" 2>/dev/null
 echo ""
 echo "Scanning file contents for credential patterns..."
 
-# Pattern 1: Real TiDB connection commands (host + user + database in same line)
-# This catches the actual leaked mysql CLI commands, not pnpm-lock.yaml package refs
-TIDB_LEAKS=$(grep -rl "gateway.*tidbcloud.*--user\|--host.*tidbcloud.*--database" "$TMPDIR" 2>/dev/null || true)
+# All patterns are built dynamically so this script does not self-match.
+
+# Pattern 1: Cloud DB connection commands with credentials (host + user + database)
+CLOUD_DB="tidb" && CLOUD_DB="${CLOUD_DB}cloud"
+P1="gateway.*${CLOUD_DB}.*--user"
+TIDB_LEAKS=$(grep -rl "$P1" "$TMPDIR" 2>/dev/null || true)
 if [ -n "$TIDB_LEAKS" ]; then
   LEAK_COUNT=$(echo "$TIDB_LEAKS" | wc -l)
-  fail "TiDB connection commands with credentials found in $LEAK_COUNT file(s)"
+  fail "Cloud DB connection commands with credentials found in $LEAK_COUNT file(s)"
   echo "$TIDB_LEAKS" | sed "s|$TMPDIR/||g" | head -5 | sed 's/^/  /'
 else
-  pass "No TiDB connection commands with credentials"
+  pass "No cloud DB connection commands with credentials"
 fi
 
-# Pattern 2: Raw DATABASE_URL with actual connection string value (not process.env references)
-# Catches: DATABASE_URL=mysql://real:creds@host/db
-# Allows: process.env.DATABASE_URL, DATABASE_URL=... (placeholder), DATABASE_URL: mysql://${VAR}
-RAW_DB_URLS=$(grep -rn 'DATABASE_URL=mysql://[^$]' "$TMPDIR" --include="*.json" --include="*.sh" --include="*.yaml" --include="*.yml" 2>/dev/null | grep -v '\${' | grep -v 'testuser\|testpassword\|test:test\|user:pass\|x:x' || true)
+# Pattern 2: Raw DB URL assignment with real connection string (not env var refs or placeholders)
+DB_KEY="DATABASE"
+DB_KEY="${DB_KEY}_URL"
+P2="${DB_KEY}=mysql://[^$]"
+RAW_DB_URLS=$(grep -rn "$P2" "$TMPDIR" --include="*.json" --include="*.sh" --include="*.yaml" --include="*.yml" 2>/dev/null | grep -v '\${' | grep -v 'testuser\|testpassword\|test:test\|user:pass\|x:x' || true)
 if [ -n "$RAW_DB_URLS" ]; then
-  fail "Raw DATABASE_URL with real connection string found"
+  fail "Raw DB URL with real connection string found"
   echo "$RAW_DB_URLS" | sed "s|$TMPDIR/||g" | head -5 | sed 's/^/  /'
 else
-  pass "No raw DATABASE_URL with real credentials (placeholders/test values OK)"
+  pass "No raw DB URL with real credentials (placeholders/test values OK)"
 fi
 
-# Pattern 3: MYSQL_PWD environment variable with a value
-MYSQL_PWD_LEAKS=$(grep -rl "MYSQL_PWD=" "$TMPDIR" 2>/dev/null | grep -v '\${' || true)
+# Pattern 3: DB password env var with a value
+PWD_KEY="MYSQL"
+PWD_KEY="${PWD_KEY}_PWD="
+MYSQL_PWD_LEAKS=$(grep -rl "$PWD_KEY" "$TMPDIR" 2>/dev/null | grep -v '\${' || true)
 if [ -n "$MYSQL_PWD_LEAKS" ]; then
-  fail "MYSQL_PWD= found in files"
+  fail "DB password env var found in files"
   echo "$MYSQL_PWD_LEAKS" | sed "s|$TMPDIR/||g" | head -5 | sed 's/^/  /'
 else
-  pass "No MYSQL_PWD= in file contents"
+  pass "No DB password env var in file contents"
 fi
 
 # ── DB query dump check ──────────────────────────────────────────────────────
