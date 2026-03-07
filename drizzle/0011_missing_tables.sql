@@ -2,6 +2,9 @@
 -- Migration 0011: Create all tables that were applied via webdev_execute_sql
 -- during development but never had migration files generated.
 -- This migration is idempotent: uses CREATE TABLE IF NOT EXISTS.
+-- Note: CREATE INDEX statements use plain syntax (no IF NOT EXISTS) because
+-- MySQL 8.0 does not support that syntax for indexes. Drizzle-kit journal
+-- ensures each migration runs exactly once, so duplicate index errors cannot occur.
 -- ============================================================================
 
 -- ── Baseline Schedules ──────────────────────────────────────────────────────
@@ -44,11 +47,11 @@ CREATE TABLE IF NOT EXISTS `drift_snapshots` (
   CONSTRAINT `drift_snapshots_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `ds_scheduleId_idx` ON `drift_snapshots` (`scheduleId`);
+CREATE INDEX `ds_scheduleId_idx` ON `drift_snapshots` (`scheduleId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `ds_userId_idx` ON `drift_snapshots` (`userId`);
+CREATE INDEX `ds_userId_idx` ON `drift_snapshots` (`userId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `ds_createdAt_idx` ON `drift_snapshots` (`createdAt`);
+CREATE INDEX `ds_createdAt_idx` ON `drift_snapshots` (`createdAt`);
 --> statement-breakpoint
 -- ── Drift Anomalies ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `drift_anomalies` (
@@ -74,15 +77,15 @@ CREATE TABLE IF NOT EXISTS `drift_anomalies` (
   CONSTRAINT `drift_anomalies_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `anomalies_userId_idx` ON `drift_anomalies` (`userId`);
+CREATE INDEX `anomalies_userId_idx` ON `drift_anomalies` (`userId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `anomalies_scheduleId_idx` ON `drift_anomalies` (`scheduleId`);
+CREATE INDEX `anomalies_scheduleId_idx` ON `drift_anomalies` (`scheduleId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `anomalies_severity_idx` ON `drift_anomalies` (`severity`);
+CREATE INDEX `anomalies_severity_idx` ON `drift_anomalies` (`severity`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `anomalies_acknowledged_idx` ON `drift_anomalies` (`acknowledged`);
+CREATE INDEX `anomalies_acknowledged_idx` ON `drift_anomalies` (`acknowledged`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `anomalies_createdAt_idx` ON `drift_anomalies` (`createdAt`);
+CREATE INDEX `anomalies_createdAt_idx` ON `drift_anomalies` (`createdAt`);
 --> statement-breakpoint
 -- ── Drift Notification History ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `drift_notification_history` (
@@ -108,17 +111,17 @@ CREATE TABLE IF NOT EXISTS `drift_notification_history` (
   CONSTRAINT `drift_notification_history_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `notif_history_userId_idx` ON `drift_notification_history` (`userId`);
+CREATE INDEX `notif_history_userId_idx` ON `drift_notification_history` (`userId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `notif_history_scheduleId_idx` ON `drift_notification_history` (`scheduleId`);
+CREATE INDEX `notif_history_scheduleId_idx` ON `drift_notification_history` (`scheduleId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `notif_history_status_idx` ON `drift_notification_history` (`deliveryStatus`);
+CREATE INDEX `notif_history_status_idx` ON `drift_notification_history` (`deliveryStatus`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `notif_history_type_idx` ON `drift_notification_history` (`notificationType`);
+CREATE INDEX `notif_history_type_idx` ON `drift_notification_history` (`notificationType`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `notif_history_createdAt_idx` ON `drift_notification_history` (`createdAt`);
+CREATE INDEX `notif_history_createdAt_idx` ON `drift_notification_history` (`createdAt`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `notif_history_nextRetry_idx` ON `drift_notification_history` (`nextRetryAt`);
+CREATE INDEX `notif_history_nextRetry_idx` ON `drift_notification_history` (`nextRetryAt`);
 --> statement-breakpoint
 -- ── Anomaly Suppression Rules ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `anomaly_suppression_rules` (
@@ -136,13 +139,13 @@ CREATE TABLE IF NOT EXISTS `anomaly_suppression_rules` (
   CONSTRAINT `anomaly_suppression_rules_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `suppression_userId_idx` ON `anomaly_suppression_rules` (`userId`);
+CREATE INDEX `suppression_userId_idx` ON `anomaly_suppression_rules` (`userId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `suppression_scheduleId_idx` ON `anomaly_suppression_rules` (`scheduleId`);
+CREATE INDEX `suppression_scheduleId_idx` ON `anomaly_suppression_rules` (`scheduleId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `suppression_active_idx` ON `anomaly_suppression_rules` (`active`);
+CREATE INDEX `suppression_active_idx` ON `anomaly_suppression_rules` (`active`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `suppression_expiresAt_idx` ON `anomaly_suppression_rules` (`expiresAt`);
+CREATE INDEX `suppression_expiresAt_idx` ON `anomaly_suppression_rules` (`expiresAt`);
 --> statement-breakpoint
 -- ── Knowledge Graph Tables ──────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `kg_endpoints` (
@@ -167,13 +170,13 @@ CREATE TABLE IF NOT EXISTS `kg_endpoints` (
   CONSTRAINT `kg_endpoints_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `kge_method_idx` ON `kg_endpoints` (`method`);
+CREATE INDEX `kge_method_idx` ON `kg_endpoints` (`method`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `kge_resource_idx` ON `kg_endpoints` (`resource`);
+CREATE INDEX `kge_resource_idx` ON `kg_endpoints` (`resource`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `kge_risk_level_idx` ON `kg_endpoints` (`risk_level`);
+CREATE INDEX `kge_risk_level_idx` ON `kg_endpoints` (`risk_level`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `kge_path_idx` ON `kg_endpoints` (`path`);
+CREATE INDEX `kge_path_idx` ON `kg_endpoints` (`path`);
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `kg_parameters` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -187,9 +190,9 @@ CREATE TABLE IF NOT EXISTS `kg_parameters` (
   CONSTRAINT `kg_parameters_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `kgp_endpoint_id_idx` ON `kg_parameters` (`endpoint_id`);
+CREATE INDEX `kgp_endpoint_id_idx` ON `kg_parameters` (`endpoint_id`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `kgp_name_idx` ON `kg_parameters` (`name`);
+CREATE INDEX `kgp_name_idx` ON `kg_parameters` (`name`);
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `kg_responses` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -200,7 +203,7 @@ CREATE TABLE IF NOT EXISTS `kg_responses` (
   CONSTRAINT `kg_responses_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `kgr_endpoint_id_idx` ON `kg_responses` (`endpoint_id`);
+CREATE INDEX `kgr_endpoint_id_idx` ON `kg_responses` (`endpoint_id`);
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `kg_auth_methods` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -251,9 +254,9 @@ CREATE TABLE IF NOT EXISTS `kg_fields` (
   CONSTRAINT `kg_fields_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `kgf_index_id_idx` ON `kg_fields` (`index_id`);
+CREATE INDEX `kgf_index_id_idx` ON `kg_fields` (`index_id`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `kgf_field_name_idx` ON `kg_fields` (`field_name`);
+CREATE INDEX `kgf_field_name_idx` ON `kg_fields` (`field_name`);
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `kg_error_patterns` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -275,7 +278,7 @@ CREATE TABLE IF NOT EXISTS `kg_trust_history` (
   CONSTRAINT `kg_trust_history_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `kgth_endpoint_id_idx` ON `kg_trust_history` (`endpoint_id`);
+CREATE INDEX `kgth_endpoint_id_idx` ON `kg_trust_history` (`endpoint_id`);
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `kg_answer_provenance` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -291,7 +294,7 @@ CREATE TABLE IF NOT EXISTS `kg_answer_provenance` (
   CONSTRAINT `kg_answer_provenance_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `kgap_session_id_idx` ON `kg_answer_provenance` (`session_id`);
+CREATE INDEX `kgap_session_id_idx` ON `kg_answer_provenance` (`session_id`);
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `kg_sync_status` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -323,11 +326,11 @@ CREATE TABLE IF NOT EXISTS `llm_usage` (
   CONSTRAINT `llm_usage_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `lu_source_idx` ON `llm_usage` (`source`);
+CREATE INDEX `lu_source_idx` ON `llm_usage` (`source`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `lu_model_idx` ON `llm_usage` (`model`);
+CREATE INDEX `lu_model_idx` ON `llm_usage` (`model`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `lu_created_idx` ON `llm_usage` (`createdAt`);
+CREATE INDEX `lu_created_idx` ON `llm_usage` (`createdAt`);
 --> statement-breakpoint
 -- ── Alert Queue ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `alert_queue` (
@@ -351,11 +354,11 @@ CREATE TABLE IF NOT EXISTS `alert_queue` (
   CONSTRAINT `alert_queue_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `aq_status_idx` ON `alert_queue` (`status`);
+CREATE INDEX `aq_status_idx` ON `alert_queue` (`status`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `aq_alertId_idx` ON `alert_queue` (`alertId`);
+CREATE INDEX `aq_alertId_idx` ON `alert_queue` (`alertId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `aq_queuedAt_idx` ON `alert_queue` (`queuedAt`);
+CREATE INDEX `aq_queuedAt_idx` ON `alert_queue` (`queuedAt`);
 --> statement-breakpoint
 -- ── Auto-Queue Rules ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `auto_queue_rules` (
@@ -375,7 +378,7 @@ CREATE TABLE IF NOT EXISTS `auto_queue_rules` (
   CONSTRAINT `auto_queue_rules_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `aqr_enabled_idx` ON `auto_queue_rules` (`enabled`);
+CREATE INDEX `aqr_enabled_idx` ON `auto_queue_rules` (`enabled`);
 --> statement-breakpoint
 -- ── Saved Hunts ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `saved_hunts` (
@@ -400,15 +403,15 @@ CREATE TABLE IF NOT EXISTS `saved_hunts` (
   CONSTRAINT `saved_hunts_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `sh_userId_idx` ON `saved_hunts` (`userId`);
+CREATE INDEX `sh_userId_idx` ON `saved_hunts` (`userId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `sh_query_idx` ON `saved_hunts` (`query`);
+CREATE INDEX `sh_query_idx` ON `saved_hunts` (`query`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `sh_iocType_idx` ON `saved_hunts` (`iocType`);
+CREATE INDEX `sh_iocType_idx` ON `saved_hunts` (`iocType`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `sh_severity_idx` ON `saved_hunts` (`severity`);
+CREATE INDEX `sh_severity_idx` ON `saved_hunts` (`severity`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `sh_createdAt_idx` ON `saved_hunts` (`createdAt`);
+CREATE INDEX `sh_createdAt_idx` ON `saved_hunts` (`createdAt`);
 --> statement-breakpoint
 -- ── Triage Objects ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `triage_objects` (
@@ -450,25 +453,25 @@ CREATE TABLE IF NOT EXISTS `triage_objects` (
   CONSTRAINT `triage_objects_triageId_unique` UNIQUE(`triageId`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `to_alertId_idx` ON `triage_objects` (`alertId`);
+CREATE INDEX `to_alertId_idx` ON `triage_objects` (`alertId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `to_ruleId_idx` ON `triage_objects` (`ruleId`);
+CREATE INDEX `to_ruleId_idx` ON `triage_objects` (`ruleId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `to_agentId_idx` ON `triage_objects` (`agentId`);
+CREATE INDEX `to_agentId_idx` ON `triage_objects` (`agentId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `to_severity_idx` ON `triage_objects` (`severity`);
+CREATE INDEX `to_severity_idx` ON `triage_objects` (`severity`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `to_route_idx` ON `triage_objects` (`route`);
+CREATE INDEX `to_route_idx` ON `triage_objects` (`route`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `to_status_idx` ON `triage_objects` (`status`);
+CREATE INDEX `to_status_idx` ON `triage_objects` (`status`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `to_isDuplicate_idx` ON `triage_objects` (`isDuplicate`);
+CREATE INDEX `to_isDuplicate_idx` ON `triage_objects` (`isDuplicate`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `to_createdAt_idx` ON `triage_objects` (`createdAt`);
+CREATE INDEX `to_createdAt_idx` ON `triage_objects` (`createdAt`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `to_alertFamily_idx` ON `triage_objects` (`alertFamily`);
+CREATE INDEX `to_alertFamily_idx` ON `triage_objects` (`alertFamily`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `to_linkedCaseId_idx` ON `triage_objects` (`linkedCaseId`);
+CREATE INDEX `to_linkedCaseId_idx` ON `triage_objects` (`linkedCaseId`);
 --> statement-breakpoint
 -- ── Correlation Bundles ─────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `correlation_bundles` (
@@ -495,15 +498,15 @@ CREATE TABLE IF NOT EXISTS `correlation_bundles` (
   CONSTRAINT `correlation_bundles_correlationId_unique` UNIQUE(`correlationId`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `cb_sourceTriageId_idx` ON `correlation_bundles` (`sourceTriageId`);
+CREATE INDEX `cb_sourceTriageId_idx` ON `correlation_bundles` (`sourceTriageId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `cb_status_idx` ON `correlation_bundles` (`status`);
+CREATE INDEX `cb_status_idx` ON `correlation_bundles` (`status`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `cb_caseAction_idx` ON `correlation_bundles` (`caseAction`);
+CREATE INDEX `cb_caseAction_idx` ON `correlation_bundles` (`caseAction`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `cb_likelyCampaign_idx` ON `correlation_bundles` (`likelyCampaign`);
+CREATE INDEX `cb_likelyCampaign_idx` ON `correlation_bundles` (`likelyCampaign`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `cb_createdAt_idx` ON `correlation_bundles` (`createdAt`);
+CREATE INDEX `cb_createdAt_idx` ON `correlation_bundles` (`createdAt`);
 --> statement-breakpoint
 -- ── Living Case State ───────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `living_case_state` (
@@ -527,11 +530,11 @@ CREATE TABLE IF NOT EXISTS `living_case_state` (
   CONSTRAINT `living_case_state_sessionId_unique` UNIQUE(`sessionId`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `lcs_sessionId_idx` ON `living_case_state` (`sessionId`);
+CREATE INDEX `lcs_sessionId_idx` ON `living_case_state` (`sessionId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `lcs_theoryConfidence_idx` ON `living_case_state` (`theoryConfidence`);
+CREATE INDEX `lcs_theoryConfidence_idx` ON `living_case_state` (`theoryConfidence`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `lcs_updatedAt_idx` ON `living_case_state` (`updatedAt`);
+CREATE INDEX `lcs_updatedAt_idx` ON `living_case_state` (`updatedAt`);
 --> statement-breakpoint
 -- ── Response Actions ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `response_actions` (
@@ -569,21 +572,21 @@ CREATE TABLE IF NOT EXISTS `response_actions` (
   CONSTRAINT `response_actions_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `ra_actionId_idx` ON `response_actions` (`actionId`);
+CREATE INDEX `ra_actionId_idx` ON `response_actions` (`actionId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `ra_state_idx` ON `response_actions` (`state`);
+CREATE INDEX `ra_state_idx` ON `response_actions` (`state`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `ra_category_idx` ON `response_actions` (`category`);
+CREATE INDEX `ra_category_idx` ON `response_actions` (`category`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `ra_urgency_idx` ON `response_actions` (`urgency`);
+CREATE INDEX `ra_urgency_idx` ON `response_actions` (`urgency`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `ra_caseId_idx` ON `response_actions` (`caseId`);
+CREATE INDEX `ra_caseId_idx` ON `response_actions` (`caseId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `ra_triageId_idx` ON `response_actions` (`triageId`);
+CREATE INDEX `ra_triageId_idx` ON `response_actions` (`triageId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `ra_proposedAt_idx` ON `response_actions` (`proposedAt`);
+CREATE INDEX `ra_proposedAt_idx` ON `response_actions` (`proposedAt`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `ra_requiresApproval_state_idx` ON `response_actions` (`requiresApproval`, `state`);
+CREATE INDEX `ra_requiresApproval_state_idx` ON `response_actions` (`requiresApproval`, `state`);
 --> statement-breakpoint
 -- ── Response Action Audit ───────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `response_action_audit` (
@@ -599,13 +602,13 @@ CREATE TABLE IF NOT EXISTS `response_action_audit` (
   CONSTRAINT `response_action_audit_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `raa_actionId_idx` ON `response_action_audit` (`actionId`);
+CREATE INDEX `raa_actionId_idx` ON `response_action_audit` (`actionId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `raa_actionIdStr_idx` ON `response_action_audit` (`actionIdStr`);
+CREATE INDEX `raa_actionIdStr_idx` ON `response_action_audit` (`actionIdStr`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `raa_performedAt_idx` ON `response_action_audit` (`performedAt`);
+CREATE INDEX `raa_performedAt_idx` ON `response_action_audit` (`performedAt`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `raa_toState_idx` ON `response_action_audit` (`toState`);
+CREATE INDEX `raa_toState_idx` ON `response_action_audit` (`toState`);
 --> statement-breakpoint
 -- ── Pipeline Runs ───────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `pipeline_runs` (
@@ -634,15 +637,15 @@ CREATE TABLE IF NOT EXISTS `pipeline_runs` (
   CONSTRAINT `pipeline_runs_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `pr_runId_idx` ON `pipeline_runs` (`runId`);
+CREATE INDEX `pr_runId_idx` ON `pipeline_runs` (`runId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `pr_status_idx` ON `pipeline_runs` (`status`);
+CREATE INDEX `pr_status_idx` ON `pipeline_runs` (`status`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `pr_queueItemId_idx` ON `pipeline_runs` (`queueItemId`);
+CREATE INDEX `pr_queueItemId_idx` ON `pipeline_runs` (`queueItemId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `pr_alertId_idx` ON `pipeline_runs` (`alertId`);
+CREATE INDEX `pr_alertId_idx` ON `pipeline_runs` (`alertId`);
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `pr_startedAt_idx` ON `pipeline_runs` (`startedAt`);
+CREATE INDEX `pr_startedAt_idx` ON `pipeline_runs` (`startedAt`);
 --> statement-breakpoint
 -- ── Drop orphaned graph_ tables from old migrations ─────────────────────────
 -- These tables were created by early migrations but are no longer in the schema.
