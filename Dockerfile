@@ -68,6 +68,12 @@ COPY scripts/docker-pre-migrate.mjs ./scripts/
 COPY seed-kg.mjs ./
 COPY spec-v4.14.3.yaml ./
 
+# Copy shared KG ETL source modules (seed-kg.mjs imports these via tsx)
+COPY server/graph/kgExtractor.ts ./server/graph/
+COPY server/graph/kgLoader.ts ./server/graph/
+COPY server/graph/kgTypes.ts ./server/graph/
+COPY server/graph/kgMetadata.ts ./server/graph/
+
 # Copy entrypoint script
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh

@@ -3674,3 +3674,12 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] SEC-3: scripts/export-source.sh created — uses git archive (tracked files only), runs verify-archive.sh automatically
 - [x] SEC-4: scripts/verify-archive.sh created — checks .manus/, __manus__/, .env*, node_modules/, .git/, *.log, cloud DB credentials, raw DB URLs, DB password env vars, query dumps
 - [x] SEC-5: Clean archive reissued via git archive — 541 files, 1.7MB, all 11 checks passed, no secrets/data/platform artifacts
+
+## Beta 2 Release Prep
+
+- [ ] Assess current repo state and diff from last GitHub push
+- [ ] Review and update README.md for Beta 2
+- [ ] Review and update deploy instructions (docker-compose, env vars, setup)
+- [ ] Create or update CHANGELOG.md with Beta 2 changes
+- [ ] Push all changes to GitHub repo (cvalentine99/Dang-)
+- [ ] Tag Beta 2 release

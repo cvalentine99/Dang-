@@ -69,7 +69,7 @@ if [ "$RUN_MIGRATIONS" = "true" ] && [ -n "$DATABASE_URL" ]; then
 
   if [ "$KG_COUNT" = "0" ] || [ -z "$KG_COUNT" ]; then
     echo "[entrypoint] KG tables empty — running Knowledge Graph seeder..."
-    node seed-kg.mjs 2>&1 || echo "[entrypoint] WARNING: KG seeder failed, continuing..."
+    npx tsx seed-kg.mjs 2>&1 || echo "[entrypoint] WARNING: KG seeder failed, continuing..."
     echo "[entrypoint] KG seeder complete."
   else
     echo "[entrypoint] KG tables already populated ($KG_COUNT endpoints) — skipping seeder."
