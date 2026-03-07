@@ -3664,3 +3664,13 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 
 - [x] CLOSE-1: Include test-output/vitest.json in the source archive (chain-of-custody for ci-proof-artifact.md)
 - [x] CLOSE-2: Added chain-of-custody guard to generate-ci-proof.mjs — fails with PROOF FAIL if markdown exists but JSON source is missing
+
+## SECURITY INCIDENT: Credential & Data Exposure in Source Archive
+
+**Root cause:** zip was created from working tree (not git-tracked files), included `.manus/` directory containing DATABASE_URL with TiDB credentials and triage_objects query dumps.
+
+- [ ] SEC-1: Rotate database credentials — new DB user/password, update DATABASE_URL in all environments, invalidate old credential
+- [ ] SEC-2: Audit exposed triage data — identify sensitivity of triage JSON blobs, document exposure scope
+- [ ] SEC-3: Create scripted clean export (scripts/export-source.sh) — use git archive or explicit clean export, never zip from working tree
+- [ ] SEC-4: Add machine-enforced packaging guard (scripts/verify-archive.sh) — fail if archive contains .manus/, .env*, node_modules/, .git/, *.log, credential patterns
+- [ ] SEC-5: Reissue clean archive from tracked files only, verify no secrets/data remain
