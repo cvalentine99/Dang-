@@ -1,7 +1,7 @@
 #!/bin/sh
 # ============================================================================
 # Dang! SIEM — Docker Entrypoint
-# Handles: DB readiness wait, optional migrations, server start
+# Handles: DB readiness wait, pre-migration repair, migrations, KG seed, start
 # ============================================================================
 
 set -e
@@ -42,9 +42,38 @@ fi
 
 # ── Run migrations if requested ──────────────────────────────────────────────
 if [ "$RUN_MIGRATIONS" = "true" ] && [ -n "$DATABASE_URL" ]; then
+  # Pre-migration repair: drop stale indexes from partially-applied migrations
+  # This handles the MySQL 8.0 limitation where CREATE INDEX (without IF NOT EXISTS)
+  # fails on re-run if the previous attempt partially completed
+  echo "[entrypoint] Running pre-migration repair..."
+  node scripts/docker-pre-migrate.mjs 2>&1 || echo "[entrypoint] WARNING: Pre-migration repair had issues, continuing..."
+
   echo "[entrypoint] Running database migrations..."
   npx drizzle-kit migrate 2>&1 || echo "[entrypoint] WARNING: Migration failed, continuing..."
   echo "[entrypoint] Migrations complete."
+
+  # Seed Knowledge Graph tables if they're empty
+  # The KG seeder parses the Wazuh OpenAPI spec and populates kg_* tables
+  echo "[entrypoint] Checking Knowledge Graph tables..."
+  KG_COUNT=$(node -e "
+    const mysql = require('mysql2/promise');
+    (async () => {
+      try {
+        const conn = await mysql.createConnection(process.env.DATABASE_URL);
+        const [rows] = await conn.query('SELECT COUNT(*) as cnt FROM kg_endpoints');
+        console.log(rows[0].cnt);
+        await conn.end();
+      } catch { console.log('0'); }
+    })();
+  " 2>/dev/null || echo "0")
+
+  if [ "$KG_COUNT" = "0" ] || [ -z "$KG_COUNT" ]; then
+    echo "[entrypoint] KG tables empty — running Knowledge Graph seeder..."
+    node seed-kg.mjs 2>&1 || echo "[entrypoint] WARNING: KG seeder failed, continuing..."
+    echo "[entrypoint] KG seeder complete."
+  else
+    echo "[entrypoint] KG tables already populated ($KG_COUNT endpoints) — skipping seeder."
+  fi
 fi
 
 # ── Start the production server ──────────────────────────────────────────────

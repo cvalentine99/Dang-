@@ -1,6 +1,6 @@
 # UI → Router Schema Parity Report
 
-**Generated:** 2026-03-06  
+**Generated:** 2026-03-07  
 **Script:** `scripts/audit-ui-param-parity.mjs`  
 **Callsites audited:** 168  
 **Unique procedures consumed:** 113 of 113 total  

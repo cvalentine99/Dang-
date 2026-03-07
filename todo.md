@@ -3403,3 +3403,20 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Intentionally minimal callsites (isConfigured, managerVersionCheck, agentsSummary) serve as guards/KPI sources
 - [x] Conclusion: 113/113 wiring is genuine with appropriate rendering depth
 - [x] Documented findings in docs/ui-depth-audit.md
+
+## GitHub Repository Protection
+
+- [x] Checked current repo settings: private repo on GitHub Free plan
+- [ ] Branch protection rules require GitHub Pro (or public repo) — blocked by plan
+- [ ] Alternative: make repo public to unlock branch protection on Free plan
+- [ ] Alternative: upgrade to GitHub Pro ($4/mo) to protect private repos
+- [ ] Alternative: add git hooks + CODEOWNERS as a soft protection layer
+
+## Docker Database Migration Fix
+
+- [x] Audited Dockerfile, docker-compose.yml, docker-entrypoint.sh
+- [x] Created scripts/docker-pre-migrate.mjs — drops stale indexes from partially-applied migrations
+- [x] Updated docker-entrypoint.sh: pre-migrate repair → drizzle-kit migrate → KG seeder (if tables empty)
+- [x] Updated Dockerfile: copies seed-kg.mjs, spec-v4.14.3.yaml, scripts/docker-pre-migrate.mjs into production image
+- [x] Verified js-yaml and mysql2 are in production dependencies
+- [x] Full test suite: 79 files, 2,413 tests, 0 failures

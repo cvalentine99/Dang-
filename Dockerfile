@@ -63,6 +63,11 @@ COPY --from=builder /app/dist ./dist
 COPY drizzle/ ./drizzle/
 COPY drizzle.config.ts ./
 
+# Copy pre-migration repair script and KG seeder
+COPY scripts/docker-pre-migrate.mjs ./scripts/
+COPY seed-kg.mjs ./
+COPY spec-v4.14.3.yaml ./
+
 # Copy entrypoint script
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
