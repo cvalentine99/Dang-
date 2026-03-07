@@ -10,22 +10,22 @@
 | Field | Value |
 |-------|-------|
 | JSON artifact | `test-output/vitest.json` |
-| Generated at | 2026-03-07T00:26:47.258Z |
-| Test run started | 2026-03-06T23:45:00.249Z |
+| Generated at | 2026-03-07T12:12:36.267Z |
+| Test run started | 2026-03-07T12:08:21.957Z |
 | Overall success | true |
 
 ## Summary
 
 | Metric | Count |
 |--------|-------|
-| Test files | 79 |
-| Passed files | 79 |
+| Test files | 82 |
+| Passed files | 82 |
 | Failed files | 0 |
-| Describe blocks (vitest suites) | 659 |
-| Passed suites | 659 |
+| Describe blocks (vitest suites) | 700 |
+| Passed suites | 700 |
 | Failed suites | 0 |
-| Total tests | 2413 |
-| Passed tests | 2413 |
+| Total tests | 2607 |
+| Passed tests | 2607 |
 | Failed tests | 0 |
 
 ## Per-File Breakdown
@@ -92,11 +92,14 @@
 | PASS | `server/savedSearches/savedSearchesRouter.test.ts` | 15 | 15 | 0 |
 | PASS | `server/securityHardening.test.ts` | 19 | 19 | 0 |
 | PASS | `server/soundEngine.test.ts` | 11 | 11 | 0 |
+| PASS | `server/splunk/resolveTriageData.test.ts` | 73 | 73 | 0 |
 | PASS | `server/splunk/splunkConfig.test.ts` | 5 | 5 | 0 |
 | PASS | `server/splunk/splunkRouter.test.ts` | 124 | 124 | 0 |
 | PASS | `server/sse/alertStreamService.test.ts` | 10 | 10 | 0 |
 | PASS | `server/task5-managerStats-rootcheck.test.ts` | 36 | 36 | 0 |
 | PASS | `server/trustDocSprint.test.ts` | 39 | 39 | 0 |
+| PASS | `server/wazuh/apiContractGap.test.ts` | 57 | 57 | 0 |
+| PASS | `server/wazuh/brokerCoverage.test.ts` | 64 | 64 | 0 |
 | PASS | `server/wazuh/brokerWarnings.test.ts` | 11 | 11 | 0 |
 | PASS | `server/wazuh/configStatsTab.test.ts` | 97 | 97 | 0 |
 | PASS | `server/wazuh/paramBroker.test.ts` | 289 | 289 | 0 |

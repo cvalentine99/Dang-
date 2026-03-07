@@ -1,29 +1,148 @@
 # Wazuh Parameter Broker — Coverage Ledger
 
 **Spec baseline:** Wazuh REST API OpenAPI v4.14.3-rc3
-**Last updated:** Phase 3 Syscollector Campaign sign-off (2026-03-04)
+**Last updated:** Truth-contract correction pass (2026-03-07)
 
-## Broker-Wired Endpoints
+This document is the single source of truth for which Wazuh API endpoints are broker-wired, what parameters each broker config accepts, and which endpoints remain manually wired or passthrough. Every param count listed here has been machine-verified against the actual `paramBroker.ts` config objects using `scripts/verify-param-counts.mjs`.
+
+## Broker-Wired Endpoints (33 configs)
 
 The following endpoints are fully wired through `paramBroker.ts`. All accepted parameters are forwarded with correct Wazuh outbound names. Unsupported parameters are explicitly rejected.
 
-| Endpoint | Config Name | Universal Params | Endpoint-Specific Params | Phase |
+| Endpoint | Config Name | Total Params | Universal Params | Endpoint-Specific Params |
 |---|---|---|---|---|
-| `GET /agents` | `AGENTS_CONFIG` | offset, limit, sort, search, select, q, distinct | status, os.platform (aliases: os_platform, osPlatform, platform), os.version, os.name, older_than, manager_host, version, group, node_name, name, ip, registerIP, group_config_status | 1 |
-| `GET /rules` | `RULES_CONFIG` | offset, limit, sort, search, select, q, distinct | status, group, level, filename, relative_dirname, pci_dss, gdpr, gpg13, hipaa, nist-800-53 (alias: nist_800_53), tsc, mitre | 1 |
-| `GET /groups` | `GROUPS_CONFIG` | offset, limit, sort, search, select, q, distinct | hash | 1 |
-| `GET /cluster/nodes` | `CLUSTER_NODES_CONFIG` | offset, limit, sort, search, select, q, distinct | type (aliases: node_type, nodeType) | 1 |
-| `GET /sca/{agent_id}` | `SCA_POLICIES_CONFIG` | offset, limit, sort, search, select, q, distinct | name (alias: policyName), description, references | 1 |
-| `GET /sca/{agent_id}/checks/{policy_id}` | `SCA_CHECKS_CONFIG` | offset, limit, sort, search, select, q, distinct | title, description, rationale, remediation, command, reason, file (alias: full_path), process, directory, registry, references, result, condition | 1 |
-| `GET /manager/configuration` | `MANAGER_CONFIG` | distinct only (offset/limit/sort/search/select/q NOT in spec) | section, field, raw | 2 |
-| `GET /syscollector/{agent_id}/packages` | `SYSCOLLECTOR_PACKAGES_CONFIG` | offset, limit, sort, search, select, q, distinct | vendor, name (alias: package_name), architecture (alias: arch), format (alias: file_format), version (alias: package_version) | 3 |
-| `GET /syscollector/{agent_id}/ports` | `SYSCOLLECTOR_PORTS_CONFIG` | offset, limit, sort, search, select, q, distinct | pid, protocol, local.ip (alias: local_ip), local.port (alias: local_port), remote.ip (alias: remote_ip), tx_queue, state, process | 3 |
-| `GET /syscollector/{agent_id}/processes` | `SYSCOLLECTOR_PROCESSES_CONFIG` | offset, limit, sort, search, select, q, distinct | pid (alias: process_pid), state (alias: process_state), ppid, egroup, euser, fgroup, name (alias: process_name), nlwp, pgrp, priority, rgroup, ruser, sgroup, suser | 3 |
-| `GET /syscollector/{agent_id}/services` | `SYSCOLLECTOR_SERVICES_CONFIG` | offset, limit, sort, search, select, q, distinct | (none — spec defines only universal params) | 3 |
+| `GET /agents` | `AGENTS_CONFIG` | 18 | offset, limit, sort, search, select, q, distinct | status, older_than, manager_host, version, group, node_name, name, ip, registerIP, group_config_status, manager |
+| `GET /rules` | `RULES_CONFIG` | 19 | offset, limit, sort, search, select, q, distinct | status, group, level, filename, relative_dirname, pci_dss, gdpr, gpg13, hipaa, tsc, mitre, rule_ids |
+| `GET /groups` | `GROUPS_CONFIG` | 9 | offset, limit, sort, search, select, q, distinct | hash, groups_list |
+| `GET /cluster/nodes` | `CLUSTER_NODES_CONFIG` | 9 | offset, limit, sort, search, select, q, distinct | type, nodes_list |
+| `GET /sca/{agent_id}` | `SCA_POLICIES_CONFIG` | 10 | offset, limit, sort, search, select, q, distinct | name, description, references |
+| `GET /sca/{agent_id}/checks/{policy_id}` | `SCA_CHECKS_CONFIG` | 20 | offset, limit, sort, search, select, q, distinct | title, description, rationale, remediation, command, reason, file, process, directory, registry, references, result, condition |
+| `GET /manager/configuration` | `MANAGER_CONFIG` | 4 | distinct | section, field, raw |
+| `GET /manager/logs` | `MANAGER_LOGS_CONFIG` | 9 | offset, limit, sort, search, select, q, distinct | level, tag |
+| `GET /groups/{group_id}/agents` | `GROUP_AGENTS_CONFIG` | 8 | offset, limit, sort, search, select, q, distinct | status |
+| `GET /groups/{group_id}/files` | `GROUP_FILES_CONFIG` | 8 | offset, limit, sort, search, select, q, distinct | hash |
+| `GET /syscheck/{agent_id}` | `SYSCHECK_CONFIG` | 15 | offset, limit, sort, search, select, q, distinct | type, hash, file, arch, summary, md5, sha1, sha256 |
+| `GET /rootcheck/{agent_id}` | `ROOTCHECK_CONFIG` | 8 | offset, limit, sort, search, select, q, distinct | status |
+| `GET /decoders` | `DECODERS_CONFIG` | 11 | offset, limit, sort, search, select, q, distinct | decoder_names, filename, relative_dirname, status |
+| `GET /decoders/files` | `DECODERS_FILES_CONFIG` | 10 | offset, limit, sort, search, select, q, distinct | filename, relative_dirname, status |
+| `GET /rules/files` | `RULES_FILES_CONFIG` | 10 | offset, limit, sort, search, select, q, distinct | filename, relative_dirname, status |
+| `GET /lists` | `LISTS_CONFIG` | 9 | offset, limit, sort, search, select, q, distinct | filename, relative_dirname |
+| `GET /lists/files` | `LISTS_FILES_CONFIG` | 6 | offset, limit, sort, search | filename, relative_dirname |
+| `GET /ciscat/{agent_id}/results` | `CISCAT_CONFIG` | 15 | offset, limit, sort, search, select, q, distinct | benchmark, profile, pass, fail, error, notchecked, unknown, score |
+| `GET /experimental/ciscat/results` | `EXPERIMENTAL_CISCAT_RESULTS_CONFIG` | 16 | offset, limit, sort, search, select, q, distinct | agents_list, benchmark, profile, pass, fail, error, notchecked, unknown, score |
+| `GET /mitre/tactics` | `MITRE_TACTICS_CONFIG` | 8 | offset, limit, sort, search, select, q, distinct | mitre_tactic_ids |
+| `GET /mitre/techniques` | `MITRE_TECHNIQUES_CONFIG` | 8 | offset, limit, sort, search, select, q, distinct | technique_ids |
+| `GET /mitre/mitigations` | `MITRE_MITIGATIONS_CONFIG` | 8 | offset, limit, sort, search, select, q, distinct | mitre_mitigation_ids |
+| `GET /mitre/software` | `MITRE_SOFTWARE_CONFIG` | 8 | offset, limit, sort, search, select, q, distinct | mitre_software_ids |
+| `GET /mitre/groups` | `MITRE_GROUPS_CONFIG` | 8 | offset, limit, sort, search, select, q, distinct | mitre_group_ids |
+| `GET /mitre/references` | `MITRE_REFERENCES_CONFIG` | 6 | offset, limit, sort, search, q | mitre_reference_ids |
+| `GET /syscollector/{agent_id}/packages` | `SYSCOLLECTOR_PACKAGES_CONFIG` | 12 | offset, limit, sort, search, select, q, distinct | vendor, name, architecture, format, version |
+| `GET /syscollector/{agent_id}/ports` | `SYSCOLLECTOR_PORTS_CONFIG` | 12 | offset, limit, sort, search, select, q, distinct | pid, protocol, tx_queue, state, process |
+| `GET /syscollector/{agent_id}/processes` | `SYSCOLLECTOR_PROCESSES_CONFIG` | 21 | offset, limit, sort, search, select, q, distinct | pid, state, ppid, egroup, euser, fgroup, name, nlwp, pgrp, priority, rgroup, ruser, sgroup, suser |
+| `GET /syscollector/{agent_id}/services` | `SYSCOLLECTOR_SERVICES_CONFIG` | 7 | offset, limit, sort, search, select, q, distinct | (none) |
+| `GET /syscollector/{agent_id}/netiface` | `SYSCOLLECTOR_NETIFACE_CONFIG` | 13 | offset, limit, sort, search, select, q, distinct | name, adapter, type, state, mtu, mac |
+| `GET /syscollector/{agent_id}/netaddr` | `SYSCOLLECTOR_NETADDR_CONFIG` | 12 | offset, limit, sort, search, select, q, distinct | iface, proto, address, broadcast, netmask |
+| `GET /syscollector/{agent_id}/hotfixes` | `SYSCOLLECTOR_HOTFIXES_CONFIG` | 8 | offset, limit, sort, search, select, q, distinct | hotfix |
+| `GET /syscollector/{agent_id}/netproto` | `SYSCOLLECTOR_NETPROTO_CONFIG` | 11 | offset, limit, sort, search, select, q, distinct | iface, type, gateway, dhcp |
+
+## Manual-Param Endpoints (37 procedures)
+
+These endpoints use inline Zod schemas in `wazuhRouter.ts` with manual query parameter forwarding. They are not broker-wired but do forward parameters correctly.
+
+| Procedure | Wazuh Path | Param Count | Parameters |
+|---|---|---|---|
+| `remoted` | `/manager/stats/remoted` | 0 | — |
+| `daemonStats` | `/manager/daemons/stats` | 1 | daemons_list |
+| `managerComponentConfig` | `/manager/configuration/{component}/{configuration}` | 2 | component, configuration |
+| `clusterStatus` | `/cluster/status` | 0 | — |
+| `clusterHealthcheck` | `/cluster/healthcheck` | 1 | nodes_list |
+| `clusterNodeComponentConfig` | `/cluster/{node_id}/configuration/{component}/{configuration}` | 3 | node_id, component, configuration |
+| `clusterNodeDaemonStats` | `/cluster/{node_id}/daemons/stats` | 2 | node_id, daemons_list |
+| `clusterNodeLogs` | `/cluster/{node_id}/logs` | 7 | node_id, offset, limit, sort, search, tag, level |
+| `agentDaemonStats` | `/agents/{agent_id}/daemons/stats` | 2 | agent_id, daemons_list |
+| `agentGroupSync` | `/agents/group/{group_id}/sync` | 1 | group_id |
+| `apiInfo` | `/` | 0 | — |
+| `agentsOutdated` | `/agents/outdated` | 6 | offset, limit, sort, search, select, q |
+| `agentsNoGroup` | `/agents/no_group` | 6 | offset, limit, sort, search, select, q |
+| `agentsStatsDistinct` | `/agents/stats/distinct` | 6 | offset, limit, sort, search, fields, q |
+| `agentOs` | `/syscollector/{agent_id}/os` | 2 | agent_id, select |
+| `agentHardware` | `/syscollector/{agent_id}/hardware` | 2 | agent_id, select |
+| `agentBrowserExtensions` | `/syscollector/{agent_id}/browser_extensions` | 8 | agent_id, offset, limit, sort, search, q, distinct, select |
+| `agentUsers` | `/syscollector/{agent_id}/users` | 8 | agent_id, offset, limit, sort, search, q, distinct, select |
+| `agentGroups2` | `/syscollector/{agent_id}/groups` | 8 | agent_id, offset, limit, sort, search, q, distinct, select |
+| `expSyscollectorPackages` | `/experimental/syscollector/packages` | 7 | offset, limit, sort, search, select, q, agents_list |
+| `expSyscollectorProcesses` | `/experimental/syscollector/processes` | 7 | offset, limit, sort, search, select, q, agents_list |
+| `expSyscollectorPorts` | `/experimental/syscollector/ports` | 7 | offset, limit, sort, search, select, q, agents_list |
+| `expSyscollectorNetaddr` | `/experimental/syscollector/netaddr` | 11 | offset, limit, sort, search, select, q, agents_list, proto, address, broadcast, netmask |
+| `expSyscollectorNetiface` | `/experimental/syscollector/netiface` | 21 | offset, limit, sort, search, select, q, agents_list, name, adapter, type, state, mtu, tx_packets, rx_packets, tx_bytes, rx_bytes, tx_errors, rx_errors, tx_dropped, rx_dropped, mac |
+| `expSyscollectorNetproto` | `/experimental/syscollector/netproto` | 7 | offset, limit, sort, search, select, q, agents_list |
+| `expSyscollectorOs` | `/experimental/syscollector/os` | 7 | offset, limit, sort, search, select, q, agents_list |
+| `expSyscollectorHardware` | `/experimental/syscollector/hardware` | 7 | offset, limit, sort, search, select, q, agents_list |
+| `expSyscollectorHotfixes` | `/experimental/syscollector/hotfixes` | 8 | offset, limit, sort, search, select, q, agents_list, hotfix |
+| `ruleGroups` | `/rules/groups` | 4 | offset, limit, sort, search |
+| `rulesByRequirement` | `/rules/requirement/{requirement}` | 5 | requirement, offset, limit, sort, search |
+| `ruleFileContent` | `/rules/files/{filename}` | 3 | filename, raw, get_dirnames_path |
+| `decoderParents` | `/decoders/parents` | 4 | offset, limit, sort, select |
+| `decoderFileContent` | `/decoders/files/{filename}` | 3 | filename, raw, get_dirnames_path |
+| `listsFileContent` | `/lists/files/{filename}` | 2 | filename, raw |
+| `taskStatus` | `/tasks/status` | 12 | task_list, agents_list, command, node, module, status, offset, limit, sort, search, select, q |
+| `securityConfig` | `/security/config` | 0 | — |
+| `securityCurrentUser` | `/security/users/me` | 0 | — |
+| `securityRbacRules` | `/security/rules` | 3 | offset, limit, search |
+| `securityResources` | `/security/resources` | 1 | resource_list |
+| `groupConfiguration` | `/groups/{group_id}/configuration` | 3 | group_id, offset, limit |
+| `groupFileContent` | `/groups/{group_id}/files/{file_name}` | 4 | group_id, file_name, type_agents, raw |
+
+## Passthrough Endpoints (50 procedures)
+
+These endpoints forward to Wazuh with no query parameters (path params only where applicable).
+
+| Procedure | Wazuh Path | Path Params |
+|---|---|---|
+| `status` | `/manager/status` | — |
+| `isConfigured` | N/A (config check) | — |
+| `managerConfigValidation` | `/manager/configuration/validation` | — |
+| `managerStats` | `/manager/stats` | — |
+| `statsHourly` | `/manager/stats/hourly` | — |
+| `statsWeekly` | `/manager/stats/weekly` | — |
+| `analysisd` | `/manager/stats/analysisd` | — |
+| `managerLogsSummary` | `/manager/logs/summary` | — |
+| `managerVersionCheck` | `/manager/version/check` | — |
+| `managerApiConfig` | `/manager/api/config` | — |
+| `clusterLocalInfo` | `/cluster/local/info` | — |
+| `clusterLocalConfig` | `/cluster/local/config` | — |
+| `clusterRulesetSync` | `/cluster/ruleset/synchronization` | — |
+| `clusterApiConfig` | `/cluster/api/config` | — |
+| `clusterNodeInfo` | `/cluster/{node_id}/info` | node_id |
+| `clusterNodeStats` | `/cluster/{node_id}/stats` | node_id |
+| `clusterNodeStatsHourly` | `/cluster/{node_id}/stats/hourly` | node_id |
+| `clusterNodeStatus` | `/cluster/{node_id}/status` | node_id |
+| `clusterNodeConfiguration` | `/cluster/{node_id}/configuration` | node_id |
+| `clusterNodeLogsSummary` | `/cluster/{node_id}/logs/summary` | node_id |
+| `clusterNodeStatsAnalysisd` | `/cluster/{node_id}/stats/analysisd` | node_id |
+| `clusterNodeStatsRemoted` | `/cluster/{node_id}/stats/remoted` | node_id |
+| `clusterNodeStatsWeekly` | `/cluster/{node_id}/stats/weekly` | node_id |
+| `agentSummaryStatus` | `/agents/summary/status` | — |
+| `agentSummaryOs` | `/agents/summary/os` | — |
+| `agentsSummary` | `/agents/summary` | — |
+| `agentOverview` | `/overview/agents` | — |
+| `agentById` | `/agents/{agent_id}` | agent_id |
+| `agentStats` | `/agents/{agent_id}/stats/{component}` | agent_id, component |
+| `agentConfig` | `/agents/{agent_id}/config/{component}/{configuration}` | agent_id, component, configuration |
+| `agentsUpgradeResult` | `/agents/upgrade_result` | — |
+| `agentsUninstallPermission` | N/A (permission check) | — |
+| `securityRoles` | `/security/roles` | — |
+| `securityPolicies` | `/security/policies` | — |
+| `securityUsers` | `/security/users` | — |
+| `securityUserById` | `/security/users/{user_id}` | user_id |
+| `securityRoleById` | `/security/roles/{role_id}` | role_id |
+| `securityPolicyById` | `/security/policies/{policy_id}` | policy_id |
+| `securityRuleById` | `/security/rules/{rule_id}` | rule_id |
+| `securityActions` | `/security/actions` | — |
 
 ## Universal Query Family
 
-These parameters are shared across most endpoints (except `/manager/configuration` which only supports `distinct`):
+These parameters are shared across most broker-wired endpoints (except `MANAGER_CONFIG` which only supports `distinct`, and `LISTS_FILES_CONFIG` / `MITRE_REFERENCES_CONFIG` which omit `select`, `q`, and/or `distinct`):
 
 | Parameter | Wazuh Name | Type | Description |
 |---|---|---|---|
@@ -39,77 +158,24 @@ These parameters are shared across most endpoints (except `/manager/configuratio
 
 ## Compliance Filter Family (Rules Only)
 
-Available exclusively on `GET /rules`:
+Available exclusively on `GET /rules` via `RULES_CONFIG`:
 
 | Parameter | Wazuh Name | Description |
 |---|---|---|
 | pci_dss | pci_dss | PCI DSS requirement filter |
 | gdpr | gdpr | GDPR requirement filter |
 | hipaa | hipaa | HIPAA requirement filter |
-| nist-800-53 | nist-800-53 | NIST 800-53 requirement filter (alias: nist_800_53) |
 | tsc | tsc | TSC requirement filter |
 | gpg13 | gpg13 | GPG13 requirement filter |
 | mitre | mitre | MITRE ATT&CK technique ID filter |
 
-## Manager Configuration Precision Params
+## CIS-CAT Endpoints
 
-Available exclusively on `GET /manager/configuration`:
+Two CIS-CAT endpoints are broker-wired:
 
-| Parameter | Wazuh Name | Type | Description |
-|---|---|---|---|
-| section | section | string | Configuration section (e.g. global, alerts, syscheck, ruleset) |
-| field | field | string | Section child field (e.g. decoder_dir, rule_dir) |
-| raw | raw | boolean | Return raw config text. When true, section and field are ignored by Wazuh |
+The per-agent endpoint `GET /ciscat/{agent_id}/results` uses `CISCAT_CONFIG` with 15 params (7 universal + 8 field filters: benchmark, profile, pass, fail, error, notchecked, unknown, score).
 
-## Syscollector Field Filters (Phase 3)
-
-The syscollector family provides per-agent inventory data. Four endpoints were wired in Phase 3, each with field-level filters mapped from the OpenAPI spec.
-
-### Packages (`/syscollector/{agent_id}/packages`)
-
-| Parameter | Wazuh Name | Aliases | Description |
-|---|---|---|---|
-| vendor | vendor | — | Package vendor |
-| name | name | package_name | Package name |
-| architecture | architecture | arch | CPU architecture (amd64, x86_64, etc.) |
-| format | format | file_format | Package format (deb, rpm, etc.) |
-| version | version | package_version | Package version string |
-
-### Ports (`/syscollector/{agent_id}/ports`)
-
-| Parameter | Wazuh Name | Aliases | Description |
-|---|---|---|---|
-| pid | pid | — | Process ID owning the port |
-| protocol | protocol | — | Network protocol (tcp, udp) |
-| local.ip | local.ip | local_ip | Local IP address |
-| local.port | local.port | local_port | Local port number |
-| remote.ip | remote.ip | remote_ip | Remote IP address |
-| tx_queue | tx_queue | — | Transmit queue size |
-| state | state | — | Connection state (listening, established, etc.) |
-| process | process | — | Process name associated with port |
-
-### Processes (`/syscollector/{agent_id}/processes`)
-
-| Parameter | Wazuh Name | Aliases | Description |
-|---|---|---|---|
-| pid | pid | process_pid | Process ID |
-| state | state | process_state | Process state (S, R, Z, etc.) |
-| ppid | ppid | — | Parent process ID |
-| egroup | egroup | — | Effective group |
-| euser | euser | — | Effective user |
-| fgroup | fgroup | — | Filesystem group |
-| name | name | process_name | Process name |
-| nlwp | nlwp | — | Number of lightweight processes (threads) |
-| pgrp | pgrp | — | Process group ID |
-| priority | priority | — | Scheduling priority |
-| rgroup | rgroup | — | Real group |
-| ruser | ruser | — | Real user |
-| sgroup | sgroup | — | Saved group |
-| suser | suser | — | Saved user |
-
-### Services (`/syscollector/{agent_id}/services`)
-
-No field-specific filters are defined in the Wazuh v4.14.3 spec for this endpoint. Only universal query parameters (offset, limit, sort, search, select, q, distinct) are accepted.
+The cross-agent endpoint `GET /experimental/ciscat/results` uses `EXPERIMENTAL_CISCAT_RESULTS_CONFIG` with 16 params (7 universal + agents_list + 8 field filters identical to the per-agent config).
 
 ## Correctness Fixes Applied
 
@@ -117,6 +183,11 @@ No field-specific filters are defined in the Wazuh v4.14.3 spec for this endpoin
 |---|---|---|
 | A1 | `os_platform` now maps to spec-correct `os.platform` via alias resolution | 1 |
 | A2 | `search` is forwarded natively as `search`, never rewritten into `q=name~...` | 1 |
+| C-1 | `/security/resources` changed `resource` to `resource_list` | API Contract Gap |
+| C-2 | `/tasks/status` extended from 1/13 to 12/13 params | API Contract Gap |
+| C-3 | `ROOTCHECK_CONFIG` removed non-spec `pci_dss` and `cis` params | API Contract Gap |
+| C-4 | Added missing security individual resource GETs (users/{id}, roles/{id}, policies/{id}, rules/{id}) | API Contract Gap |
+| C-5 | Added missing cluster/manager API config GETs | API Contract Gap |
 
 ## Phase 2 Review Fixes — Coercion Trust Violations
 
@@ -131,71 +202,6 @@ Six issues identified during independent code review. All resolved.
 | 5 | Moderate | `status` CSV array blocked by Zod schema | Agents Zod schema updated to accept `z.array(z.string())` for status. Broker CSV capability now reachable from router. |
 | 6 | Low | `level` in RULES_CONFIG had type `"string"` but accepted numbers | Custom `serialize()` on level handles both number and string input. NaN produces error. |
 
-## Test Coverage
+## Verification
 
-| Test Suite | Tests | Phase |
-|---|---|---|
-| Broker core (coercion, alias, unsupported detection) | 16 | 1 |
-| Fix A1: os_platform → os.platform mapping | 4 | 1 |
-| Fix A2: search vs q distinction | 4 | 1 |
-| Endpoint-specific configs (agents, rules, groups, cluster, SCA) | 62 | 1 |
-| Universal params present in all configs | 42 | 1 |
-| Rules compliance filter family (forwarding + isolation) | 14 | 2 |
-| Rules severity/group/classification filters | 8 | 2 |
-| Manager configuration precision params | 12 | 2 |
-| SCA expanded filter verification | 21 | 2 |
-| Manager config universal param scoping | 1 | 2 |
-| Phase 2 cross-endpoint isolation | 5 | 2 |
-| Review Fix: errors[] contract (coercion failures, NaN, accumulation) | 8 | 2-RF |
-| Review Fix: coerceBoolean strict semantics (truthy strings, flag omission) | 5 | 2-RF |
-| Review Fix: status CSV array capability | 4 | 2-RF |
-| Review Fix: level custom serializer (number, string, NaN) | 4 | 2-RF |
-| Review Fix: errors[] contract verification (always array, descriptive, separate from unsupported) | 4 | 2-RF |
-| Review Fix: distinct=false omission (flag semantics) | 1 | 2-RF |
-| Syscollector packages: forwarding + alias resolution | 7 | 3 |
-| Syscollector ports: forwarding + alias resolution | 7 | 3 |
-| Syscollector processes: forwarding + alias resolution | 7 | 3 |
-| Syscollector services: universal-only + unsupported rejection | 6 | 3 |
-| **Total paramBroker tests** | **~242** | |
-
-## Out of Scope (Not Yet Broker-Wired)
-
-The following endpoint families are intentionally NOT wired in Phases 1–3. They remain candidates for future phases.
-
-### Phase 4 Candidates: Remaining Syscollector Family
-
-| Endpoint | Current State |
-|---|---|
-| `GET /syscollector/{agent_id}/hardware` | Manual param forwarding (limit, offset only) |
-| `GET /syscollector/{agent_id}/os` | Manual param forwarding (limit, offset only) |
-| `GET /syscollector/{agent_id}/netiface` | Manual param forwarding (limit, offset only) |
-| `GET /syscollector/{agent_id}/netaddr` | Manual param forwarding (limit, offset only) |
-| `GET /syscollector/{agent_id}/netproto` | Manual param forwarding (limit, offset only) |
-
-### Other Endpoints Not Yet Broker-Wired
-
-| Endpoint | Current State |
-|---|---|
-| `GET /manager/info` | Zero-param passthrough |
-| `GET /manager/status` | Zero-param passthrough |
-| `GET /manager/configuration/validation` | Zero-param passthrough |
-| `GET /manager/stats` | Zero-param passthrough |
-| `GET /manager/stats/hourly` | Zero-param passthrough |
-| `GET /manager/stats/weekly` | Zero-param passthrough |
-| `GET /manager/stats/remoted` | Zero-param passthrough |
-| `GET /manager/stats/analysisd` | Zero-param passthrough |
-| `GET /manager/logs` | Manual param forwarding (limit, offset, level, tag, q) |
-| `GET /manager/logs/summary` | Zero-param passthrough |
-| `GET /rules/groups` | Zero-param passthrough |
-| `GET /rules/requirement/{requirement}` | Path param only |
-| `GET /rules/files` | Manual param forwarding (limit, offset only) |
-| `GET /rules/files/{filename}` | Path param only |
-| `GET /mitre/tactics` | Zero-param passthrough |
-| `GET /mitre/techniques` | Manual param forwarding (limit, offset, search) |
-| `GET /mitre/mitigations` | Manual param forwarding (limit, offset, search) |
-| `GET /syscheck/{agent_id}` | Manual param forwarding (limit, offset, search, type, sort, q) |
-| `GET /cluster/status` | Zero-param passthrough |
-| `GET /cluster/healthcheck` | Zero-param passthrough |
-| `GET /cluster/local/info` | Zero-param passthrough |
-| `GET /ciscat/{agent_id}/results` | Manual param forwarding (limit, offset only) |
-| `GET /vulnerability/{agent_id}` | Manual param forwarding (limit, offset, search, sort, q) |
+All param counts in this document and in the `ENDPOINT_REGISTRY` in `server/wazuh/brokerCoverage.ts` have been verified using `scripts/verify-param-counts.mjs`, which cross-checks every broker-wired entry's `paramCount` against the actual `Object.keys(config.params).length` from `paramBroker.ts`. The script exits non-zero on any mismatch.

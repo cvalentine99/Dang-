@@ -3511,3 +3511,14 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] Write tests for broker coverage analysis
 - [x] Full test suite passes (82 files, 2,607 tests, 0 failures)
 - [x] Package source code as zip for code review
+
+## Truth-Contract Corrections (Code Review Feedback)
+
+- [x] Fix expCiscatResults param count in brokerCoverage.ts — config has 16 params, registry says 15
+- [x] Fix 16 additional param count mismatches across entire registry (verified with scripts/verify-param-counts.mjs)
+- [x] Update docs/broker-coverage-ledger.md — fully rewritten with all 33 broker configs, 37 manual endpoints, 50 passthrough endpoints, CIS-CAT section, and verification note
+- [x] Regenerate test-output/vitest.json — now shows 82 files/2607 tests/0 failures
+- [x] Regenerate docs/ci-proof-artifact.md — matches vitest.json: 82 files, 2607 tests, 0 failures
+- [x] Remove .manus/db/*.json from deliverable zip (excluded .manus/, .manus-logs/, node_modules/, .git/, dist/)
+- [x] Remove nested dang/ subtree from archive — clean zip uses ./ root, no duplication
+- [x] Verify full test suite passes after all corrections (82 files, 2607 tests, 0 failures)
