@@ -340,9 +340,10 @@ jobs:
           git diff -- docs/ci-proof-artifact.md \
             | grep '^[+-]' \
             | grep -v '^[+-][+-][+-]' \
-            | grep -v 'Generated:' \
+            | grep -v 'Generated' \
             | grep -v 'Duration:' \
-            | grep -v 'Start at:' > /tmp/proof-diff-filtered.txt || true
+            | grep -v 'Start at:' \
+            | grep -v 'Test run started' > /tmp/proof-diff-filtered.txt || true
           if [ -s /tmp/proof-diff-filtered.txt ]; then
             echo "::error::CI proof artifact has structural drift (beyond timestamps). Run locally and commit:"
             echo "  pnpm test -- --run --reporter=json --outputFile.json=test-output/vitest.json"
