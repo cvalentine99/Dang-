@@ -207,6 +207,7 @@ const menuItems = [
   { icon: UserCog, label: "User Management", path: "/admin/users", group: "Admin" },
   { icon: Settings, label: "Connection Settings", path: "/admin/settings", group: "Admin" },
   { icon: ShieldAlert, label: "Access Audit", path: "/admin/audit", group: "Admin" },
+  { icon: Layers, label: "Broker Coverage", path: "/admin/broker-coverage", group: "Admin" },
   { icon: StickyNote, label: "Analyst Notes", path: "/notes", group: "Tools" },
   // Removed: /assistant (generic LLM chat without Wazuh KG context) — use /analyst instead
   // { icon: Bot, label: "AI Assistant", path: "/assistant", group: "Tools" },

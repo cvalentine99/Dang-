@@ -47,7 +47,9 @@ import {
   SYSCOLLECTOR_NETADDR_CONFIG,
   SYSCOLLECTOR_HOTFIXES_CONFIG,
   SYSCOLLECTOR_NETPROTO_CONFIG,
+  EXPERIMENTAL_CISCAT_RESULTS_CONFIG,
 } from "./paramBroker";
+import { generateCoverageReport } from "./brokerCoverage";
 
 // ── Per-request user context for rate limiting ──────────────────────────────
 // AsyncLocalStorage carries the authenticated user's ID through the call stack
@@ -1304,6 +1306,41 @@ export const wazuhRouter = router({
       return proxyGet("/experimental/syscollector/hotfixes", params);
     }),
 
+  /**
+   * GET /experimental/ciscat/results — Cross-agent CIS-CAT results (broker-wired)
+   *
+   * Returns CIS-CAT scan results across ALL agents. Supports universal params,
+   * agents_list filter, and all CIS-CAT field-specific filters.
+   */
+  expCiscatResults: wazuhProcedure
+    .input(paginationSchema.extend({
+      search: z.string().optional(),
+      q: z.string().optional(),
+      sort: z.string().optional(),
+      select: z.union([z.string(), z.array(z.string())]).optional(),
+      distinct: z.boolean().optional(),
+      agents_list: z.union([z.string(), z.array(z.string())]).optional(),
+      benchmark: z.string().optional(),
+      profile: z.string().optional(),
+      pass: z.number().optional(),
+      fail: z.number().optional(),
+      error: z.number().optional(),
+      notchecked: z.number().optional(),
+      unknown: z.number().optional(),
+      score: z.number().optional(),
+    }))
+    .query(({ input }) => {
+      const { limit, offset, ...rest } = input;
+      const { forwardedQuery, unsupportedParams, errors } = brokerParams(EXPERIMENTAL_CISCAT_RESULTS_CONFIG, { limit, offset, ...rest });
+      if (unsupportedParams.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Unsupported parameters for /experimental/ciscat/results: ${unsupportedParams.join(", ")}`,
+        });
+      }
+      return withBrokerWarnings(proxyGet("/experimental/ciscat/results", forwardedQuery), errors);
+    }),
+
   // ══════════════════════════════════════════════════════════════════════════════
   // ALERTS / RULES
   // ══════════════════════════════════════════════════════════════════════════════
@@ -2109,4 +2146,17 @@ export const wazuhRouter = router({
   clusterNodeStatsWeekly: wazuhProcedure
     .input(z.object({ nodeId: z.string() }))
     .query(({ input }) => proxyGet(`/cluster/${input.nodeId}/stats/weekly`)),
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // BROKER COVERAGE ANALYSIS
+  // ══════════════════════════════════════════════════════════════════════════════
+  /**
+   * Broker Coverage Report — static analysis of the Wazuh API surface.
+   * Returns coverage metrics, per-endpoint wiring levels, and broker config summaries.
+   * No Wazuh API calls are made — this is pure server-side introspection.
+   */
+  brokerCoverage: protectedProcedure
+    .query(() => {
+      return generateCoverageReport();
+    }),
 });

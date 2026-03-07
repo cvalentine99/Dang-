@@ -1,7 +1,7 @@
 {
-  "generated": "2026-03-07T11:19:36.090Z",
-  "callsiteCount": 168,
-  "procedureCount": 120,
+  "generated": "2026-03-07T11:40:58.072Z",
+  "callsiteCount": 169,
+  "procedureCount": 122,
   "consumedProcedures": [
     "agentBrowserExtensions",
     "agentById",
@@ -36,6 +36,7 @@
     "agentsUpgradeResult",
     "analysisd",
     "apiInfo",
+    "brokerCoverage",
     "ciscatResults",
     "clusterHealthcheck",
     "clusterLocalConfig",
@@ -461,6 +462,13 @@
       "file": "client/src/pages/AlertsTimeline.tsx",
       "line": 173,
       "procedure": "statsWeekly",
+      "passedKeys": {},
+      "isVoid": true
+    },
+    {
+      "file": "client/src/pages/BrokerCoverage.tsx",
+      "line": 140,
+      "procedure": "brokerCoverage",
       "passedKeys": {},
       "isVoid": true
     },
@@ -3349,6 +3357,75 @@
         }
       }
     },
+    "expCiscatResults": {
+      "inputType": "object",
+      "keys": {
+        "limit": {
+          "required": false,
+          "default": "100"
+        },
+        "offset": {
+          "required": false,
+          "default": "0"
+        },
+        "search": {
+          "required": false,
+          "default": null
+        },
+        "q": {
+          "required": false,
+          "default": null
+        },
+        "sort": {
+          "required": false,
+          "default": null
+        },
+        "select": {
+          "required": false,
+          "default": null
+        },
+        "distinct": {
+          "required": false,
+          "default": null
+        },
+        "agents_list": {
+          "required": false,
+          "default": null
+        },
+        "benchmark": {
+          "required": false,
+          "default": null
+        },
+        "profile": {
+          "required": false,
+          "default": null
+        },
+        "pass": {
+          "required": false,
+          "default": null
+        },
+        "fail": {
+          "required": false,
+          "default": null
+        },
+        "error": {
+          "required": false,
+          "default": null
+        },
+        "notchecked": {
+          "required": false,
+          "default": null
+        },
+        "unknown": {
+          "required": false,
+          "default": null
+        },
+        "score": {
+          "required": false,
+          "default": null
+        }
+      }
+    },
     "rules": {
       "inputType": "object",
       "keys": {
@@ -4640,6 +4717,10 @@
           "default": null
         }
       }
+    },
+    "brokerCoverage": {
+      "inputType": "void",
+      "keys": {}
     }
   }
 }

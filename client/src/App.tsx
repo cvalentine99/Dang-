@@ -44,6 +44,7 @@ import FleetInventory from "./pages/FleetInventory";
 import SecurityExplorer from "./pages/SecurityExplorer";
 import SensitiveAccessAudit from "./pages/SensitiveAccessAudit";
 import GroupManagement from "./pages/GroupManagement";
+import BrokerCoverage from "./pages/BrokerCoverage";
 
 function Router() {
   return (
@@ -95,6 +96,7 @@ function Router() {
               <Route path="/security" component={SecurityExplorer} />
               <Route path="/admin/audit" component={SensitiveAccessAudit} />
               <Route path="/groups" component={GroupManagement} />
+              <Route path="/admin/broker-coverage" component={BrokerCoverage} />
               <Route path="/404" component={NotFound} />
               <Route component={NotFound} />
             </Switch>

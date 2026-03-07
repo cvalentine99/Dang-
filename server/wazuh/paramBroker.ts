@@ -1661,3 +1661,75 @@ export const CISCAT_CONFIG: EndpointParamConfig = {
     },
   },
 };
+
+
+/**
+ * GET /experimental/ciscat/results — Cross-agent CIS-CAT results
+ * Spec ref: operationId api.controllers.experimental_controller.get_cis_cat_results
+ *
+ * Returns CIS-CAT scan results across ALL agents (no agent_id path param).
+ * Supports universal params, agents_list filter, and all CIS-CAT field filters.
+ */
+export const EXPERIMENTAL_CISCAT_RESULTS_CONFIG: EndpointParamConfig = {
+  endpoint: "/experimental/ciscat/results",
+  params: {
+    // Universal params
+    offset: UNIVERSAL_PARAMS.offset,
+    limit: UNIVERSAL_PARAMS.limit,
+    sort: UNIVERSAL_PARAMS.sort,
+    search: UNIVERSAL_PARAMS.search,
+    select: UNIVERSAL_PARAMS.select,
+    q: UNIVERSAL_PARAMS.q,
+    distinct: UNIVERSAL_PARAMS.distinct,
+
+    // Cross-agent filter
+    agents_list: {
+      wazuhName: "agents_list",
+      description: "Comma-separated list of agent IDs to filter results",
+      type: "csv",
+      aliases: ["agentsList"],
+    },
+
+    // CIS-CAT field-specific filters
+    benchmark: {
+      wazuhName: "benchmark",
+      description: "Filter by CIS-CAT benchmark name",
+      type: "string",
+    },
+    profile: {
+      wazuhName: "profile",
+      description: "Filter by CIS-CAT profile",
+      type: "string",
+    },
+    pass: {
+      wazuhName: "pass",
+      description: "Filter by number of passed checks",
+      type: "number",
+    },
+    fail: {
+      wazuhName: "fail",
+      description: "Filter by number of failed checks",
+      type: "number",
+    },
+    error: {
+      wazuhName: "error",
+      description: "Filter by number of errors",
+      type: "number",
+    },
+    notchecked: {
+      wazuhName: "notchecked",
+      description: "Filter by number of not-checked items",
+      type: "number",
+    },
+    unknown: {
+      wazuhName: "unknown",
+      description: "Filter by number of unknown items",
+      type: "number",
+    },
+    score: {
+      wazuhName: "score",
+      description: "Filter by CIS-CAT score",
+      type: "number",
+    },
+  },
+};

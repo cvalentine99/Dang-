@@ -2,8 +2,8 @@
 
 **Generated:** 2026-03-07  
 **Script:** `scripts/audit-ui-param-parity.mjs`  
-**Callsites audited:** 168  
-**Unique procedures consumed:** 113 of 120 total  
+**Callsites audited:** 169  
+**Unique procedures consumed:** 114 of 122 total  
 
 ---
 
@@ -12,9 +12,9 @@
 
 | Metric | Count |
 |--------|-------|
-| Total callsites | 168 |
-| Unique procedures consumed | 113 |
-| Router procedures available | 120 |
+| Total callsites | 169 |
+| Unique procedures consumed | 114 |
+| Router procedures available | 122 |
 | Parameters surfaced in UI | 95 |
 | Parameters hardcoded/constant | 116 |
 | Parameters not supported (classified) | 821 |
@@ -28,6 +28,7 @@
 |-----------|-----------|-------------|
 | `clusterApiConfig` | (void) | Backend-only / Not yet wired to UI |
 | `clusterRulesetSync` | (void) | Backend-only / Not yet wired to UI |
+| `expCiscatResults` | limit, offset, search, q, sort, select, distinct, agents_list, benchmark, profile, pass, fail, error, notchecked, unknown, score | Backend-only / Not yet wired to UI |
 | `managerApiConfig` | (void) | Backend-only / Not yet wired to UI |
 | `securityPolicyById` | policyId | Backend-only / Not yet wired to UI |
 | `securityRoleById` | roleId | Backend-only / Not yet wired to UI |
@@ -550,6 +551,12 @@ Input: void (no parameters) — **OK**
 Input: void (no parameters) — **OK**
 
 ### Line 173: `wazuh.statsWeekly`
+
+Input: void (no parameters) — **OK**
+
+## client/src/pages/BrokerCoverage.tsx
+
+### Line 140: `wazuh.brokerCoverage`
 
 Input: void (no parameters) — **OK**
 
@@ -1898,6 +1905,7 @@ Input: void (no parameters) — **OK**
 | `sort` | Optional | No | — | **Not supported** — optional, not exposed in this view |
 | `status` | Optional | No | Passed | **Constant** (hardcoded: `"active"`) |
 | `version` | Optional | No | — | **Not supported** — optional, not exposed in this view |
+
 
 
 

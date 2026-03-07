@@ -3497,6 +3497,17 @@ Each page uses the `isConnected ? realData : MOCK_DATA` pattern with SourceBadge
 - [x] L-6: `/experimental/syscollector/hotfixes` — add hotfix field filter
 
 ### Additional
-- [ ] Add `/experimental/ciscat/results` cross-agent endpoint
+- [x] Add `/experimental/ciscat/results` cross-agent endpoint
 - [x] Write vitest tests for all contract gap fixes (57 tests in apiContractGap.test.ts)
 - [x] Full test suite passes after all fixes (81 files, 2,543 tests, 0 failures)
+
+## Sprint: CIS-CAT Endpoint + Broker Coverage Dashboard
+
+- [x] Add CISCAT_RESULTS_CONFIG broker config to paramBroker.ts
+- [x] Add /experimental/ciscat/results router endpoint to wazuhRouter.ts
+- [x] Build Broker Coverage dashboard panel (frontend)
+- [x] Create server-side broker coverage analysis tRPC procedure
+- [x] Write tests for ciscat broker config
+- [x] Write tests for broker coverage analysis
+- [x] Full test suite passes (82 files, 2,607 tests, 0 failures)
+- [x] Package source code as zip for code review
