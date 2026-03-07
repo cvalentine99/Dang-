@@ -48,7 +48,7 @@ LISTING=$(unzip -l "$ARCHIVE" 2>/dev/null)
 FILE_LIST=$(echo "$LISTING" | awk 'NR>3 {print $NF}' | head -n -2)
 
 # Directories/prefixes that must not appear
-for pattern in ".manus/" ".manus-logs/" ".webdev/" "node_modules/" ".git/"; do
+for pattern in ".manus/" ".manus-logs/" "__manus__/" ".webdev/" "node_modules/" ".git/"; do
   MATCHES=$(echo "$FILE_LIST" | grep -c "^${pattern}\|/${pattern}" || true)
   if [ "$MATCHES" -gt 0 ]; then
     fail "Archive contains '$pattern' ($MATCHES entries)"
